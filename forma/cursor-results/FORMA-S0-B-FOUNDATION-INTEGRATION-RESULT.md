@@ -2,15 +2,31 @@
 
 ## Status
 
-**PASS_WITH_EXTERNAL_GATE**
+**PASS**
 
-S0-B-G1 local gates remain PASS. S0-B-G2 fixed CI-coupled migration test (portable Docker network topology). Local CASE A/B/C PASS on Windows. GitHub Actions still requires human confirmation (`gh`/API unavailable here).
+S0 Foundation Integration is complete and frozen. All local gates and GitHub Actions Forma CI jobs passed.
 
-**DO NOT START S1.** Await human review.
+**DO NOT START S1** from this document alone — S0 is frozen; S1 is a separate stage.
 
 ---
 
-## G2 Migration CI Portability Fix
+## Final External Gate Closure
+
+| Item | Value |
+|---|---|
+| GitHub Actions run | `33371051867` |
+| Commit | `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
+| Tag | `forma-s0-frozen` |
+
+| Job | Result |
+|---|---|
+| forma-backend | PASS |
+| forma-frontend | PASS |
+| forma-migration-apply | PASS |
+
+---
+
+## Gate Closure
 
 ### Root Cause
 
