@@ -36,3 +36,5 @@ atlas migrate apply --dir "file://migrations" --url "$FORMA_ATLAS_URL"
 - Migrations use `CREATE TABLE IF NOT EXISTS` for idempotent fresh installs
 - Re-running `atlas migrate apply` on an applied revision is a no-op
 - Never add Forma columns to Coze core tables
+- Integration test (`scripts/forma/migration-apply-test.mjs`) creates an isolated Docker network and connects Atlas → `mysql:3306` (never `host.docker.internal`)
+- Test pins `mysql:8.4.5` (Coze compose baseline) and creates app users with default MySQL 8.4 auth (`caching_sha2_password`)

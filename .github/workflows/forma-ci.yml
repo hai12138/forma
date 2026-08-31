@@ -9,6 +9,7 @@ on:
       - 'coze-studio/backend/api/handler/forma/**'
       - 'coze-studio/backend/api/router/forma/**'
       - 'coze-studio/docker/atlas/forma/**'
+      - 'coze-studio/scripts/forma/**'
       - 'coze-studio/frontend/apps/forma/**'
       - 'coze-studio/frontend/packages/forma-api-client/**'
       - 'forma/**'
@@ -52,20 +53,7 @@ jobs:
           node-version: '22'
       - name: Forma migration real apply (CASE A/B/C)
         working-directory: coze-studio
-        run: |
-          docker rm -f forma-mysql-g1 2>/dev/null || true
-          docker run -d --name forma-mysql-g1 \
-            -e MYSQL_ROOT_PASSWORD=root \
-            -e MYSQL_DATABASE=opencoze \
-            -e MYSQL_USER=coze \
-            -e MYSQL_PASSWORD=coze123 \
-            -p 127.0.0.1:3307:3306 \
-            mysql:8.4.5 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-          for i in $(seq 1 30); do
-            docker exec forma-mysql-g1 mysqladmin ping -h localhost -uroot -proot --silent && break
-            sleep 2
-          done
-          node scripts/forma/migration-apply-test.mjs
+        run: node scripts/forma/migration-apply-test.mjs
 
   forma-frontend:
     runs-on: ubuntu-latest
