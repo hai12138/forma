@@ -2,9 +2,9 @@
 
 ## Status
 
-**PASS_WITH_FREEZE_GATE**
+**PASS — S1 FROZEN**
 
-S1-G2-F1 in progress: ASCII ID contract + tag-safe `BUILD_BRANCH` for Forma frontend CI. Provisional `forma-s1-frozen` had tag CI frontend FAIL (`BUILD_BRANCH` empty). Must not declare **S1 FROZEN** until replacement tag CI is all green.
+S1 tenancy / identity / product foundation complete through S1-G2-F1 (ASCII ID contract + tag-safe Forma CI).
 
 | Item | Value |
 |---|---|
@@ -12,12 +12,16 @@ S1-G2-F1 in progress: ASCII ID contract + tag-safe `BUILD_BRANCH` for Forma fron
 | **S1-G1** | `f3745fe7a7cbc9119dfee73fd535d50e90e3c443` |
 | Forma CI (S1-G1) | [33378641009](https://github.com/hai12138/forma/actions/runs/33378641009) |
 | **S1-G2** | `0f87d2ee6db26f0acb31244af6f5799306d9c965` |
-| Forma CI (S1-G2 main) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) — **PASS** |
-| Provisional tag CI | [33381128788](https://github.com/hai12138/forma/actions/runs/33381128788) — frontend **FAIL** (`BUILD_BRANCH` empty) |
+| Forma CI (S1-G2 main) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) |
+| **S1-G2-F1 / Frozen Commit** | `601857c49a167c40c97849f4af543b95cc76fdcb` |
+| Main CI (F1) | [33406591150](https://github.com/hai12138/forma/actions/runs/33406591150) — **PASS** |
+| Tag | `forma-s1-frozen` → `601857c49a167c40c97849f4af543b95cc76fdcb` |
+| Tag CI | [33406827644](https://github.com/hai12138/forma/actions/runs/33406827644) — **PASS** (backend / migration / frontend; `BUILD_BRANCH` resolved) |
 | S0 Frozen | `forma-s0-frozen` → `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
 | Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 
-**DO NOT START S2.** Await S1-G2-F1 tag CI green + human review.
+**S1 FROZEN.**  
+**DO NOT START S2.** Await human review.
 
 ---
 
@@ -263,12 +267,12 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 
 | Item | Result | Notes |
 |---|---|---|
-| ASCII ID validation | PASS | `ParseCozeID` uses `'0'`–`'9'` only; reject Arabic-Indic / full-width |
-| Tag CI root cause | DOCUMENTED | Coze `bot-env` `getCurrentBranch()` empty on detached HEAD; `BUILD_BRANCH` unset |
-| `BUILD_BRANCH` fix | PASS | Forma CI `forma-frontend` env: `github.head_ref \|\| github.ref_name \|\| github.sha` (no Coze core change) |
-| BUILD_BRANCH semantics | PASS | PR→head_ref; branch/tag→ref_name; fallback→sha |
-| Main CI | pending | after S1-G2-F1 push |
-| Tag CI (replacement) | pending | after provisional tag replace |
+| ASCII ID validation | **PASS** | `ParseCozeID` ASCII `'0'`–`'9'` only; reject Arabic-Indic / full-width / mixed |
+| Tag CI root cause | DOCUMENTED | Coze `bot-env` empty branch on detached HEAD → `BUILD_BRANCH` unset |
+| `BUILD_BRANCH` fix | **PASS** | Forma CI env: `github.head_ref \|\| github.ref_name \|\| github.sha` (no Coze core change) |
+| BUILD_BRANCH semantics | **PASS** | main→`main`; tag→`forma-s1-frozen`; PR→`head_ref` |
+| Main CI | **PASS** | [33406591150](https://github.com/hai12138/forma/actions/runs/33406591150) |
+| Tag CI (replacement) | **PASS** | [33406827644](https://github.com/hai12138/forma/actions/runs/33406827644) — Resolve BUILD_BRANCH + Forma app build success |
 
 ---
 
@@ -284,13 +288,12 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 
 ## S1 Freeze
 
-Provisional tag pending replacement after S1-G2-F1 main CI + tag CI green.
-
 | Item | Value |
 |---|---|
-| Tag | `forma-s1-frozen` (replacement after F1) |
-| S1-G2 code | `0f87d2ee6db26f0acb31244af6f5799306d9c965` |
-| Provisional tag CI | [33381128788](https://github.com/hai12138/forma/actions/runs/33381128788) FAIL |
+| Tag | `forma-s1-frozen` (**final** — do not move) |
+| S1 Frozen Commit | `601857c49a167c40c97849f4af543b95cc76fdcb` |
+| Tag CI Run ID | [33406827644](https://github.com/hai12138/forma/actions/runs/33406827644) |
+| Main CI Run ID | [33406591150](https://github.com/hai12138/forma/actions/runs/33406591150) |
 | S0 Frozen Commit | `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
 | Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 
@@ -298,12 +301,12 @@ Provisional tag pending replacement after S1-G2-F1 main CI + tag CI green.
 
 ## S2 Preconditions
 
-1. Human sign-off on final `forma-s1-frozen` (tag CI all green)
+1. Human sign-off on final `forma-s1-frozen`
 2. Do not start Business Model / Analyst / Capability until explicitly authorized
 
 ---
 
 **Stage:** FORMA-S1 / S1-G2-F1  
-**Status:** PASS_WITH_FREEZE_GATE  
+**Status:** PASS — S1 FROZEN  
 **DO NOT START S2.**
 
