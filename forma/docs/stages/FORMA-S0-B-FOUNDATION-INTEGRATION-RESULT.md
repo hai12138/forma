@@ -80,7 +80,7 @@ Local: `ok 3 - CASE C — idempotency` (re-apply + `atlas migrate status` via sa
 
 ### Commit
 
-(recorded after push)
+`bb9018fcacf3a0edb94912847dc31f45f27d7e4c` — `fix(forma): make migration integration test portable`
 
 ### GitHub Actions Status
 
