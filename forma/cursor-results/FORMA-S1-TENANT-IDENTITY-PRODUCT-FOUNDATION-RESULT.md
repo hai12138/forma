@@ -272,8 +272,8 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 | Item | Value |
 |---|---|
 | Tag | `forma-s1-frozen` |
-| S1 Frozen Commit | `4e923ba9e5f91673f91889c71c7687f76aa354ad` (`forma-s1-frozen`) |
-| S1-G2 code | `0f87d2ee6db26f0acb31244af6f5799306d9c965` |
+| S1 Frozen Commit | `0f87d2ee6db26f0acb31244af6f5799306d9c965` (`forma-s1-frozen`) |
+| Forma CI (S1-G2) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) |
 | S0 Frozen Commit | `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
 | Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 | Forma CI (freeze baseline) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) |
@@ -291,3 +291,4 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 **Stage:** FORMA-S1 / S1-G2  
 **S1 FROZEN.**  
 **DO NOT START S2.**
+
