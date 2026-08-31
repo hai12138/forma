@@ -2,6 +2,10 @@ name: Forma CI
 
 on:
   push:
+    branches:
+      - '**'
+    tags:
+      - 'forma-*'
     paths:
       - 'coze-studio/backend/domain/forma/**'
       - 'coze-studio/backend/application/forma/**'
@@ -22,6 +26,7 @@ on:
       - 'coze-studio/frontend/apps/forma/**'
       - 'coze-studio/frontend/packages/forma-api-client/**'
       - 'forma/**'
+      - '.github/workflows/forma-ci.yml'
 
 jobs:
   forma-backend:
@@ -67,6 +72,10 @@ jobs:
 
   forma-frontend:
     runs-on: ubuntu-latest
+    # Coze bot-env reads BUILD_BRANCH; detached HEAD (tag CI) leaves it empty.
+    # Do not patch Coze core — inject a stable value for Forma frontend builds.
+    env:
+      BUILD_BRANCH: ${{ github.head_ref || github.ref_name || github.sha }}
     defaults:
       run:
         working-directory: coze-studio
@@ -75,6 +84,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Resolve BUILD_BRANCH
+        run: |
+          echo "BUILD_BRANCH=${BUILD_BRANCH}"
+          test -n "${BUILD_BRANCH}"
       - name: Rush install
         run: node common/scripts/install-run-rush.js install
       - name: Forma typecheck

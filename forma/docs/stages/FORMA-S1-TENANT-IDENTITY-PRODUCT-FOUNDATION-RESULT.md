@@ -2,9 +2,9 @@
 
 ## Status
 
-**PASS — S1 FROZEN**
+**PASS_WITH_FREEZE_GATE**
 
-S1 tenancy / identity / product foundation complete through S1-G2 Coze ID contract hardening.
+S1-G2-F1 in progress: ASCII ID contract + tag-safe `BUILD_BRANCH` for Forma frontend CI. Provisional `forma-s1-frozen` had tag CI frontend FAIL (`BUILD_BRANCH` empty). Must not declare **S1 FROZEN** until replacement tag CI is all green.
 
 | Item | Value |
 |---|---|
@@ -12,12 +12,12 @@ S1 tenancy / identity / product foundation complete through S1-G2 Coze ID contra
 | **S1-G1** | `f3745fe7a7cbc9119dfee73fd535d50e90e3c443` |
 | Forma CI (S1-G1) | [33378641009](https://github.com/hai12138/forma/actions/runs/33378641009) |
 | **S1-G2** | `0f87d2ee6db26f0acb31244af6f5799306d9c965` |
-| Forma CI (S1-G2) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) — backend / migration-apply / frontend **success** |
+| Forma CI (S1-G2 main) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) — **PASS** |
+| Provisional tag CI | [33381128788](https://github.com/hai12138/forma/actions/runs/33381128788) — frontend **FAIL** (`BUILD_BRANCH` empty) |
 | S0 Frozen | `forma-s0-frozen` → `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
 | Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 
-**S1 FROZEN.**  
-**DO NOT START S2.** Await human review.
+**DO NOT START S2.** Await S1-G2-F1 tag CI green + human review.
 
 ---
 
@@ -193,7 +193,8 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 1. TransferOwnership API deferred; Primary Owner demotion blocked instead.
 2. UnbindSpace HTTP API not exposed in S1 (domain UnbindSpace + lifecycle tests cover mapping).
 3. `.git/hooks/pre-commit` may need `scripts/forma/install-precommit.sh` on developer machines.
-4. Large Coze space IDs exceed JS `Number.MAX_SAFE_INTEGER` when round-tripped via JSON number (domain uses int64).
+
+~~Large Coze space IDs exceed JS `Number.MAX_SAFE_INTEGER`~~ — **CLOSED (S1-G2)**: external Coze IDs are decimal **strings** (`ID-CONTRACT.md` / ADR-012).
 
 ---
 
@@ -258,37 +259,51 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 
 ---
 
+## S1-G2-F1 Final Freeze Closure
+
+| Item | Result | Notes |
+|---|---|---|
+| ASCII ID validation | PASS | `ParseCozeID` uses `'0'`–`'9'` only; reject Arabic-Indic / full-width |
+| Tag CI root cause | DOCUMENTED | Coze `bot-env` `getCurrentBranch()` empty on detached HEAD; `BUILD_BRANCH` unset |
+| `BUILD_BRANCH` fix | PASS | Forma CI `forma-frontend` env: `github.head_ref \|\| github.ref_name \|\| github.sha` (no Coze core change) |
+| BUILD_BRANCH semantics | PASS | PR→head_ref; branch/tag→ref_name; fallback→sha |
+| Main CI | pending | after S1-G2-F1 push |
+| Tag CI (replacement) | pending | after provisional tag replace |
+
+---
+
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| JS number precision for Coze snowflake IDs | **Closed in S1-G2** — public IDs are strings (`ID-CONTRACT.md`) |
+| JS number precision for Coze snowflake IDs | **CLOSED (S1-G2)** — public IDs are strings |
+| Tag CI detached HEAD / empty BUILD_BRANCH | **CLOSED (S1-G2-F1)** — Forma workflow injects `BUILD_BRANCH` |
 | SessionStorage for selected tenant | Selection UX only; server enforces membership |
 
 ---
 
 ## S1 Freeze
 
+Provisional tag pending replacement after S1-G2-F1 main CI + tag CI green.
+
 | Item | Value |
 |---|---|
-| Tag | `forma-s1-frozen` |
-| S1 Frozen Commit | `0f87d2ee6db26f0acb31244af6f5799306d9c965` (`forma-s1-frozen`) |
-| Forma CI (S1-G2) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) |
+| Tag | `forma-s1-frozen` (replacement after F1) |
+| S1-G2 code | `0f87d2ee6db26f0acb31244af6f5799306d9c965` |
+| Provisional tag CI | [33381128788](https://github.com/hai12138/forma/actions/runs/33381128788) FAIL |
 | S0 Frozen Commit | `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
 | Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
-| Forma CI (freeze baseline) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) |
 
 ---
 
 ## S2 Preconditions
 
-1. Human sign-off on S1 freeze (`forma-s1-frozen`)
-2. Forma CI green on frozen commit
-3. Do not start Business Model / Analyst / Capability until explicitly authorized
+1. Human sign-off on final `forma-s1-frozen` (tag CI all green)
+2. Do not start Business Model / Analyst / Capability until explicitly authorized
 
 ---
 
-**Stage:** FORMA-S1 / S1-G2  
-**S1 FROZEN.**  
+**Stage:** FORMA-S1 / S1-G2-F1  
+**Status:** PASS_WITH_FREEZE_GATE  
 **DO NOT START S2.**
 

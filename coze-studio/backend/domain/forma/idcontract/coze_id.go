@@ -13,7 +13,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 // FormatCozeID serializes a domain int64 Coze resource ID for public JSON.
@@ -24,8 +23,14 @@ func FormatCozeID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
 
+func isASCIIDigit(r rune) bool {
+	return r >= '0' && r <= '9'
+}
+
 // ParseCozeID parses a public string Coze resource ID into domain int64.
-// Rejects empty, non-digit, floats, scientific notation, zero/negative, and overflow.
+// Contract: ASCII decimal digits only ([0-9]), >0, no leading zeros,
+// no sign/float/scientific notation, fits signed int64.
+// Unicode digits (Arabic-Indic, full-width, etc.) are rejected.
 func ParseCozeID(raw string) (int64, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -41,8 +46,8 @@ func ParseCozeID(raw string) (int64, error) {
 		return 0, fmt.Errorf("coze id must be a decimal integer string")
 	}
 	for _, r := range s {
-		if !unicode.IsDigit(r) {
-			return 0, fmt.Errorf("coze id must be numeric digits only")
+		if !isASCIIDigit(r) {
+			return 0, fmt.Errorf("coze id must be ASCII decimal digits only")
 		}
 	}
 	if len(s) > 1 && s[0] == '0' {

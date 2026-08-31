@@ -51,6 +51,20 @@ func TestParseCozeID_RejectsInvalid(t *testing.T) {
 	}
 }
 
+func TestParseCozeID_RejectsUnicodeDigits(t *testing.T) {
+	cases := []string{
+		"١",     // Arabic-Indic digit one
+		"１２３", // full-width 123
+		"123١",  // mixed ASCII + Arabic-Indic
+		"１２",  // full-width
+	}
+	for _, c := range cases {
+		_, err := ParseCozeID(c)
+		assert.Error(t, err, "unicode digit input must reject: %q", c)
+	}
+}
+
+
 func TestParseCozeID_AcceptsValid(t *testing.T) {
 	got, err := ParseCozeID("7563957783431741441")
 	require.NoError(t, err)

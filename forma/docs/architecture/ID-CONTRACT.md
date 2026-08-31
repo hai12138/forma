@@ -51,7 +51,8 @@ Helpers: `backend/domain/forma/idcontract` (`FormatCozeID` / `ParseCozeID`).
 ### Validation (`ParseCozeID`)
 
 - Non-empty after trim
-- Digits only (`[1-9][0-9]*`)
+- **ASCII** digits only (`'0'`–`'9'`) — Unicode digits (Arabic-Indic, full-width, etc.) rejected
+- Form `[1-9][0-9]*` (no leading zeros)
 - `> 0`
 - Fits in signed int64 (overflow rejected)
 - No `.` / `e` / `E` / `+` / `-`
