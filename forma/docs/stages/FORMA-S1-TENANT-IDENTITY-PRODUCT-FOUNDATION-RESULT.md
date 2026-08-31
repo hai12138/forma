@@ -11,7 +11,8 @@ S1 tenancy / identity / product foundation complete through S1-G2 Coze ID contra
 | S1 feature | `a10d24035e36591ef37bcb4cfb28b73aaa786198` |
 | **S1-G1** | `f3745fe7a7cbc9119dfee73fd535d50e90e3c443` |
 | Forma CI (S1-G1) | [33378641009](https://github.com/hai12138/forma/actions/runs/33378641009) |
-| **S1-G2** | *(this commit / `forma-s1-frozen` tag)* |
+| **S1-G2** | `0f87d2ee6db26f0acb31244af6f5799306d9c965` |
+| Forma CI (S1-G2) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) — backend / migration-apply / frontend **success** |
 | S0 Frozen | `forma-s0-frozen` → `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
 | Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 
@@ -253,7 +254,7 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 | Live E2E | PASS | `typeof coze_*_id === "string"`; BigInt round-trip; number body rejected |
 | Frontend typecheck/build/vitest | PASS | `@forma/app` routes smoke |
 | Architecture | PASS | `ID-CONTRACT.md` + `ADR-012` |
-| CI | PASS | record run after push |
+| CI | **PASS** | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) |
 
 ---
 
@@ -271,9 +272,10 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 | Item | Value |
 |---|---|
 | Tag | `forma-s1-frozen` |
-| S1 Frozen Commit | *(final S1-G2 commit — filled after push)* |
+| S1 Frozen Commit | `0f87d2ee6db26f0acb31244af6f5799306d9c965` (+ freeze docs commit) |
 | S0 Frozen Commit | `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
 | Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
+| Forma CI (freeze baseline) | [33380202709](https://github.com/hai12138/forma/actions/runs/33380202709) |
 
 ---
 
