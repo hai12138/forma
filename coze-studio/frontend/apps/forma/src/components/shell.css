@@ -1,0 +1,127 @@
+.forma-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.forma-sidebar {
+  background: var(--forma-surface);
+  border-right: 1px solid var(--forma-border);
+  padding: var(--forma-space-md);
+}
+
+.forma-brand {
+  display: flex;
+  gap: var(--forma-space-sm);
+  align-items: center;
+  margin-bottom: var(--forma-space-lg);
+}
+
+.forma-brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--forma-radius-control);
+  background: var(--forma-primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+}
+
+.forma-brand-sub {
+  font-size: 11px;
+  color: #667085;
+}
+
+.forma-nav-group {
+  margin-bottom: var(--forma-space-md);
+}
+
+.forma-nav-group-title {
+  font-size: 11px;
+  color: #667085;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.forma-nav-item {
+  display: block;
+  padding: 8px 10px;
+  border-radius: var(--forma-radius-control);
+  margin-bottom: 2px;
+}
+
+.forma-nav-item:hover,
+.forma-nav-item.active {
+  background: #eef3ff;
+  color: var(--forma-primary);
+}
+
+.forma-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.forma-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--forma-space-md) var(--forma-space-lg);
+  border-bottom: 1px solid var(--forma-border);
+  background: var(--forma-surface);
+}
+
+.forma-eyebrow {
+  font-size: 11px;
+  color: #667085;
+}
+
+.forma-env {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.forma-topbar-meta {
+  font-size: 12px;
+  color: #667085;
+}
+
+.forma-error {
+  color: var(--forma-danger);
+}
+
+.forma-content {
+  padding: var(--forma-space-lg);
+}
+
+.forma-panel {
+  background: var(--forma-surface);
+  border: 1px solid var(--forma-border);
+  border-radius: var(--forma-radius-panel);
+  padding: var(--forma-space-lg);
+}
+
+.forma-placeholder {
+  color: #667085;
+}
+
+.forma-grid {
+  display: grid;
+  gap: var(--forma-space-md);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.forma-card {
+  border: 1px solid var(--forma-border);
+  border-radius: var(--forma-radius-control);
+  padding: var(--forma-space-md);
+  background: var(--forma-surface);
+}
+
+.forma-token-swatch {
+  height: 40px;
+  border-radius: var(--forma-radius-control);
+  border: 1px solid var(--forma-border);
+}

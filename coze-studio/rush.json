@@ -36,6 +36,7 @@
     "team-fullcode-app",
     "phase-prebuild",
     "channel-coze",
+    "channel-forma",
     "rush-tools",
     "core"
   ],
@@ -1336,6 +1337,16 @@
       "packageName": "@coze-arch/bot-md-box-adapter",
       "projectFolder": "frontend/packages/arch/bot-md-box-adapter",
       "tags": ["level-2"]
+    },
+    {
+      "packageName": "@forma/api-client",
+      "projectFolder": "frontend/packages/forma-api-client",
+      "tags": ["level-1", "channel-forma"]
+    },
+    {
+      "packageName": "@forma/app",
+      "projectFolder": "frontend/apps/forma",
+      "tags": ["level-1", "channel-forma"]
     }
   ]
 }

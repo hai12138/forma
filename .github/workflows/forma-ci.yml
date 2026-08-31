@@ -1,0 +1,89 @@
+name: Forma CI
+
+on:
+  push:
+    paths:
+      - 'coze-studio/backend/domain/forma/**'
+      - 'coze-studio/backend/application/forma/**'
+      - 'coze-studio/backend/crossdomain/forma/**'
+      - 'coze-studio/backend/api/handler/forma/**'
+      - 'coze-studio/backend/api/router/forma/**'
+      - 'coze-studio/docker/atlas/forma/**'
+      - 'coze-studio/frontend/apps/forma/**'
+      - 'coze-studio/frontend/packages/forma-api-client/**'
+      - 'forma/**'
+      - '.github/workflows/forma-ci.yml'
+  pull_request:
+    paths:
+      - 'coze-studio/backend/domain/forma/**'
+      - 'coze-studio/backend/application/forma/**'
+      - 'coze-studio/backend/crossdomain/forma/**'
+      - 'coze-studio/frontend/apps/forma/**'
+      - 'coze-studio/frontend/packages/forma-api-client/**'
+      - 'forma/**'
+
+jobs:
+  forma-backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coze-studio/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Forma domain tests
+        run: go test ./domain/forma/... ./crossdomain/forma/... ./application/forma/... -count=1
+      - name: Validate Forma migration SQL present
+        run: test -f ../docker/atlas/forma/migrations/20250831100000_initial.sql
+      - name: Forma migration smoke validation
+        working-directory: coze-studio
+        run: node scripts/forma/migration-validate.mjs
+      - name: Forma API handler smoke
+        run: go test ./api/handler/forma/... -count=1
+
+  forma-migration-apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Forma migration real apply (CASE A/B/C)
+        working-directory: coze-studio
+        run: |
+          docker rm -f forma-mysql-g1 2>/dev/null || true
+          docker run -d --name forma-mysql-g1 \
+            -e MYSQL_ROOT_PASSWORD=root \
+            -e MYSQL_DATABASE=opencoze \
+            -e MYSQL_USER=coze \
+            -e MYSQL_PASSWORD=coze123 \
+            -p 127.0.0.1:3307:3306 \
+            mysql:8.4.5 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+          for i in $(seq 1 30); do
+            docker exec forma-mysql-g1 mysqladmin ping -h localhost -uroot -proot --silent && break
+            sleep 2
+          done
+          node scripts/forma/migration-apply-test.mjs
+
+  forma-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coze-studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Rush install
+        run: node common/scripts/install-run-rush.js install
+      - name: Forma typecheck
+        run: node common/scripts/install-run-rush.js build --to @forma/api-client --verbose
+      - name: Forma app build
+        run: node common/scripts/install-run-rush.js build --to @forma/app --verbose
+      - name: Forma route smoke tests
+        run: node common/scripts/install-run-rush.js test --to @forma/app --verbose
+      - name: Forma route + design token smoke (node)
+        run: node scripts/forma/routes-smoke.mjs

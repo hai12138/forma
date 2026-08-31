@@ -72,6 +72,12 @@ import (
 	crossworkflow "github.com/coze-dev/coze-studio/backend/crossdomain/workflow"
 	workflowImpl "github.com/coze-dev/coze-studio/backend/crossdomain/workflow/impl"
 	"github.com/coze-dev/coze-studio/backend/infra/checkpoint"
+	// FORMA-BEGIN
+	formaApp "github.com/coze-dev/coze-studio/backend/application/forma"
+	crossforma "github.com/coze-dev/coze-studio/backend/crossdomain/forma"
+	formaImpl "github.com/coze-dev/coze-studio/backend/crossdomain/forma/impl"
+	formaIntegration "github.com/coze-dev/coze-studio/backend/crossdomain/forma/integration"
+	// FORMA-END
 	"github.com/coze-dev/coze-studio/backend/infra/document/progressbar"
 	progressBarImpl "github.com/coze-dev/coze-studio/backend/infra/document/progressbar/impl/progressbar"
 	"github.com/coze-dev/coze-studio/backend/infra/eventbus"
@@ -98,6 +104,9 @@ type basicServices struct {
 	uploadSVC    *upload.UploadService
 
 	permissionSVC *permission.PermissionApplicationService
+	// FORMA-BEGIN
+	formaSVC *formaApp.ApplicationService
+	// FORMA-END
 }
 
 type primaryServices struct {
@@ -167,6 +176,12 @@ func Init(ctx context.Context) (err error) {
 
 	crossapp.SetDefaultSVC(appImpl.InitDomainService(complexServices.appSVC.DomainSVC))
 
+	// FORMA-BEGIN
+	crossforma.SetDefaultSVC(formaImpl.InitDomainService(
+		formaIntegration.NewFormaCozeIntegration(formaIntegration.NewCozeAgentAdapter()),
+	))
+	// FORMA-END
+
 	return nil
 }
 
@@ -195,6 +210,13 @@ func initBasicServices(ctx context.Context, infra *appinfra.AppDependencies, e *
 
 	permissionSVC := permission.InitService(&permission.ServiceComponents{})
 
+	// FORMA-BEGIN
+	formaSVC := formaApp.InitService(ctx, &formaApp.ServiceComponents{
+		DB:    infra.DB,
+		IDGen: infra.IDGenSVC,
+	})
+	// FORMA-END
+
 	return &basicServices{
 		infra:        infra,
 		eventbus:     e,
@@ -207,6 +229,9 @@ func initBasicServices(ctx context.Context, infra *appinfra.AppDependencies, e *
 		uploadSVC:    uploadSVC,
 
 		permissionSVC: permissionSVC,
+		// FORMA-BEGIN
+		formaSVC: formaSVC,
+		// FORMA-END
 	}, nil
 }
 

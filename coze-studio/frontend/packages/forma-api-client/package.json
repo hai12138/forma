@@ -1,0 +1,23 @@
+{
+  "name": "@forma/api-client",
+  "version": "0.1.0-s0b",
+  "private": true,
+  "description": "Forma platform API client (S0-B)",
+  "license": "UNLICENSED",
+  "sideEffects": false,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "exit 0",
+    "lint": "eslint ./ --cache --quiet",
+    "test": "vitest --run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@coze-arch/eslint-config": "workspace:*",
+    "@coze-arch/ts-config": "workspace:*",
+    "@coze-arch/vitest-config": "workspace:*",
+    "typescript": "~5.8.2",
+    "vitest": "~3.0.5"
+  }
+}

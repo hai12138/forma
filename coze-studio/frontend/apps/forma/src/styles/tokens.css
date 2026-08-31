@@ -1,0 +1,44 @@
+:root {
+  --forma-background: #f7f8fa;
+  --forma-surface: #ffffff;
+  --forma-primary: #2860dd;
+  --forma-foreground: #242d3d;
+  --forma-border: #e6e9ef;
+  --forma-success: #4c9773;
+  --forma-warning: #bc8a38;
+  --forma-danger: #c35454;
+  --forma-radius-control: 8px;
+  --forma-radius-panel: 12px;
+  --forma-space-sm: 8px;
+  --forma-space-md: 16px;
+  --forma-space-lg: 24px;
+  --forma-font-family: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--forma-font-family);
+  background: var(--forma-background);
+  color: var(--forma-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+}

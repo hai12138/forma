@@ -28,6 +28,9 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 
 	coze "github.com/coze-dev/coze-studio/backend/api/router/coze"
+	// FORMA-BEGIN
+	formaRouter "github.com/coze-dev/coze-studio/backend/api/router/forma"
+	// FORMA-END
 	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 )
 
@@ -35,6 +38,9 @@ import (
 func GeneratedRegister(r *server.Hertz) {
 	//INSERT_POINT: DO NOT DELETE THIS LINE!
 	coze.Register(r)
+	// FORMA-BEGIN
+	formaRouter.Register(r)
+	// FORMA-END
 	staticFileRegister(r)
 }
 
