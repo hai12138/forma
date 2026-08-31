@@ -1,0 +1,115 @@
+.vme-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #edf0f5;
+  background: #fafbfd;
+}
+.vme-separator {
+  height: 20px;
+  width: 1px;
+  background: #e5e8ee;
+  margin: 0 4px;
+}
+.vme-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 250px;
+}
+.vme .bc-surface {
+  height: 560px;
+}
+.vme-properties {
+  background: #fcfdff;
+  border-left: 1px solid #e8ecf2;
+  padding: 18px;
+  overflow: auto;
+  font-size: 12px;
+}
+.vme-panel-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.vme-panel-title small {
+  color: #8a93a2;
+}
+.vme-properties form,
+.vme-properties label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vme-properties form {
+  gap: 16px;
+}
+.vme-properties select {
+  border: 1px solid #dfe4eb;
+  border-radius: 8px;
+  padding: 8px;
+  background: white;
+}
+.vme-properties p {
+  color: #758196;
+  line-height: 1.8;
+  margin: 15px 0;
+}
+.vme-properties .vme-source {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.vme-delete {
+  color: #c84545;
+  margin-top: 10px;
+}
+.vme-governance {
+  margin-top: 25px;
+  border-top: 1px solid #e9edf3;
+  padding-top: 18px;
+}
+.vme-hint {
+  background: #edf4ff;
+  padding: 10px;
+  border-radius: 8px;
+}
+.vme:fullscreen .vme-body {
+  flex: 1;
+  min-height: 0;
+}
+.vme:fullscreen .bc-surface {
+  height: 100%;
+}
+.vme [role='button']:focus-visible {
+  outline: 2px solid #3478f6;
+  outline-offset: 4px;
+}
+.vme svg text {
+  user-select: none;
+  pointer-events: none;
+}
+@media (max-width: 950px) {
+  .vme-body {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+  .vme-toolbar button {
+    font-size: 11px;
+  }
+}
+@media (max-width: 650px) {
+  .vme-body {
+    grid-template-columns: 1fr;
+  }
+  .vme-properties {
+    border-left: 0;
+    border-top: 1px solid #e8ecf2;
+    max-height: 340px;
+  }
+  .vme .bc-surface {
+    height: 420px;
+  }
+  .vme .bc-footer {
+    flex-wrap: wrap;
+  }
+}

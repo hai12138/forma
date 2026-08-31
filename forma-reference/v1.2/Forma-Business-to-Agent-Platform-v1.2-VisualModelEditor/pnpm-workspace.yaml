@@ -1,0 +1,7 @@
+overrides:
+  ast-types: 0.16.1
+  webpack: 5.108.0
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true

@@ -1,0 +1,46 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+.vscode/settings.json
+.vscode/launch.json
+
+# Secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Node / frontend
+node_modules/
+.pnpm-store/
+.rush/
+common/temp/
+.eslintcache
+*.tsbuildinfo
+
+# Build outputs
+dist/
+out/
+.next/
+.vinext/
+preview-dist/
+.wrangler/
+bin/
+backend/static/
+backend/**/output*
+output/
+
+# Docker local data
+docker/data/
+
+# Go
+*.test
+*.out
+go.work
+go.work.sum
+
+# Coze model configs (local overrides)
+backend/conf/model/*.yaml
+values-dev.yaml
