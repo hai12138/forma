@@ -6,6 +6,8 @@
 
 S1 tenancy / identity / product foundation is implemented. Local Go tests, migration A/B/C (incl. S1 tables), frontend typecheck/build/route smoke PASS. GitHub Actions Forma CI not verified from this environment after push (**EXTERNAL_GATE** for GATE-10).
 
+**Commit:** `a10d24035e36591ef37bcb4cfb28b73aaa786198`
+
 **DO NOT START S2.** Await human review.
 
 ---
