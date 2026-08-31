@@ -2,14 +2,18 @@
 
 ## Status
 
-**PASS_WITH_GATES** (await GitHub Actions green on S1-G1 push to finalize **PASS**)
+**PASS**
 
-S1 tenancy / identity / product foundation implemented. S1-G1 closes identity security blockers + live Coze Session E2E + browser shell smoke.
+S1 tenancy / identity / product foundation + S1-G1 identity security & live E2E closure complete.
 
-**S1 feature commit:** `a10d24035e36591ef37bcb4cfb28b73aaa786198`  
-**Docs commit (prior):** `2de31f5d408f80dceb3da47f3d27ac25a15849fb`
+| Item | Value |
+|---|---|
+| S1 feature | `a10d24035e36591ef37bcb4cfb28b73aaa786198` |
+| Prior docs | `2de31f5d408f80dceb3da47f3d27ac25a15849fb` |
+| **S1-G1** | `f3745fe7a7cbc9119dfee73fd535d50e90e3c443` |
+| Forma CI (S1-G1) | [33378641009](https://github.com/hai12138/forma/actions/runs/33378641009) — backend / migration-apply / frontend **success** |
 
-**DO NOT START S2.** Await human review after S1-G1 push + CI green.
+**DO NOT START S2.** Await human review.
 
 ---
 
@@ -153,9 +157,9 @@ Extended Forma CI: S1 + S1-G1 tenancy tests, S1-G1 migration file check, pre-com
 
 | Job | Prior (human-confirmed) | S1-G1 |
 |---|---|---|
-| forma-backend | PASS | pending push |
-| forma-frontend | PASS | pending push |
-| forma-migration-apply | PASS | pending push |
+| forma-backend | PASS | PASS — run `33378641009` |
+| forma-frontend | PASS | PASS — run `33378641009` |
+| forma-migration-apply | PASS | PASS — run `33378641009` |
 
 ---
 
@@ -223,7 +227,7 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 | Live Suspended Tenant | PASS | 403 FORMA_TENANT_SUSPENDED; OWNER can reactivate via PATCH |
 | Live Space Validation | PASS | bootstrap binds personal space; inaccessible space denied |
 | Browser Smoke | PASS | Edge headless: Forma Product Shell (not Coze); title Forma; Tenant switcher; identity loading/unauth path; `/api/forma` proxy → harness health 200. Screenshot: `forma/cursor-results/forma-shell-smoke.png` |
-| CI (post-push) | PENDING | await GitHub Actions after S1-G1 push |
+| CI (post-push) | **PASS** | [33378641009](https://github.com/hai12138/forma/actions/runs/33378641009) all jobs success |
 
 ### Live E2E harness
 
