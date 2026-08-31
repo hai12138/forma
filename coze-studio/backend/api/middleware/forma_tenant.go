@@ -8,6 +8,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -58,6 +59,14 @@ func isFormaAuthOnlyPath(path, method string) bool {
 	case "/api/forma/v1/tenants":
 		return method == http.MethodGet || method == http.MethodPost
 	default:
+		// GET/PATCH /tenants/:id must stay reachable so OWNER can inspect/reactivate SUSPENDED tenants.
+		if (method == http.MethodGet || method == http.MethodPatch) &&
+			strings.HasPrefix(path, "/api/forma/v1/tenants/") {
+			rest := strings.TrimPrefix(path, "/api/forma/v1/tenants/")
+			if rest != "" && !strings.Contains(rest, "/") {
+				return true
+			}
+		}
 		return false
 	}
 }

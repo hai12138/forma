@@ -165,5 +165,13 @@ func MapDomainError(err error) *FormaError {
 	if errors.Is(err, entity.ErrNotFound) {
 		return TenantNotFound(err.Error())
 	}
+	if errors.Is(err, entity.ErrLastOwner) ||
+		errors.Is(err, entity.ErrPrimaryOwnerImmutable) ||
+		errors.Is(err, entity.ErrInvalidRole) {
+		return MembershipForbidden(err.Error())
+	}
+	if errors.Is(err, entity.ErrSpaceOwned) {
+		return SpaceForbidden(err.Error())
+	}
 	return Internal(err.Error())
 }

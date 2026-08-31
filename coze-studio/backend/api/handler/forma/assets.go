@@ -11,18 +11,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	formaapp "github.com/coze-dev/coze-studio/backend/application/forma"
-	tenantctx "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/context"
 )
 
 func AssetCounts(ctx context.Context, c *app.RequestContext) {
-	tenantID := ""
-	if tc, ok := tenantctx.FromContext(ctx); ok && tc != nil {
-		tenantID = tc.TenantID
-	}
-	if tenantID == "" {
-		tenantID = string(c.GetHeader(formaapp.HeaderFormaTenant))
-	}
-	resp, err := formaapp.ApplicationSVC.AssetCounts(ctx, tenantID)
+	resp, err := formaapp.ApplicationSVC.AssetCounts(ctx)
 	if err != nil {
 		writeError(ctx, c, err)
 		return

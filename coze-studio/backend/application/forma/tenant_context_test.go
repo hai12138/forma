@@ -226,14 +226,48 @@ type memSpaceRefRepo struct {
 
 func newMemSpaceRefRepo() *memSpaceRefRepo { return &memSpaceRefRepo{} }
 
-func (r *memSpaceRefRepo) Create(_ context.Context, ref *entity.TenantSpaceRef) error {
+func (r *memSpaceRefRepo) GetBySpaceID(_ context.Context, cozeSpaceID int64) (*entity.TenantSpaceRef, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for _, sp := range r.rows {
+		if sp.CozeSpaceID == cozeSpaceID {
+			cp := *sp
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
+
+func (r *memSpaceRefRepo) UpsertBind(_ context.Context, ref *entity.TenantSpaceRef) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now().UTC()
+	for _, sp := range r.rows {
+		if sp.CozeSpaceID == ref.CozeSpaceID {
+			sp.TenantID = ref.TenantID
+			sp.Purpose = ref.Purpose
+			sp.Status = entity.SpaceRefActive
+			sp.UpdatedAt = now
+			ref.ID = sp.ID
+			ref.Status = entity.SpaceRefActive
+			ref.CreatedAt = sp.CreatedAt
+			ref.UpdatedAt = now
+			return nil
+		}
+	}
 	r.seq++
 	cp := *ref
 	cp.ID = r.seq
+	cp.Status = entity.SpaceRefActive
+	if cp.CreatedAt.IsZero() {
+		cp.CreatedAt = now
+	}
+	cp.UpdatedAt = now
 	r.rows = append(r.rows, &cp)
 	ref.ID = cp.ID
+	ref.Status = cp.Status
+	ref.CreatedAt = cp.CreatedAt
+	ref.UpdatedAt = cp.UpdatedAt
 	return nil
 }
 
@@ -248,18 +282,6 @@ func (r *memSpaceRefRepo) ListByTenant(_ context.Context, tenantID string) ([]*e
 		}
 	}
 	return out, nil
-}
-
-func (r *memSpaceRefRepo) GetActiveBySpaceID(_ context.Context, cozeSpaceID int64) (*entity.TenantSpaceRef, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, sp := range r.rows {
-		if sp.CozeSpaceID == cozeSpaceID && sp.Status == entity.SpaceRefActive {
-			cp := *sp
-			return &cp, nil
-		}
-	}
-	return nil, nil
 }
 
 func (r *memSpaceRefRepo) Deactivate(_ context.Context, tenantID string, cozeSpaceID int64) error {

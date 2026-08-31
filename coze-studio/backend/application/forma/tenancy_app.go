@@ -19,11 +19,11 @@ import (
 )
 
 type MeResponse struct {
-	Principal     *PrincipalDTO      `json:"principal"`
-	CurrentTenant *TenantDTO         `json:"current_tenant"`
-	Memberships   []*MembershipDTO   `json:"memberships"`
-	Tenants       []*TenantDTO       `json:"tenants"`
-	CozeUserID    int64              `json:"coze_user_id"`
+	Principal     *PrincipalDTO    `json:"principal"`
+	CurrentTenant *TenantDTO       `json:"current_tenant"`
+	Memberships   []*MembershipDTO `json:"memberships"`
+	Tenants       []*TenantDTO     `json:"tenants"`
+	CozeUserID    int64            `json:"coze_user_id"`
 }
 
 type PrincipalDTO struct {
@@ -225,7 +225,7 @@ func (s *ApplicationService) CreateTenant(ctx context.Context, in *CreateTenantI
 }
 
 func (s *ApplicationService) GetTenant(ctx context.Context, tenantID string) (*tenancyentity.Tenant, error) {
-	if _, err := s.requireMemberOf(ctx, tenantID); err != nil {
+	if _, err := s.requireMemberOfAllowSuspended(ctx, tenantID); err != nil {
 		return nil, err
 	}
 	tenant, err := s.TenancySVC.GetTenant(ctx, tenantID)
@@ -242,7 +242,10 @@ func (s *ApplicationService) PatchTenant(ctx context.Context, tenantID string, i
 	if in == nil {
 		return nil, formaerrors.TenantRequired("patch body required")
 	}
-	tc, err := s.requireMemberOf(ctx, tenantID)
+	if in.ExpectedRevision <= 0 {
+		return nil, formaerrors.TenantRequired("expected_revision is required")
+	}
+	tc, err := s.requireMemberOfAllowSuspended(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -265,11 +268,7 @@ func (s *ApplicationService) PatchTenant(ctx context.Context, tenantID string, i
 	if in.Status != nil {
 		tenant.Status = *in.Status
 	}
-	expected := in.ExpectedRevision
-	if expected == 0 {
-		expected = tenant.Revision
-	}
-	updated, err := s.TenancySVC.UpdateTenant(ctx, tenant, expected)
+	updated, err := s.TenancySVC.UpdateTenant(ctx, tenant, in.ExpectedRevision, tc.PrincipalID, tc.RequestID)
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
@@ -295,13 +294,21 @@ func (s *ApplicationService) AddMember(ctx context.Context, tenantID string, in 
 	if err != nil {
 		return nil, err
 	}
-	if !roleAtLeastAdmin(tc.MembershipRole) {
-		return nil, formaerrors.MembershipForbidden("OWNER or ADMIN required")
+	role := in.Role
+	if role == "" {
+		role = tenancyentity.RoleMember
+	}
+	if !tenancysvc.ValidRole(role) {
+		return nil, formaerrors.MapDomainError(tenancyentity.ErrInvalidRole)
+	}
+	policy := tenancysvc.MembershipPolicy{}
+	if err := policy.CanAddMember(tc.MembershipRole, role); err != nil {
+		return nil, formaerrors.MapDomainError(err)
 	}
 	m, err := s.TenancySVC.AddMember(ctx, &tenancysvc.AddMemberRequest{
 		TenantID:    tenantID,
 		PrincipalID: in.PrincipalID,
-		Role:        in.Role,
+		Role:        role,
 		CreatedBy:   tc.PrincipalID,
 	})
 	if err != nil {
@@ -314,25 +321,42 @@ func (s *ApplicationService) PatchMember(ctx context.Context, tenantID, principa
 	if in == nil || in.Role == "" {
 		return nil, formaerrors.MembershipRequired("role is required")
 	}
+	if in.ExpectedRevision <= 0 {
+		return nil, formaerrors.TenantRequired("expected_revision is required")
+	}
 	tc, err := s.requireMemberOf(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	if !roleAtLeastAdmin(tc.MembershipRole) {
-		return nil, formaerrors.MembershipForbidden("OWNER or ADMIN required")
+	if !tenancysvc.ValidRole(in.Role) {
+		return nil, formaerrors.MapDomainError(tenancyentity.ErrInvalidRole)
 	}
-	expected := in.ExpectedRevision
-	if expected == 0 {
-		cur, gErr := s.TenancySVC.GetMembership(ctx, tenantID, principalID)
-		if gErr != nil {
-			return nil, formaerrors.MapDomainError(gErr)
-		}
-		if cur == nil {
-			return nil, formaerrors.MembershipRequired("membership not found")
-		}
-		expected = cur.Revision
+	target, gErr := s.TenancySVC.GetMembership(ctx, tenantID, principalID)
+	if gErr != nil {
+		return nil, formaerrors.MapDomainError(gErr)
 	}
-	m, err := s.TenancySVC.UpdateMemberRole(ctx, tenantID, principalID, in.Role, expected)
+	if target == nil || target.Status != tenancyentity.MembershipActive {
+		return nil, formaerrors.MembershipRequired("membership not found")
+	}
+	tenant, tErr := s.TenancySVC.GetTenant(ctx, tenantID)
+	if tErr != nil {
+		return nil, formaerrors.MapDomainError(tErr)
+	}
+	if tenant == nil {
+		return nil, formaerrors.TenantNotFound("tenant not found")
+	}
+	policy := tenancysvc.MembershipPolicy{}
+	if err := policy.CanChangeRole(
+		tc.MembershipRole,
+		tc.PrincipalID,
+		principalID,
+		target.Role,
+		in.Role,
+		tenant.OwnerPrincipalID,
+	); err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	m, err := s.TenancySVC.UpdateMemberRole(ctx, tenantID, principalID, in.Role, in.ExpectedRevision, tc.PrincipalID, tc.RequestID)
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
@@ -372,9 +396,11 @@ func (s *ApplicationService) BindSpace(ctx context.Context, tenantID string, in 
 	}
 
 	ref, err := s.TenancySVC.BindSpace(ctx, &tenancysvc.BindSpaceRequest{
-		TenantID:    tenantID,
-		CozeSpaceID: in.CozeSpaceID,
-		Purpose:     in.Purpose,
+		TenantID:         tenantID,
+		CozeSpaceID:      in.CozeSpaceID,
+		Purpose:          in.Purpose,
+		ActorPrincipalID: tc.PrincipalID,
+		RequestID:        tc.RequestID,
 	})
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
@@ -415,21 +441,18 @@ func (s *ApplicationService) Bootstrap(ctx context.Context, in *BootstrapInput) 
 	return result, nil
 }
 
-func (s *ApplicationService) AssetCounts(ctx context.Context, tenantID string) (*AssetCountsResponse, error) {
-	if tenantID == "" {
-		tc, ok := tenantctx.FromContext(ctx)
-		if !ok || tc == nil {
-			return nil, formaerrors.TenantRequired("tenant context required")
-		}
-		tenantID = tc.TenantID
+func (s *ApplicationService) AssetCounts(ctx context.Context) (*AssetCountsResponse, error) {
+	tc, ok := tenantctx.FromContext(ctx)
+	if !ok || tc == nil || tc.TenantID == "" {
+		return nil, formaerrors.TenantRequired("tenant context required")
 	}
-	if _, err := s.requireMemberOf(ctx, tenantID); err != nil {
+	if _, err := s.requireMemberOf(ctx, tc.TenantID); err != nil {
 		return nil, err
 	}
 	if s.DomainSVC == nil {
 		return nil, formaerrors.Internal("asset registry not initialized")
 	}
-	assets, err := s.DomainSVC.ListAssetsByTenant(ctx, tenantID)
+	assets, err := s.DomainSVC.ListAssetsByTenant(ctx, tc.TenantID)
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
@@ -453,13 +476,24 @@ func (s *ApplicationService) AssetCounts(ctx context.Context, tenantID string) (
 }
 
 func (s *ApplicationService) requireMemberOf(ctx context.Context, tenantID string) (*tenantctx.TenantContext, error) {
+	return s.requireMemberOfOpt(ctx, tenantID, false)
+}
+
+func (s *ApplicationService) requireMemberOfAllowSuspended(ctx context.Context, tenantID string) (*tenantctx.TenantContext, error) {
+	return s.requireMemberOfOpt(ctx, tenantID, true)
+}
+
+func (s *ApplicationService) requireMemberOfOpt(ctx context.Context, tenantID string, allowSuspended bool) (*tenantctx.TenantContext, error) {
 	if tenantID == "" {
 		return nil, formaerrors.TenantRequired("tenant_id is required")
 	}
 	if tc, ok := tenantctx.FromContext(ctx); ok && tc != nil && tc.TenantID == tenantID {
+		if tc.TenantStatus == tenancyentity.TenantStatusSuspended && !allowSuspended {
+			return nil, formaerrors.TenantSuspended("tenant is suspended")
+		}
 		return tc, nil
 	}
-	return s.ResolveTenantContext(ctx, tenantID)
+	return s.resolveTenantContext(ctx, tenantID, allowSuspended)
 }
 
 func spaceAdapter() integration.CozeSpaceAdapter {

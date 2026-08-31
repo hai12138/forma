@@ -37,11 +37,12 @@ jobs:
       - name: Forma domain tests
         run: go test ./domain/forma/... ./crossdomain/forma/... ./application/forma/... -count=1
       - name: Forma tenancy security tests
-        run: go test ./domain/forma/tenancy/... ./domain/forma/asset_registry/service/ -count=1 -run "Security|Bootstrap|Revision|Tenant"
+        run: go test ./domain/forma/tenancy/... ./domain/forma/asset_registry/service/ ./application/forma/ -count=1
       - name: Validate Forma migration SQL present
         run: |
           test -f ../docker/atlas/forma/migrations/20250831100000_initial.sql
           test -f ../docker/atlas/forma/migrations/20250831120000_s1_tenancy.sql
+          test -f ../docker/atlas/forma/migrations/20250831140000_s1_g1_space_mapping.sql
       - name: Forma migration smoke validation
         working-directory: coze-studio
         run: node scripts/forma/migration-validate.mjs
@@ -49,7 +50,7 @@ jobs:
         run: go test ./api/handler/forma/... -count=1
       - name: Forma pre-commit CWD check
         working-directory: coze-studio
-        run: bash scripts/forma/precommit-cwd-check.sh || bash -c 'grep -q COZE_STUDIO_ROOT common/git-hooks/pre-commit'
+        run: bash -c 'grep -q COZE_STUDIO_ROOT common/git-hooks/pre-commit'
 
   forma-migration-apply:
     runs-on: ubuntu-latest

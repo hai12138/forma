@@ -359,12 +359,62 @@ func NewSpaceRefDAO(db *gorm.DB) *SpaceRefDAO {
 	return &SpaceRefDAO{db: db}
 }
 
-func (d *SpaceRefDAO) Create(ctx context.Context, ref *entity.TenantSpaceRef) error {
-	model := toSpaceRefModel(ref)
-	if err := d.db.WithContext(ctx).Create(model).Error; err != nil {
+func (d *SpaceRefDAO) GetBySpaceID(ctx context.Context, cozeSpaceID int64) (*entity.TenantSpaceRef, error) {
+	var model TenantSpaceRefModel
+	err := d.db.WithContext(ctx).
+		Where("coze_space_id = ?", cozeSpaceID).
+		First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return toSpaceRefEntity(&model), nil
+}
+
+func (d *SpaceRefDAO) UpsertBind(ctx context.Context, ref *entity.TenantSpaceRef) error {
+	if ref == nil || ref.CozeSpaceID == 0 {
+		return entity.ErrNotFound
+	}
+	now := time.Now().UTC()
+	existing, err := d.GetBySpaceID(ctx, ref.CozeSpaceID)
+	if err != nil {
 		return err
 	}
-	ref.ID = model.ID
+	if existing == nil {
+		if ref.CreatedAt.IsZero() {
+			ref.CreatedAt = now
+		}
+		ref.UpdatedAt = now
+		if ref.Status == "" {
+			ref.Status = entity.SpaceRefActive
+		}
+		model := toSpaceRefModel(ref)
+		if err := d.db.WithContext(ctx).Create(model).Error; err != nil {
+			return err
+		}
+		ref.ID = model.ID
+		return nil
+	}
+	result := d.db.WithContext(ctx).Model(&TenantSpaceRefModel{}).
+		Where("coze_space_id = ?", ref.CozeSpaceID).
+		Updates(map[string]interface{}{
+			"tenant_id":  ref.TenantID,
+			"purpose":    string(ref.Purpose),
+			"status":     string(entity.SpaceRefActive),
+			"updated_at": now,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return entity.ErrNotFound
+	}
+	ref.ID = existing.ID
+	ref.Status = entity.SpaceRefActive
+	ref.CreatedAt = existing.CreatedAt
+	ref.UpdatedAt = now
 	return nil
 }
 
@@ -384,24 +434,10 @@ func (d *SpaceRefDAO) ListByTenant(ctx context.Context, tenantID string) ([]*ent
 	return out, nil
 }
 
-func (d *SpaceRefDAO) GetActiveBySpaceID(ctx context.Context, cozeSpaceID int64) (*entity.TenantSpaceRef, error) {
-	var model TenantSpaceRefModel
-	err := d.db.WithContext(ctx).
-		Where("coze_space_id = ? AND status = ?", cozeSpaceID, string(entity.SpaceRefActive)).
-		First(&model).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return toSpaceRefEntity(&model), nil
-}
-
 func (d *SpaceRefDAO) Deactivate(ctx context.Context, tenantID string, cozeSpaceID int64) error {
 	now := time.Now().UTC()
 	result := d.db.WithContext(ctx).Model(&TenantSpaceRefModel{}).
-		Where("tenant_id = ? AND coze_space_id = ? AND status = ?", tenantID, cozeSpaceID, string(entity.SpaceRefActive)).
+		Where("tenant_id = ? AND coze_space_id = ?", tenantID, cozeSpaceID).
 		Updates(map[string]interface{}{
 			"status":     string(entity.SpaceRefInactive),
 			"updated_at": now,

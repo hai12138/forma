@@ -2,13 +2,14 @@
 
 ## Status
 
-**PASS_WITH_GATES**
+**PASS_WITH_GATES** (await GitHub Actions green on S1-G1 push to finalize **PASS**)
 
-S1 tenancy / identity / product foundation is implemented. Local Go tests, migration A/B/C (incl. S1 tables), frontend typecheck/build/route smoke PASS. GitHub Actions Forma CI not verified from this environment after push (**EXTERNAL_GATE** for GATE-10).
+S1 tenancy / identity / product foundation implemented. S1-G1 closes identity security blockers + live Coze Session E2E + browser shell smoke.
 
-**Commit:** `a10d24035e36591ef37bcb4cfb28b73aaa786198`
+**S1 feature commit:** `a10d24035e36591ef37bcb4cfb28b73aaa786198`  
+**Docs commit (prior):** `2de31f5d408f80dceb3da47f3d27ac25a15849fb`
 
-**DO NOT START S2.** Await human review.
+**DO NOT START S2.** Await human review after S1-G1 push + CI green.
 
 ---
 
@@ -24,7 +25,7 @@ S1 tenancy / identity / product foundation is implemented. Local Go tests, migra
 
 ---
 
-## Files Changed
+## Files Changed (S1)
 
 Key additions:
 
@@ -44,7 +45,7 @@ Key additions:
 
 ## Tenancy Domain
 
-Tenant lifecycle: ACTIVE / SUSPENDED / ARCHIVED. Soft delete only. Optimistic `revision` on PATCH.
+Tenant lifecycle: ACTIVE / SUSPENDED / ARCHIVED. Soft delete only. Optimistic `revision` on PATCH (required; no auto-fill).
 
 ---
 
@@ -58,17 +59,27 @@ Tenant lifecycle: ACTIVE / SUSPENDED / ARCHIVED. Soft delete only. Optimistic `r
 
 Roles: OWNER / ADMIN / MEMBER / VIEWER. Statuses: ACTIVE / INVITED / SUSPENDED / REMOVED. Server verifies membership for TenantContext.
 
+### S1 Membership Role Policy (frozen)
+
+| Actor | Can add/change |
+|---|---|
+| OWNER | OWNER, ADMIN, MEMBER, VIEWER; may transfer/grant OWNER |
+| ADMIN | ADMIN, MEMBER, VIEWER only — **cannot** create/promote/modify OWNER |
+| MEMBER / VIEWER | no membership management |
+
+Last-owner + Primary Owner (`owner_principal_id`) invariants enforced in domain. V1 defers TransferOwnership API; Primary Owner OWNER role cannot be demoted.
+
 ---
 
 ## Tenant → Coze Space Mapping
 
-`forma_tenant_space_ref` — 1:N, purpose extensible. Active space unique to one tenant. No FK to Coze tables.
+`forma_tenant_space_ref` — **one row per `coze_space_id`** (S1-G1). Unbind → INACTIVE on same row; rebind → reactivate/update. History via audit. At most one ACTIVE owner tenant per space.
 
 ---
 
 ## TenantContext
 
-Built server-side: Session → Principal → Membership → `X-Forma-Tenant` selection → AllowedSpaceIDs. Header is selection, not proof.
+Built server-side: Session → Principal → Membership → `X-Forma-Tenant` selection → AllowedSpaceIDs. Header is selection, not proof. AssetCounts fail-closed if TenantContext missing (no raw header fallback).
 
 ---
 
@@ -97,19 +108,23 @@ Error keys: FORMA_UNAUTHENTICATED, FORMA_TENANT_*, FORMA_MEMBERSHIP_*, FORMA_SPA
 
 ## Frontend
 
-Forma Shell: real tenant switcher (sessionStorage selection key only — not production asset store), identity display, banners for unauthenticated/forbidden/suspended/empty/network. Overview shows real asset counts / empty state. Navigation IA unchanged.
+Forma Shell: real tenant switcher (sessionStorage selection key only — not production asset store), identity display, banners for unauthenticated/forbidden/suspended/empty/network. Overview shows real asset counts / empty state. Navigation IA unchanged (Forma v1.2 baseline).
 
 ---
 
 ## Migration
 
-`20250831120000_s1_tenancy.sql` — principal, tenant, membership, space_ref, audit_event. Local portable apply CASE A/B/C PASS (S0→S1 tables present).
+- `20250831120000_s1_tenancy.sql` — principal, tenant, membership, space_ref, audit_event
+- `20250831140000_s1_g1_space_mapping.sql` — UNIQUE(`coze_space_id`); drop `(coze_space_id, status)` unique
+
+Local portable apply CASE A/B/C: S0 → S1 → S1-G1.
 
 ---
 
 ## Audit
 
-Skeleton events: TENANT_CREATED/UPDATED, MEMBER_*, SPACE_BOUND/UNBOUND via `forma_audit_event`.
+Skeleton events: TENANT_CREATED/UPDATED, MEMBER_*, SPACE_BOUND/UNBOUND via `forma_audit_event`.  
+`principal_id` = **actor** (not target). RequestID from TenantContext when present.
 
 ---
 
@@ -119,15 +134,28 @@ Skeleton events: TENANT_CREATED/UPDATED, MEMBER_*, SPACE_BOUND/UNBOUND via `form
 |---|---|
 | Bootstrap idempotent | PASS |
 | Tenant/Membership revision conflict | PASS |
+| expected_revision required | PASS |
 | Asset cross-tenant Get denied | PASS |
 | Forged `X-Forma-Tenant` forbidden | PASS |
 | Unauthenticated resolve | PASS |
+| Admin cannot promote/add/modify OWNER | PASS |
+| Member/Viewer cannot manage membership | PASS |
+| Last owner cannot be demoted | PASS |
+| Primary owner invariant | PASS |
+| Space bind/unbind/rebind cycle | PASS |
+| Audit actor correctness | PASS |
 
 ---
 
 ## CI
 
-Extended Forma CI: S1 tenancy tests, S1 migration file check, pre-commit CWD check. S0 gates retained.
+Extended Forma CI: S1 + S1-G1 tenancy tests, S1-G1 migration file check, pre-commit CWD check. S0 gates retained.
+
+| Job | Prior (human-confirmed) | S1-G1 |
+|---|---|---|
+| forma-backend | PASS | pending push |
+| forma-frontend | PASS | pending push |
+| forma-migration-apply | PASS | pending push |
 
 ---
 
@@ -137,7 +165,8 @@ Extended Forma CI: S1 tenancy tests, S1 migration file check, pre-commit CWD che
 |---|---|
 | `application/application.go` | Forma tenancy init (FORMA blocks) |
 | `api/router/register.go` | Forma router (S0) |
-| `api/middleware/session.go` | Public meta paths (S0) |
+| `api/middleware/session.go` | Public meta + health paths |
+| `bizpkg/config/config.go` | `InitBaseForLiveHarness` (FORMA) |
 | `common/git-hooks/pre-commit` | CWD → coze-studio root |
 | `rush.json` | Forma projects (S0) |
 
@@ -153,10 +182,10 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 
 ## Known Limitations
 
-1. Full live Coze session E2E against running server not exercised in this agent session (handler/unit/integration tests cover contracts).
-2. GitHub Actions GATE-10 requires human confirmation after push.
-3. `.git/hooks/pre-commit` may need `scripts/forma/install-precommit.sh` on developer machines (tracked source in `common/git-hooks` is CWD-safe).
-4. Bootstrap without available Coze Space creates Tenant without space binding (space bindable later).
+1. TransferOwnership API deferred; Primary Owner demotion blocked instead.
+2. UnbindSpace HTTP API not exposed in S1 (domain UnbindSpace + lifecycle tests cover mapping).
+3. `.git/hooks/pre-commit` may need `scripts/forma/install-precommit.sh` on developer machines.
+4. Large Coze space IDs exceed JS `Number.MAX_SAFE_INTEGER` when round-tripped via JSON number (domain uses int64).
 
 ---
 
@@ -167,13 +196,40 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 | GATE-01 Principal mapping | PASS | `ResolveOrCreatePrincipal` + Bootstrap tests |
 | GATE-02 Multi-tenant membership | PASS | ListTenantsForPrincipal / memberships model |
 | GATE-03 Multi-space binding | PASS | BindSpace + space_ref table/tests |
-| GATE-04 Forged tenant header | PASS | `TestResolveTenantContext_ForgedHeaderForbidden` |
+| GATE-04 Forged tenant header | PASS | unit + live E2E |
 | GATE-05 Cross-tenant asset | PASS | `TestAssetRegistry_TenantIsolation_Get` |
-| GATE-06 Suspended denial | PASS | TenantContext + FormaTenantMW error mapping |
+| GATE-06 Suspended denial | PASS | unit + live E2E FORMA_TENANT_SUSPENDED |
 | GATE-07 Bootstrap idempotent | PASS | `TestBootstrap_Idempotent` |
 | GATE-08 Frontend identity | PASS | Session provider + shell switcher + build |
 | GATE-09 S0→S1 migration | PASS | migration-apply-test CASE A/B/C + S1 tables |
-| GATE-10 Forma CI | EXTERNAL_GATE | Confirm after push |
+| GATE-10 Forma CI | **PASS** | Human-confirmed: S1 `a10d240…` + docs `2de31f5…` — forma-backend / frontend / migration-apply all PASS |
+
+---
+
+## S1-G1 Identity Security Closure
+
+| Item | Result | Notes |
+|---|---|---|
+| Owner/Admin Policy | PASS | `MembershipPolicy` CanAdd/CanChange/CanRemove |
+| Last Owner Protection | PASS | domain invariant + tests |
+| Primary Owner Consistency | PASS | demote primary OWNER blocked; TransferOwnership deferred |
+| Space Lifecycle Fix | PASS | `uk_forma_space_id` + UpsertBind; cycle tests |
+| Audit Actor Fix | PASS | actor ≠ target |
+| Revision Enforcement | PASS | `expected_revision > 0` required; no auto-fill |
+| TenantContext Fail-Closed | PASS | AssetCounts no raw `X-Forma-Tenant` fallback |
+| Live Coze Session E2E | PASS | `scripts/forma/live-e2e.mjs` + `forma-live-harness` (real SessionAuthMW, passport register/login cookie) |
+| Live Tenant Switch | PASS | tenant A/B → `/assets/counts` |
+| Live Forged Tenant | PASS | 403 FORMA_* |
+| Live Suspended Tenant | PASS | 403 FORMA_TENANT_SUSPENDED; OWNER can reactivate via PATCH |
+| Live Space Validation | PASS | bootstrap binds personal space; inaccessible space denied |
+| Browser Smoke | PASS | Edge headless: Forma Product Shell (not Coze); title Forma; Tenant switcher; identity loading/unauth path; `/api/forma` proxy → harness health 200. Screenshot: `forma/cursor-results/forma-shell-smoke.png` |
+| CI (post-push) | PENDING | await GitHub Actions after S1-G1 push |
+
+### Live E2E harness
+
+- `backend/cmd/forma-live-harness` — minimal real Coze passport + SessionAuthMW + Forma router
+- Env: Docker `forma-live-mysql:3308`, `forma-live-redis:6380`, harness `:8888`
+- Command: `FORMA_LIVE_E2E=1 FORMA_LIVE_BASE_URL=http://127.0.0.1:8888 node --test scripts/forma/live-e2e.mjs`
 
 ---
 
@@ -181,19 +237,18 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 
 | Risk | Mitigation |
 |---|---|
-| Space uniqueness index `(coze_space_id, status)` allows re-bind after INACTIVE | Documented; Shared Resource deferred |
+| JS number precision for Coze snowflake IDs | Prefer string IDs in future API DTOs |
 | SessionStorage for selected tenant | Selection UX only; server enforces membership |
 
 ---
 
 ## S2 Preconditions
 
-1. Human sign-off on this S1 report
-2. Forma CI green on S1 commit
-3. Live smoke: login → bootstrap → /me → switch tenant → asset counts
-4. Do not start Business Model / Analyst until S1 PASS
+1. Human sign-off on S1-G1 + this report
+2. Forma CI green on S1-G1 commit
+3. Do not start Business Model / Analyst until Status = **PASS**
 
 ---
 
-**Stage:** FORMA-S1  
+**Stage:** FORMA-S1 / S1-G1  
 **DO NOT START S2.**

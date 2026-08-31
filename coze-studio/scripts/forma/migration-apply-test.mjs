@@ -310,6 +310,12 @@ test('Forma migration integration (CASE A/B/C)', async (t) => {
     assert.ok(indexExists('forma_asset_ref', 'uk_forma_asset_tenant_asset_revision'));
     assert.ok(indexExists('forma_coze_resource_ref', 'uk_forma_coze_resource_binding'));
     assert.ok(indexExists('forma_principal', 'uk_forma_principal_coze_user'));
+    assert.ok(indexExists('forma_tenant_space_ref', 'uk_forma_space_id'), 'S1-G1 unique coze_space_id');
+    assert.equal(
+      indexExists('forma_tenant_space_ref', 'uk_forma_space_active'),
+      false,
+      'legacy (coze_space_id, status) unique index must be dropped',
+    );
     assert.ok(migrationSql.includes('CREATE TABLE IF NOT EXISTS `forma_asset_ref`'));
   });
 

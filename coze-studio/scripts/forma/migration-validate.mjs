@@ -24,8 +24,15 @@ test('S1 tenancy migration defines identity tables', () => {
   assert.ok(!sql.includes('FOREIGN KEY'));
 });
 
+test('S1-G1 space mapping migration present', () => {
+  const sql = readFileSync(join(root, 'migrations', '20250831140000_s1_g1_space_mapping.sql'), 'utf8');
+  assert.ok(sql.includes('forma_tenant_space_ref'));
+  assert.ok(sql.includes('uk_forma_space_id') || sql.includes('coze_space_id'));
+});
+
 test('atlas sum references migrations', () => {
   const sum = readFileSync(join(root, 'migrations', 'atlas.sum'), 'utf8');
   assert.ok(sum.includes('20250831100000_initial.sql'));
   assert.ok(sum.includes('20250831120000_s1_tenancy.sql'));
+  assert.ok(sum.includes('20250831140000_s1_g1_space_mapping.sql'));
 });

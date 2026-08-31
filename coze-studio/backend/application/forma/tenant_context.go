@@ -20,6 +20,12 @@ const HeaderFormaTenant = "X-Forma-Tenant"
 // Flow: session → ResolveOrCreatePrincipal → if header empty pick first ACTIVE membership
 // tenant; else verify membership → reject suspended → load allowed_space_ids from space refs.
 func (s *ApplicationService) ResolveTenantContext(ctx context.Context, selectedTenantHeader string) (*tenantctx.TenantContext, error) {
+	return s.resolveTenantContext(ctx, selectedTenantHeader, false)
+}
+
+// resolveTenantContextAllowSuspended is used for tenant management APIs so OWNER/ADMIN
+// can inspect and reactivate a SUSPENDED tenant. Workspace APIs must keep reject-suspended.
+func (s *ApplicationService) resolveTenantContext(ctx context.Context, selectedTenantHeader string, allowSuspended bool) (*tenantctx.TenantContext, error) {
 	if s == nil || s.TenancySVC == nil {
 		return nil, formaerrors.Internal("tenancy service not initialized")
 	}
@@ -56,7 +62,10 @@ func (s *ApplicationService) ResolveTenantContext(ctx context.Context, selectedT
 			if tErr != nil {
 				return nil, formaerrors.MapDomainError(tErr)
 			}
-			if t == nil || t.Status != entity.TenantStatusActive {
+			if t == nil {
+				continue
+			}
+			if t.Status != entity.TenantStatusActive && !(allowSuspended && t.Status == entity.TenantStatusSuspended) {
 				continue
 			}
 			tenantID = t.TenantID
@@ -86,7 +95,7 @@ func (s *ApplicationService) ResolveTenantContext(ctx context.Context, selectedT
 		tenant = t
 	}
 
-	if tenant.Status == entity.TenantStatusSuspended {
+	if tenant.Status == entity.TenantStatusSuspended && !allowSuspended {
 		return nil, formaerrors.TenantSuspended("tenant is suspended")
 	}
 	if tenant.Status == entity.TenantStatusArchived {

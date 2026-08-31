@@ -37,9 +37,11 @@ type AddMemberRequest struct {
 }
 
 type BindSpaceRequest struct {
-	TenantID    string
-	CozeSpaceID int64
-	Purpose     entity.SpacePurpose
+	TenantID         string
+	CozeSpaceID      int64
+	Purpose          entity.SpacePurpose
+	ActorPrincipalID string
+	RequestID        string
 }
 
 type BootstrapResult struct {
@@ -55,18 +57,18 @@ type TenancyService interface {
 
 	CreateTenant(ctx context.Context, req *CreateTenantRequest) (*entity.Tenant, error)
 	GetTenant(ctx context.Context, tenantID string) (*entity.Tenant, error)
-	UpdateTenant(ctx context.Context, tenant *entity.Tenant, expectedRevision int32) (*entity.Tenant, error)
+	UpdateTenant(ctx context.Context, tenant *entity.Tenant, expectedRevision int32, actorPrincipalID, requestID string) (*entity.Tenant, error)
 	ListTenantsForPrincipal(ctx context.Context, principalID string) ([]*entity.Tenant, error)
 
 	AddMember(ctx context.Context, req *AddMemberRequest) (*entity.Membership, error)
-	UpdateMemberRole(ctx context.Context, tenantID, principalID string, role entity.MembershipRole, expectedRevision int32) (*entity.Membership, error)
-	RemoveMember(ctx context.Context, tenantID, principalID string) error
+	UpdateMemberRole(ctx context.Context, tenantID, principalID string, role entity.MembershipRole, expectedRevision int32, actorPrincipalID, requestID string) (*entity.Membership, error)
+	RemoveMember(ctx context.Context, tenantID, principalID, actorPrincipalID, requestID string) error
 	ListMembers(ctx context.Context, tenantID string) ([]*entity.Membership, error)
 	GetMembership(ctx context.Context, tenantID, principalID string) (*entity.Membership, error)
 	ListMembershipsForPrincipal(ctx context.Context, principalID string) ([]*entity.Membership, error)
 
 	BindSpace(ctx context.Context, req *BindSpaceRequest) (*entity.TenantSpaceRef, error)
-	UnbindSpace(ctx context.Context, tenantID string, cozeSpaceID int64) error
+	UnbindSpace(ctx context.Context, tenantID string, cozeSpaceID int64, actorPrincipalID, requestID string) error
 	ListSpaces(ctx context.Context, tenantID string) ([]*entity.TenantSpaceRef, error)
 
 	Bootstrap(ctx context.Context, cozeUserID int64, displayName string, defaultSpaceID int64) (*BootstrapResult, error)
@@ -188,7 +190,7 @@ func (s *tenancyServiceImpl) GetTenant(ctx context.Context, tenantID string) (*e
 	return s.tenantRepo.GetByTenantID(ctx, tenantID)
 }
 
-func (s *tenancyServiceImpl) UpdateTenant(ctx context.Context, tenant *entity.Tenant, expectedRevision int32) (*entity.Tenant, error) {
+func (s *tenancyServiceImpl) UpdateTenant(ctx context.Context, tenant *entity.Tenant, expectedRevision int32, actorPrincipalID, requestID string) (*entity.Tenant, error) {
 	if tenant == nil || tenant.TenantID == "" {
 		return nil, fmt.Errorf("tenant_id is required")
 	}
@@ -197,9 +199,10 @@ func (s *tenancyServiceImpl) UpdateTenant(ctx context.Context, tenant *entity.Te
 	}
 	_ = s.RecordAudit(ctx, &entity.AuditEvent{
 		TenantID:    tenant.TenantID,
-		PrincipalID: tenant.OwnerPrincipalID,
+		PrincipalID: actorPrincipalID,
 		Action:      entity.AuditTenantUpdated,
 		Resource:    tenant.TenantID,
+		RequestID:   requestID,
 		CreatedAt:   time.Now().UTC(),
 	})
 	return tenant, nil
@@ -216,6 +219,9 @@ func (s *tenancyServiceImpl) AddMember(ctx context.Context, req *AddMemberReques
 	role := req.Role
 	if role == "" {
 		role = entity.RoleMember
+	}
+	if !ValidRole(role) {
+		return nil, entity.ErrInvalidRole
 	}
 	now := time.Now().UTC()
 	m := &entity.Membership{
@@ -242,33 +248,100 @@ func (s *tenancyServiceImpl) AddMember(ctx context.Context, req *AddMemberReques
 	return m, nil
 }
 
-func (s *tenancyServiceImpl) UpdateMemberRole(ctx context.Context, tenantID, principalID string, role entity.MembershipRole, expectedRevision int32) (*entity.Membership, error) {
+func (s *tenancyServiceImpl) UpdateMemberRole(ctx context.Context, tenantID, principalID string, role entity.MembershipRole, expectedRevision int32, actorPrincipalID, requestID string) (*entity.Membership, error) {
 	if tenantID == "" || principalID == "" {
 		return nil, fmt.Errorf("tenant_id and principal_id are required")
 	}
+	if !ValidRole(role) {
+		return nil, entity.ErrInvalidRole
+	}
+
+	current, err := s.membershipRepo.Get(ctx, tenantID, principalID)
+	if err != nil {
+		return nil, err
+	}
+	if current == nil || current.Status != entity.MembershipActive {
+		return nil, entity.ErrNotFound
+	}
+
+	tenant, err := s.tenantRepo.GetByTenantID(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if tenant == nil {
+		return nil, entity.ErrNotFound
+	}
+
+	if principalID == tenant.OwnerPrincipalID && role != entity.RoleOwner {
+		return nil, entity.ErrPrimaryOwnerImmutable
+	}
+
+	if current.Role == entity.RoleOwner && role != entity.RoleOwner {
+		owners, countErr := s.countActiveOwners(ctx, tenantID)
+		if countErr != nil {
+			return nil, countErr
+		}
+		if owners <= 1 {
+			return nil, entity.ErrLastOwner
+		}
+	}
+
 	m, err := s.membershipRepo.UpdateRole(ctx, tenantID, principalID, role, expectedRevision)
 	if err != nil {
 		return nil, err
 	}
 	_ = s.RecordAudit(ctx, &entity.AuditEvent{
 		TenantID:    tenantID,
-		PrincipalID: principalID,
+		PrincipalID: actorPrincipalID,
 		Action:      entity.AuditMemberRoleChanged,
-		Resource:    string(role),
+		Resource:    principalID,
+		RequestID:   requestID,
 		CreatedAt:   time.Now().UTC(),
 	})
 	return m, nil
 }
 
-func (s *tenancyServiceImpl) RemoveMember(ctx context.Context, tenantID, principalID string) error {
+func (s *tenancyServiceImpl) RemoveMember(ctx context.Context, tenantID, principalID, actorPrincipalID, requestID string) error {
+	if tenantID == "" || principalID == "" {
+		return fmt.Errorf("tenant_id and principal_id are required")
+	}
+	current, err := s.membershipRepo.Get(ctx, tenantID, principalID)
+	if err != nil {
+		return err
+	}
+	if current == nil || current.Status != entity.MembershipActive {
+		return entity.ErrNotFound
+	}
+
+	tenant, err := s.tenantRepo.GetByTenantID(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	if tenant == nil {
+		return entity.ErrNotFound
+	}
+	if principalID == tenant.OwnerPrincipalID {
+		return entity.ErrPrimaryOwnerImmutable
+	}
+	if current.Role == entity.RoleOwner {
+		owners, countErr := s.countActiveOwners(ctx, tenantID)
+		if countErr != nil {
+			return countErr
+		}
+		if owners <= 1 {
+			return entity.ErrLastOwner
+		}
+	}
+
 	if err := s.membershipRepo.SoftRemove(ctx, tenantID, principalID); err != nil {
 		return err
 	}
 	_ = s.RecordAudit(ctx, &entity.AuditEvent{
 		TenantID:    tenantID,
-		PrincipalID: principalID,
+		PrincipalID: actorPrincipalID,
 		Action:      entity.AuditMemberRemoved,
 		Resource:    principalID,
+		RequestID:   requestID,
 		CreatedAt:   time.Now().UTC(),
 	})
 	return nil
@@ -295,6 +368,15 @@ func (s *tenancyServiceImpl) BindSpace(ctx context.Context, req *BindSpaceReques
 		purpose = entity.SpacePurposeDefault
 	}
 	now := time.Now().UTC()
+
+	existing, err := s.spaceRefRepo.GetBySpaceID(ctx, req.CozeSpaceID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil && existing.Status == entity.SpaceRefActive && existing.TenantID != req.TenantID {
+		return nil, entity.ErrSpaceOwned
+	}
+
 	ref := &entity.TenantSpaceRef{
 		TenantID:    req.TenantID,
 		CozeSpaceID: req.CozeSpaceID,
@@ -303,27 +385,35 @@ func (s *tenancyServiceImpl) BindSpace(ctx context.Context, req *BindSpaceReques
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := s.spaceRefRepo.Create(ctx, ref); err != nil {
+	if existing != nil {
+		ref.ID = existing.ID
+		ref.CreatedAt = existing.CreatedAt
+	}
+	if err := s.spaceRefRepo.UpsertBind(ctx, ref); err != nil {
 		return nil, err
 	}
 	_ = s.RecordAudit(ctx, &entity.AuditEvent{
-		TenantID:  req.TenantID,
-		Action:    entity.AuditSpaceBound,
-		Resource:  strconv.FormatInt(req.CozeSpaceID, 10),
-		CreatedAt: now,
+		TenantID:    req.TenantID,
+		PrincipalID: req.ActorPrincipalID,
+		Action:      entity.AuditSpaceBound,
+		Resource:    strconv.FormatInt(req.CozeSpaceID, 10),
+		RequestID:   req.RequestID,
+		CreatedAt:   now,
 	})
 	return ref, nil
 }
 
-func (s *tenancyServiceImpl) UnbindSpace(ctx context.Context, tenantID string, cozeSpaceID int64) error {
+func (s *tenancyServiceImpl) UnbindSpace(ctx context.Context, tenantID string, cozeSpaceID int64, actorPrincipalID, requestID string) error {
 	if err := s.spaceRefRepo.Deactivate(ctx, tenantID, cozeSpaceID); err != nil {
 		return err
 	}
 	_ = s.RecordAudit(ctx, &entity.AuditEvent{
-		TenantID:  tenantID,
-		Action:    entity.AuditSpaceUnbound,
-		Resource:  strconv.FormatInt(cozeSpaceID, 10),
-		CreatedAt: time.Now().UTC(),
+		TenantID:    tenantID,
+		PrincipalID: actorPrincipalID,
+		Action:      entity.AuditSpaceUnbound,
+		Resource:    strconv.FormatInt(cozeSpaceID, 10),
+		RequestID:   requestID,
+		CreatedAt:   time.Now().UTC(),
 	})
 	return nil
 }
@@ -414,9 +504,10 @@ func (s *tenancyServiceImpl) Bootstrap(ctx context.Context, cozeUserID int64, di
 	var spaceRef *entity.TenantSpaceRef
 	if defaultSpaceID > 0 {
 		spaceRef, err = s.BindSpace(ctx, &BindSpaceRequest{
-			TenantID:    tenant.TenantID,
-			CozeSpaceID: defaultSpaceID,
-			Purpose:     entity.SpacePurposeDefault,
+			TenantID:         tenant.TenantID,
+			CozeSpaceID:      defaultSpaceID,
+			Purpose:          entity.SpacePurposeDefault,
+			ActorPrincipalID: principal.PrincipalID,
 		})
 		if err != nil {
 			return nil, err
@@ -440,6 +531,20 @@ func (s *tenancyServiceImpl) RecordAudit(ctx context.Context, event *entity.Audi
 		event.CreatedAt = time.Now().UTC()
 	}
 	return s.auditRepo.Create(ctx, event)
+}
+
+func (s *tenancyServiceImpl) countActiveOwners(ctx context.Context, tenantID string) (int, error) {
+	members, err := s.membershipRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, m := range members {
+		if m != nil && m.Status == entity.MembershipActive && m.Role == entity.RoleOwner {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func personalTenantKey(cozeUserID int64) string {

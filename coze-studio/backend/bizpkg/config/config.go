@@ -74,6 +74,18 @@ func Init(ctx context.Context, db *gorm.DB, oss storage.Storage) error {
 	return nil
 }
 
+// FORMA-BEGIN
+// InitBaseForLiveHarness initializes only Base/Knowledge config so passport
+// registration works without full model catalog bootstrap (live E2E harness).
+func InitBaseForLiveHarness(db *gorm.DB) {
+	shardConfig = &Config{
+		base:      base.NewBaseConfig(db),
+		knowledge: knowledge.NewKnowledgeConfig(db),
+	}
+}
+
+// FORMA-END
+
 func Base() *base.BaseConfig {
 	return shardConfig.base
 }

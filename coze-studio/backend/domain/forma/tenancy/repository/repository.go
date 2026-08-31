@@ -38,9 +38,9 @@ type MembershipRepository interface {
 }
 
 type SpaceRefRepository interface {
-	Create(ctx context.Context, ref *entity.TenantSpaceRef) error
+	GetBySpaceID(ctx context.Context, cozeSpaceID int64) (*entity.TenantSpaceRef, error)
+	UpsertBind(ctx context.Context, ref *entity.TenantSpaceRef) error
 	ListByTenant(ctx context.Context, tenantID string) ([]*entity.TenantSpaceRef, error)
-	GetActiveBySpaceID(ctx context.Context, cozeSpaceID int64) (*entity.TenantSpaceRef, error)
 	Deactivate(ctx context.Context, tenantID string, cozeSpaceID int64) error
 }
 
