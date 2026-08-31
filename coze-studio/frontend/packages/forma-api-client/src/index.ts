@@ -57,7 +57,8 @@ export interface FormaPrincipal {
   principal_id: string;
   principal_type: string;
   display_name: string;
-  coze_user_id: number;
+  /** Coze snowflake ID — always string (never JS number). */
+  coze_user_id: string;
   status: string;
 }
 
@@ -79,11 +80,20 @@ export interface FormaMembership {
   revision: number;
 }
 
+/** Tenant ↔ Coze Space mapping; coze_space_id is always a decimal string. */
+export interface FormaTenantSpace {
+  tenant_id: string;
+  coze_space_id: string;
+  purpose: string;
+  status: string;
+}
+
 export interface FormaMeData {
   principal: FormaPrincipal;
   current_tenant: FormaTenant | null;
   memberships: FormaMembership[];
   tenants: FormaTenant[];
+  coze_user_id?: string;
 }
 
 export interface FormaAssetCounts {
@@ -96,6 +106,8 @@ export interface FormaAssetCounts {
 export interface FormaBootstrapData {
   principal: FormaPrincipal;
   tenant: FormaTenant;
+  membership?: FormaMembership;
+  space?: FormaTenantSpace;
   created: boolean;
 }
 
@@ -143,9 +155,20 @@ export class FormaApiClient {
 
   async bootstrap(body?: {
     display_name?: string;
-    default_space_id?: number;
+    default_space_id?: string;
   }): Promise<FormaApiEnvelope<FormaBootstrapData>> {
     return this.request<FormaBootstrapData>('POST', '/api/forma/v1/bootstrap', body ?? {});
+  }
+
+  async listSpaces(tenantId: string): Promise<FormaApiEnvelope<FormaTenantSpace[]>> {
+    return this.request<FormaTenantSpace[]>('GET', `/api/forma/v1/tenants/${tenantId}/spaces`);
+  }
+
+  async bindSpace(
+    tenantId: string,
+    body: { coze_space_id: string; purpose?: string },
+  ): Promise<FormaApiEnvelope<FormaTenantSpace>> {
+    return this.request<FormaTenantSpace>('POST', `/api/forma/v1/tenants/${tenantId}/spaces`, body);
   }
 
   async assetCounts(): Promise<FormaApiEnvelope<FormaAssetCounts>> {

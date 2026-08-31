@@ -13,6 +13,7 @@ import (
 	"github.com/coze-dev/coze-studio/backend/crossdomain/forma/integration"
 	crossuser "github.com/coze-dev/coze-studio/backend/crossdomain/user"
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/idcontract"
 	tenantctx "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/context"
 	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 	tenancysvc "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/service"
@@ -23,14 +24,14 @@ type MeResponse struct {
 	CurrentTenant *TenantDTO       `json:"current_tenant"`
 	Memberships   []*MembershipDTO `json:"memberships"`
 	Tenants       []*TenantDTO     `json:"tenants"`
-	CozeUserID    int64            `json:"coze_user_id"`
+	CozeUserID    string           `json:"coze_user_id"`
 }
 
 type PrincipalDTO struct {
 	PrincipalID   string `json:"principal_id"`
 	PrincipalType string `json:"principal_type"`
 	DisplayName   string `json:"display_name"`
-	CozeUserID    int64  `json:"coze_user_id"`
+	CozeUserID    string `json:"coze_user_id"`
 	Status        string `json:"status"`
 }
 
@@ -50,6 +51,13 @@ type MembershipDTO struct {
 	Role        string `json:"role"`
 	Status      string `json:"status"`
 	Revision    int32  `json:"revision"`
+}
+
+type TenantSpaceDTO struct {
+	TenantID    string `json:"tenant_id"`
+	CozeSpaceID string `json:"coze_space_id"`
+	Purpose     string `json:"purpose"`
+	Status      string `json:"status"`
 }
 
 type CreateTenantInput struct {
@@ -75,13 +83,23 @@ type PatchMemberInput struct {
 	ExpectedRevision int32                        `json:"expected_revision"`
 }
 
+// BindSpaceInput — coze_space_id MUST be a JSON string (not number).
 type BindSpaceInput struct {
-	CozeSpaceID int64                      `json:"coze_space_id"`
+	CozeSpaceID string                     `json:"coze_space_id"`
 	Purpose     tenancyentity.SpacePurpose `json:"purpose"`
 }
 
+// BootstrapInput — default_space_id MUST be a JSON string when present.
 type BootstrapInput struct {
-	DefaultSpaceID int64 `json:"default_space_id"`
+	DefaultSpaceID string `json:"default_space_id"`
+}
+
+type BootstrapResponse struct {
+	Principal  *PrincipalDTO   `json:"principal"`
+	Tenant     *TenantDTO      `json:"tenant"`
+	Membership *MembershipDTO  `json:"membership,omitempty"`
+	Space      *TenantSpaceDTO `json:"space,omitempty"`
+	Created    bool            `json:"created"`
 }
 
 type AssetCountsResponse struct {
@@ -89,6 +107,59 @@ type AssetCountsResponse struct {
 	Capability  int `json:"capability"`
 	Agent       int `json:"agent"`
 	Application int `json:"application"`
+}
+
+func toPrincipalDTO(p *tenancyentity.Principal) *PrincipalDTO {
+	if p == nil {
+		return nil
+	}
+	return &PrincipalDTO{
+		PrincipalID:   p.PrincipalID,
+		PrincipalType: string(p.PrincipalType),
+		DisplayName:   p.DisplayName,
+		CozeUserID:    idcontract.FormatCozeID(p.CozeUserID),
+		Status:        string(p.Status),
+	}
+}
+
+func toTenantDTO(t *tenancyentity.Tenant, role string) *TenantDTO {
+	if t == nil {
+		return nil
+	}
+	return &TenantDTO{
+		TenantID:    t.TenantID,
+		TenantKey:   t.TenantKey,
+		Name:        t.Name,
+		DisplayName: t.DisplayName,
+		Status:      string(t.Status),
+		Revision:    t.Revision,
+		Role:        role,
+	}
+}
+
+func toMembershipDTO(m *tenancyentity.Membership) *MembershipDTO {
+	if m == nil {
+		return nil
+	}
+	return &MembershipDTO{
+		TenantID:    m.TenantID,
+		PrincipalID: m.PrincipalID,
+		Role:        string(m.Role),
+		Status:      string(m.Status),
+		Revision:    m.Revision,
+	}
+}
+
+func toTenantSpaceDTO(r *tenancyentity.TenantSpaceRef) *TenantSpaceDTO {
+	if r == nil {
+		return nil
+	}
+	return &TenantSpaceDTO{
+		TenantID:    r.TenantID,
+		CozeSpaceID: idcontract.FormatCozeID(r.CozeSpaceID),
+		Purpose:     string(r.Purpose),
+		Status:      string(r.Status),
+	}
 }
 
 func (s *ApplicationService) currentPrincipal(ctx context.Context) (*tenancyentity.Principal, error) {
@@ -169,17 +240,11 @@ func (s *ApplicationService) Me(ctx context.Context) (*MeResponse, error) {
 	}
 
 	return &MeResponse{
-		Principal: &PrincipalDTO{
-			PrincipalID:   p.PrincipalID,
-			PrincipalType: string(p.PrincipalType),
-			DisplayName:   p.DisplayName,
-			CozeUserID:    p.CozeUserID,
-			Status:        string(p.Status),
-		},
+		Principal:     toPrincipalDTO(p),
 		CurrentTenant: current,
 		Memberships:   memDTOs,
 		Tenants:       tenantDTOs,
-		CozeUserID:    session.UserID,
+		CozeUserID:    idcontract.FormatCozeID(session.UserID),
 	}, nil
 }
 
@@ -363,7 +428,7 @@ func (s *ApplicationService) PatchMember(ctx context.Context, tenantID, principa
 	return m, nil
 }
 
-func (s *ApplicationService) ListSpaces(ctx context.Context, tenantID string) ([]*tenancyentity.TenantSpaceRef, error) {
+func (s *ApplicationService) ListSpaces(ctx context.Context, tenantID string) ([]*TenantSpaceDTO, error) {
 	if _, err := s.requireMemberOf(ctx, tenantID); err != nil {
 		return nil, err
 	}
@@ -371,12 +436,22 @@ func (s *ApplicationService) ListSpaces(ctx context.Context, tenantID string) ([
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return spaces, nil
+	out := make([]*TenantSpaceDTO, 0, len(spaces))
+	for _, sp := range spaces {
+		if dto := toTenantSpaceDTO(sp); dto != nil {
+			out = append(out, dto)
+		}
+	}
+	return out, nil
 }
 
-func (s *ApplicationService) BindSpace(ctx context.Context, tenantID string, in *BindSpaceInput) (*tenancyentity.TenantSpaceRef, error) {
-	if in == nil || in.CozeSpaceID == 0 {
+func (s *ApplicationService) BindSpace(ctx context.Context, tenantID string, in *BindSpaceInput) (*TenantSpaceDTO, error) {
+	if in == nil {
 		return nil, formaerrors.SpaceNotFound("coze_space_id is required")
+	}
+	spaceID, err := idcontract.ParseCozeID(in.CozeSpaceID)
+	if err != nil {
+		return nil, formaerrors.SpaceNotFound(err.Error())
 	}
 	tc, err := s.requireMemberOf(ctx, tenantID)
 	if err != nil {
@@ -387,7 +462,7 @@ func (s *ApplicationService) BindSpace(ctx context.Context, tenantID string, in 
 	}
 
 	if adapter := spaceAdapter(); adapter != nil {
-		if vErr := adapter.ValidateSpaceAccess(ctx, tc.CozeUserID, in.CozeSpaceID); vErr != nil {
+		if vErr := adapter.ValidateSpaceAccess(ctx, tc.CozeUserID, spaceID); vErr != nil {
 			if fe, ok := formaerrors.AsFormaError(vErr); ok {
 				return nil, fe
 			}
@@ -397,7 +472,7 @@ func (s *ApplicationService) BindSpace(ctx context.Context, tenantID string, in 
 
 	ref, err := s.TenancySVC.BindSpace(ctx, &tenancysvc.BindSpaceRequest{
 		TenantID:         tenantID,
-		CozeSpaceID:      in.CozeSpaceID,
+		CozeSpaceID:      spaceID,
 		Purpose:          in.Purpose,
 		ActorPrincipalID: tc.PrincipalID,
 		RequestID:        tc.RequestID,
@@ -405,17 +480,21 @@ func (s *ApplicationService) BindSpace(ctx context.Context, tenantID string, in 
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return ref, nil
+	return toTenantSpaceDTO(ref), nil
 }
 
-func (s *ApplicationService) Bootstrap(ctx context.Context, in *BootstrapInput) (*tenancysvc.BootstrapResult, error) {
+func (s *ApplicationService) Bootstrap(ctx context.Context, in *BootstrapInput) (*BootstrapResponse, error) {
 	session := ctxutil.GetUserSessionFromCtx(ctx)
 	if session == nil {
 		return nil, formaerrors.Unauthenticated("session required")
 	}
 	spaceID := int64(0)
 	if in != nil {
-		spaceID = in.DefaultSpaceID
+		parsed, pErr := idcontract.ParseOptionalCozeID(in.DefaultSpaceID)
+		if pErr != nil {
+			return nil, formaerrors.SpaceNotFound(pErr.Error())
+		}
+		spaceID = parsed
 	}
 	if spaceID == 0 {
 		resolved, err := firstUserSpaceID(ctx, session.UserID)
@@ -438,7 +517,17 @@ func (s *ApplicationService) Bootstrap(ctx context.Context, in *BootstrapInput) 
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return result, nil
+	role := ""
+	if result.Membership != nil {
+		role = string(result.Membership.Role)
+	}
+	return &BootstrapResponse{
+		Principal:  toPrincipalDTO(result.Principal),
+		Tenant:     toTenantDTO(result.Tenant, role),
+		Membership: toMembershipDTO(result.Membership),
+		Space:      toTenantSpaceDTO(result.SpaceRef),
+		Created:    result.Created,
+	}, nil
 }
 
 func (s *ApplicationService) AssetCounts(ctx context.Context) (*AssetCountsResponse, error) {

@@ -84,7 +84,7 @@ type Principal struct {
 	PrincipalType   PrincipalType   `json:"principal_type"`
 	Provider        string          `json:"provider"`
 	ExternalSubject string          `json:"external_subject"`
-	CozeUserID      int64           `json:"coze_user_id"`
+	CozeUserID      int64           `json:"-"`
 	DisplayName     string          `json:"display_name"`
 	Status          PrincipalStatus `json:"status"`
 	CreatedAt       time.Time       `json:"created_at"`
@@ -107,7 +107,7 @@ type Membership struct {
 type TenantSpaceRef struct {
 	ID          int64          `json:"id"`
 	TenantID    string         `json:"tenant_id"`
-	CozeSpaceID int64          `json:"coze_space_id"`
+	CozeSpaceID int64          `json:"-"`
 	Purpose     SpacePurpose   `json:"purpose"`
 	Status      SpaceRefStatus `json:"status"`
 	CreatedAt   time.Time      `json:"created_at"`

@@ -36,6 +36,8 @@ jobs:
           go-version: '1.24'
       - name: Forma domain tests
         run: go test ./domain/forma/... ./crossdomain/forma/... ./application/forma/... -count=1
+      - name: Forma Coze ID contract tests
+        run: go test ./domain/forma/idcontract/... ./api/handler/forma/ -count=1 -run "CozeID|BindSpace|JSON|Precision|Snowflake"
       - name: Forma tenancy security tests
         run: go test ./domain/forma/tenancy/... ./domain/forma/asset_registry/service/ ./application/forma/ -count=1
       - name: Validate Forma migration SQL present

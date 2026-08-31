@@ -188,16 +188,44 @@ test('LIVE: Coze register/login → Forma principal bootstrap → tenant switch 
     spaceList.length >= 1,
     `expected bootstrap-bound personal space: ${JSON.stringify(spaces.json)}`,
   );
-  assert.ok(
-    (spaceList[0].coze_space_id || spaceList[0].CozeSpaceID) != null,
-    'coze_space_id missing on bound space',
-  );
+  const spaceId = spaceList[0].coze_space_id;
+  assert.equal(typeof spaceId, 'string', `coze_space_id must be string: ${JSON.stringify(spaceList[0])}`);
+  assert.match(String(spaceId), /^[1-9][0-9]*$/);
+  // Precision: string must round-trip without JS number coercion
+  assert.equal(String(BigInt(spaceId)), spaceId, 'coze_space_id lost precision');
 
-  // inaccessible / forged Coze Space must deny
+  const meCoze = me.json.data.coze_user_id ?? me.json.data.principal?.coze_user_id;
+  assert.equal(typeof meCoze, 'string', `coze_user_id must be string: ${meCoze}`);
+  assert.equal(String(BigInt(meCoze)), meCoze);
+
+  // inaccessible / forged Coze Space must deny (string contract)
   const badSpace = await request('POST', `/api/forma/v1/tenants/${tenantA}/spaces`, {
     cookie,
     tenantId: tenantA,
-    body: { coze_space_id: 999999999999, purpose: 'DEFAULT' },
+    body: { coze_space_id: '999999999999', purpose: 'DEFAULT' },
   });
   assert.ok(badSpace.status === 403 || badSpace.status === 404, JSON.stringify(badSpace.json));
+
+  // JSON number must be rejected by BindSpace contract
+  const numberRejected = await request('POST', `/api/forma/v1/tenants/${tenantA}/spaces`, {
+    cookie,
+    tenantId: tenantA,
+    body: undefined,
+  });
+  // send raw number body via fetch
+  {
+    const res = await fetch(`${baseUrl}/api/forma/v1/tenants/${tenantA}/spaces`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Cookie: cookie,
+        'X-Forma-Tenant': tenantA,
+        'X-Request-ID': `live-num-${Date.now()}`,
+      },
+      body: JSON.stringify({ coze_space_id: 7563957783431741441, purpose: 'DEFAULT' }),
+    });
+    assert.ok(res.status >= 400, `JSON number coze_space_id must fail, got ${res.status}`);
+  }
+  void numberRejected;
 });

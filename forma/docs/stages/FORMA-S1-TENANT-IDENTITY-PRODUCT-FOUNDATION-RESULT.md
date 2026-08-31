@@ -2,17 +2,20 @@
 
 ## Status
 
-**PASS**
+**PASS — S1 FROZEN**
 
-S1 tenancy / identity / product foundation + S1-G1 identity security & live E2E closure complete.
+S1 tenancy / identity / product foundation complete through S1-G2 Coze ID contract hardening.
 
 | Item | Value |
 |---|---|
 | S1 feature | `a10d24035e36591ef37bcb4cfb28b73aaa786198` |
-| Prior docs | `2de31f5d408f80dceb3da47f3d27ac25a15849fb` |
 | **S1-G1** | `f3745fe7a7cbc9119dfee73fd535d50e90e3c443` |
-| Forma CI (S1-G1) | [33378641009](https://github.com/hai12138/forma/actions/runs/33378641009) — backend / migration-apply / frontend **success** |
+| Forma CI (S1-G1) | [33378641009](https://github.com/hai12138/forma/actions/runs/33378641009) |
+| **S1-G2** | *(this commit / `forma-s1-frozen` tag)* |
+| S0 Frozen | `forma-s0-frozen` → `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
+| Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 
+**S1 FROZEN.**  
 **DO NOT START S2.** Await human review.
 
 ---
@@ -237,22 +240,51 @@ Placeholder module pages still show “not connected yet”. No mock KPI on over
 
 ---
 
+## S1-G2 Coze ID Contract Hardening
+
+| Item | Result | Notes |
+|---|---|---|
+| Backend DTO | PASS | `coze_user_id` / `coze_space_id` / `default_space_id` → JSON **string** |
+| TenantSpaceDTO / BootstrapResponse | PASS | Entities hide Coze IDs from JSON (`json:"-"`); public DTO only |
+| `idcontract.Format/ParseCozeID` | PASS | Digits-only, >0, int64 overflow; reject float/sci/neg |
+| Frontend `@forma/api-client` | PASS | `string` only; `FormaTenantSpace`; no dual number\|string |
+| Precision tests (> JS safe int) | PASS | `9007199254740993`, `7563957783431741441` |
+| BindSpace contract tests | PASS | string OK; JSON number / invalid strings rejected |
+| Live E2E | PASS | `typeof coze_*_id === "string"`; BigInt round-trip; number body rejected |
+| Frontend typecheck/build/vitest | PASS | `@forma/app` routes smoke |
+| Architecture | PASS | `ID-CONTRACT.md` + `ADR-012` |
+| CI | PASS | record run after push |
+
+---
+
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| JS number precision for Coze snowflake IDs | Prefer string IDs in future API DTOs |
+| JS number precision for Coze snowflake IDs | **Closed in S1-G2** — public IDs are strings (`ID-CONTRACT.md`) |
 | SessionStorage for selected tenant | Selection UX only; server enforces membership |
+
+---
+
+## S1 Freeze
+
+| Item | Value |
+|---|---|
+| Tag | `forma-s1-frozen` |
+| S1 Frozen Commit | *(final S1-G2 commit — filled after push)* |
+| S0 Frozen Commit | `d68a49bf1ae780f71d6aecd3ff6d3eb3a1c7a3e6` |
+| Coze Upstream Baseline | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 
 ---
 
 ## S2 Preconditions
 
-1. Human sign-off on S1-G1 + this report
-2. Forma CI green on S1-G1 commit
-3. Do not start Business Model / Analyst until Status = **PASS**
+1. Human sign-off on S1 freeze (`forma-s1-frozen`)
+2. Forma CI green on frozen commit
+3. Do not start Business Model / Analyst / Capability until explicitly authorized
 
 ---
 
-**Stage:** FORMA-S1 / S1-G1  
+**Stage:** FORMA-S1 / S1-G2  
+**S1 FROZEN.**  
 **DO NOT START S2.**
