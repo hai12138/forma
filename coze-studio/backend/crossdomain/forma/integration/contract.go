@@ -24,7 +24,24 @@ type CozeAgentAdapter interface {
 	Health(ctx context.Context) (*AgentHealthResult, error)
 }
 
+type SpaceDescribeResult struct {
+	SpaceID     int64  `json:"space_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	OwnerID     int64  `json:"owner_id"`
+	Available   bool   `json:"available"`
+	Message     string `json:"message"`
+}
+
+// CozeSpaceAdapter is the anti-corruption boundary to Coze Space ACL.
+// Implementations must use crossdomain/user — never domain/user/internal/dal.
+type CozeSpaceAdapter interface {
+	DescribeSpace(ctx context.Context, spaceID int64) (*SpaceDescribeResult, error)
+	ValidateSpaceAccess(ctx context.Context, cozeUserID, spaceID int64) error
+}
+
 // FormaCozeIntegration groups Coze integration adapters for Forma.
 type FormaCozeIntegration interface {
 	Agent() CozeAgentAdapter
+	Space() CozeSpaceAdapter
 }

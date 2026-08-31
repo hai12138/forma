@@ -1,26 +1,56 @@
 import { useFormaBaseline } from '@/hooks/use-forma-baseline';
+import { useFormaSession } from '@/hooks/use-forma-session';
 
 export function OverviewPage() {
   const { loading, error, baseline } = useFormaBaseline();
+  const { state, assetCounts, currentTenant } = useFormaSession();
+
+  const counts = assetCounts ?? {
+    business: 0,
+    capability: 0,
+    agent: 0,
+    application: 0,
+  };
+  const total =
+    counts.business + counts.capability + counts.agent + counts.application;
 
   return (
     <div className="forma-panel">
       <h1 style={{ marginTop: 0 }}>Forma 总览</h1>
-      <p>Business-to-Agent 产品 Shell（S0-B Foundation）。</p>
+      <p>
+        Tenant 安全边界已启用
+        {currentTenant ? ` · ${currentTenant.display_name}` : ''}。
+      </p>
+
       <div className="forma-grid" style={{ marginTop: 16 }}>
         <div className="forma-card">
-          <strong>产品基线</strong>
-          <div>Forma v1.2 Visual Model Editor IA</div>
+          <strong>Business</strong>
+          <div className="forma-kpi">{counts.business}</div>
         </div>
         <div className="forma-card">
-          <strong>Runtime Foundation</strong>
-          <div>Coze / Eino（V1 默认）</div>
+          <strong>Capability</strong>
+          <div className="forma-kpi">{counts.capability}</div>
         </div>
         <div className="forma-card">
-          <strong>Reference Business</strong>
-          <div>维修工单（平台不硬编码）</div>
+          <strong>Agent</strong>
+          <div className="forma-kpi">{counts.agent}</div>
+        </div>
+        <div className="forma-card">
+          <strong>Application</strong>
+          <div className="forma-kpi">{counts.application}</div>
         </div>
       </div>
+
+      {state === 'ready' && total === 0 && (
+        <div className="forma-panel" style={{ marginTop: 16 }}>
+          <strong>Empty State</strong>
+          <p className="forma-placeholder">
+            当前 Tenant 尚无资产。Business / Capability / Agent / Application
+            将在后续阶段接入；此处为真实 Asset Registry 计数，非 Mock KPI。
+          </p>
+        </div>
+      )}
+
       <div className="forma-panel" style={{ marginTop: 16 }}>
         <strong>Platform Baseline</strong>
         {loading && <p>Loading…</p>}
@@ -45,7 +75,7 @@ export function PlaceholderPage({ title }: { title: string }) {
       <h1 style={{ marginTop: 0 }}>{title}</h1>
       <p className="forma-placeholder">Forma module not connected yet</p>
       <p className="forma-placeholder">
-        S0-B 仅建立 Shell 与工程基础；业务模块将在后续阶段接入。
+        S1 仅建立 Tenant / Identity 产品基础；业务模块将在后续阶段接入。
       </p>
     </div>
   );

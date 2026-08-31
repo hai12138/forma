@@ -15,6 +15,12 @@ if [ "$SKIP_COMMIT_MSG_HOOK" = "true" ]; then
   exit 0
 fi
 
+# FORMA-BEGIN: resolve CWD to this hook's coze-studio root (Forma monorepo may invoke from parent)
+HOOK_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+COZE_STUDIO_ROOT="$( cd "$HOOK_DIR/../.." && pwd )"
+cd "$COZE_STUDIO_ROOT"
+# FORMA-END
+
 source frontend/scripts/block-unresolved-conflict.sh
 
 block_unresolved_conflict '--cached'

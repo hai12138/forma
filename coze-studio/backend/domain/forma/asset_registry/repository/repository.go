@@ -18,6 +18,8 @@ type AssetRefRepository interface {
 	Create(ctx context.Context, asset *entity.AssetRef) error
 	GetByTenantAssetRevision(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error)
 	ListByTenant(ctx context.Context, tenantID string) ([]*entity.AssetRef, error)
+	UpdateName(ctx context.Context, tenantID, assetID string, revision int32, name string) (*entity.AssetRef, error)
+	Archive(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error)
 }
 
 type CozeResourceRefRepository interface {

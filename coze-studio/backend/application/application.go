@@ -178,7 +178,10 @@ func Init(ctx context.Context) (err error) {
 
 	// FORMA-BEGIN
 	crossforma.SetDefaultSVC(formaImpl.InitDomainService(
-		formaIntegration.NewFormaCozeIntegration(formaIntegration.NewCozeAgentAdapter()),
+		formaIntegration.NewFormaCozeIntegration(
+			formaIntegration.NewCozeAgentAdapter(),
+			formaIntegration.NewCozeSpaceAdapter(),
+		),
 	))
 	// FORMA-END
 

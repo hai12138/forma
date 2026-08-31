@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 
+import { FormaSessionProvider } from '@/hooks/use-forma-session';
 import { AppRouter } from '@/routes';
 
 import '@/styles/tokens.css';
@@ -15,7 +16,9 @@ if (!root) {
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AppRouter />
+      <FormaSessionProvider>
+        <AppRouter />
+      </FormaSessionProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

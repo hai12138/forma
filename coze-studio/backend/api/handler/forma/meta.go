@@ -12,6 +12,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	formaapp "github.com/coze-dev/coze-studio/backend/application/forma"
+	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
 )
 
 func Health(ctx context.Context, c *app.RequestContext) {
@@ -34,9 +35,47 @@ type apiEnvelope struct {
 	Msg       string `json:"msg"`
 	RequestID string `json:"request_id"`
 	Data      any    `json:"data"`
+	ErrorKey  string `json:"error_key,omitempty"`
 }
 
 func envelope(ctx context.Context, c *app.RequestContext, data any) apiEnvelope {
+	return apiEnvelope{
+		Code:      formaerrors.CodeOK,
+		Msg:       "ok",
+		RequestID: requestID(c),
+		Data:      data,
+	}
+}
+
+func errorEnvelope(c *app.RequestContext, err error) (int, apiEnvelope) {
+	fe, ok := formaerrors.AsFormaError(err)
+	if !ok {
+		fe = formaerrors.MapDomainError(err)
+	}
+	msg := fe.Msg
+	if fe.Key != "" {
+		msg = fe.Key + ": " + fe.Msg
+	}
+	return fe.HTTPStatus, apiEnvelope{
+		Code:      fe.Code,
+		Msg:       msg,
+		RequestID: requestID(c),
+		Data:      nil,
+		ErrorKey:  fe.Key,
+	}
+}
+
+func writeError(ctx context.Context, c *app.RequestContext, err error) {
+	_ = ctx
+	status, body := errorEnvelope(c, err)
+	c.JSON(status, body)
+}
+
+func writeOK(ctx context.Context, c *app.RequestContext, data any) {
+	c.JSON(http.StatusOK, envelope(ctx, c, data))
+}
+
+func requestID(c *app.RequestContext) string {
 	rid := string(c.GetHeader("X-Request-ID"))
 	if rid == "" {
 		rid = c.Response.Header.Get("X-Request-ID")
@@ -44,11 +83,5 @@ func envelope(ctx context.Context, c *app.RequestContext, data any) apiEnvelope 
 	if rid == "" {
 		rid = "forma-" + c.GetString("request_id")
 	}
-	_ = ctx
-	return apiEnvelope{
-		Code:      0,
-		Msg:       "ok",
-		RequestID: rid,
-		Data:      data,
-	}
+	return rid
 }

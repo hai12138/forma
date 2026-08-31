@@ -125,3 +125,58 @@
   border-radius: var(--forma-radius-control);
   border: 1px solid var(--forma-border);
 }
+
+.forma-tenant-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--forma-space-md);
+  padding: 8px 10px;
+  border: 1px solid var(--forma-border);
+  border-radius: var(--forma-radius-control);
+  background: #fafbfc;
+}
+
+.forma-tenant-switcher select {
+  border: 1px solid var(--forma-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: #fff;
+  font: inherit;
+}
+
+.forma-muted {
+  font-size: 11px;
+  color: #667085;
+}
+
+.forma-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--forma-space-md);
+  align-items: center;
+  margin: var(--forma-space-md) var(--forma-space-lg) 0;
+  padding: 10px 12px;
+  border: 1px solid var(--forma-border);
+  border-radius: var(--forma-radius-control);
+  background: #fff8e8;
+}
+
+.forma-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.forma-banner-actions button {
+  border: 1px solid var(--forma-border);
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.forma-kpi {
+  font-size: 28px;
+  font-weight: 650;
+  margin-top: 8px;
+}

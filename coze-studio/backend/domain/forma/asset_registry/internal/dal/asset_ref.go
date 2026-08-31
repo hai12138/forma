@@ -58,6 +58,53 @@ func (d *AssetRefDAO) ListByTenant(ctx context.Context, tenantID string) ([]*ent
 	return out, nil
 }
 
+func (d *AssetRefDAO) UpdateName(ctx context.Context, tenantID, assetID string, revision int32, name string) (*entity.AssetRef, error) {
+	now := time.Now().UTC()
+	res := d.db.WithContext(ctx).
+		Model(&AssetRefModel{}).
+		Where("tenant_id = ? AND asset_id = ? AND revision = ? AND deleted_at IS NULL", tenantID, assetID, revision).
+		Updates(map[string]any{
+			"name":       name,
+			"updated_at": now,
+		})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, nil
+	}
+	return d.GetByTenantAssetRevision(ctx, tenantID, assetID, revision)
+}
+
+func (d *AssetRefDAO) Archive(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error) {
+	now := time.Now().UTC()
+	res := d.db.WithContext(ctx).
+		Model(&AssetRefModel{}).
+		Where("tenant_id = ? AND asset_id = ? AND revision = ? AND deleted_at IS NULL", tenantID, assetID, revision).
+		Updates(map[string]any{
+			"status":     string(entity.AssetStatusArchived),
+			"deleted_at": now,
+			"updated_at": now,
+		})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, nil
+	}
+	var model AssetRefModel
+	err := d.db.WithContext(ctx).
+		Where("tenant_id = ? AND asset_id = ? AND revision = ?", tenantID, assetID, revision).
+		First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return toAssetEntity(&model), nil
+}
+
 func toAssetModel(a *entity.AssetRef) *AssetRefModel {
 	var digest *string
 	if a.ContentDigest != "" {

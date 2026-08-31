@@ -41,6 +41,8 @@ type AssetRegistry interface {
 	CreateAsset(ctx context.Context, req *CreateAssetRequest) (*entity.AssetRef, error)
 	GetAsset(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error)
 	ListAssetsByTenant(ctx context.Context, tenantID string) ([]*entity.AssetRef, error)
+	UpdateAssetName(ctx context.Context, tenantID, assetID string, revision int32, name string) (*entity.AssetRef, error)
+	ArchiveAsset(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error)
 	BindCozeResource(ctx context.Context, req *BindCozeResourceRequest) (*entity.CozeResourceRef, error)
 	ListCozeResources(ctx context.Context, tenantID, assetID string, revision int32) ([]*entity.CozeResourceRef, error)
 }
@@ -98,11 +100,31 @@ func (s *assetRegistryImpl) CreateAsset(ctx context.Context, req *CreateAssetReq
 }
 
 func (s *assetRegistryImpl) GetAsset(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error) {
+	if tenantID == "" || assetID == "" {
+		return nil, fmt.Errorf("tenant_id and asset_id are required")
+	}
 	return s.assetRepo.GetByTenantAssetRevision(ctx, tenantID, assetID, revision)
 }
 
 func (s *assetRegistryImpl) ListAssetsByTenant(ctx context.Context, tenantID string) ([]*entity.AssetRef, error) {
+	if tenantID == "" {
+		return nil, fmt.Errorf("tenant_id is required")
+	}
 	return s.assetRepo.ListByTenant(ctx, tenantID)
+}
+
+func (s *assetRegistryImpl) UpdateAssetName(ctx context.Context, tenantID, assetID string, revision int32, name string) (*entity.AssetRef, error) {
+	if tenantID == "" || assetID == "" || name == "" {
+		return nil, fmt.Errorf("tenant_id, asset_id and name are required")
+	}
+	return s.assetRepo.UpdateName(ctx, tenantID, assetID, revision, name)
+}
+
+func (s *assetRegistryImpl) ArchiveAsset(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error) {
+	if tenantID == "" || assetID == "" {
+		return nil, fmt.Errorf("tenant_id and asset_id are required")
+	}
+	return s.assetRepo.Archive(ctx, tenantID, assetID, revision)
 }
 
 func (s *assetRegistryImpl) BindCozeResource(ctx context.Context, req *BindCozeResourceRequest) (*entity.CozeResourceRef, error) {

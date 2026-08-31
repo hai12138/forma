@@ -296,13 +296,20 @@ test('Forma migration integration (CASE A/B/C)', async (t) => {
 
     assert.ok(tableExists('forma_asset_ref'));
     assert.ok(tableExists('forma_coze_resource_ref'));
+    assert.ok(tableExists('forma_principal'));
+    assert.ok(tableExists('forma_tenant'));
+    assert.ok(tableExists('forma_tenant_membership'));
+    assert.ok(tableExists('forma_tenant_space_ref'));
+    assert.ok(tableExists('forma_audit_event'));
     assert.ok(columnExists('forma_asset_ref', 'tenant_id'));
     assert.ok(columnExists('forma_asset_ref', 'content_digest'));
     assert.ok(columnExists('forma_asset_ref', 'deleted_at'));
+    assert.ok(columnExists('forma_tenant', 'revision'));
     assert.ok(columnExists('forma_coze_resource_ref', 'coze_resource_type'));
     assert.ok(columnExists('forma_coze_resource_ref', 'coze_resource_id'));
     assert.ok(indexExists('forma_asset_ref', 'uk_forma_asset_tenant_asset_revision'));
     assert.ok(indexExists('forma_coze_resource_ref', 'uk_forma_coze_resource_binding'));
+    assert.ok(indexExists('forma_principal', 'uk_forma_principal_coze_user'));
     assert.ok(migrationSql.includes('CREATE TABLE IF NOT EXISTS `forma_asset_ref`'));
   });
 

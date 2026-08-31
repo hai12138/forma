@@ -47,24 +47,32 @@ func (a *cozeAgentAdapter) Health(_ context.Context) (*AgentHealthResult, error)
 
 type formaCozeIntegration struct {
 	agent CozeAgentAdapter
+	space CozeSpaceAdapter
 }
 
-func NewFormaCozeIntegration(agent CozeAgentAdapter) FormaCozeIntegration {
+func NewFormaCozeIntegration(agent CozeAgentAdapter, space CozeSpaceAdapter) FormaCozeIntegration {
 	if agent == nil {
 		agent = NewCozeAgentAdapter()
 	}
-	return &formaCozeIntegration{agent: agent}
+	if space == nil {
+		space = NewCozeSpaceAdapter()
+	}
+	return &formaCozeIntegration{agent: agent, space: space}
 }
 
 func (f *formaCozeIntegration) Agent() CozeAgentAdapter {
 	return f.agent
 }
 
+func (f *formaCozeIntegration) Space() CozeSpaceAdapter {
+	return f.space
+}
+
 var defaultIntegration FormaCozeIntegration
 
 func DefaultIntegration() FormaCozeIntegration {
 	if defaultIntegration == nil {
-		defaultIntegration = NewFormaCozeIntegration(NewCozeAgentAdapter())
+		defaultIntegration = NewFormaCozeIntegration(NewCozeAgentAdapter(), NewCozeSpaceAdapter())
 	}
 	return defaultIntegration
 }

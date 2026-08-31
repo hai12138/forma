@@ -11,8 +11,10 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/repository"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/service"
+	assetsvc "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/service"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/meta"
+	tenancyrepo "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/repository"
+	tenancysvc "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/service"
 	"github.com/coze-dev/coze-studio/backend/infra/idgen"
 )
 
@@ -22,16 +24,24 @@ type ServiceComponents struct {
 }
 
 type ApplicationService struct {
-	DomainSVC service.AssetRegistry
+	DomainSVC  assetsvc.AssetRegistry
+	TenancySVC tenancysvc.TenancyService
 }
 
 var ApplicationSVC = &ApplicationService{}
 
 func InitService(_ context.Context, components *ServiceComponents) *ApplicationService {
-	ApplicationSVC.DomainSVC = service.NewAssetRegistry(&service.Components{
+	ApplicationSVC.DomainSVC = assetsvc.NewAssetRegistry(&assetsvc.Components{
 		AssetRepo: repository.NewAssetRefRepository(components.DB),
 		CozeRepo:  repository.NewCozeResourceRefRepository(components.DB),
 		IDGen:     components.IDGen,
+	})
+	ApplicationSVC.TenancySVC = tenancysvc.NewTenancyService(&tenancysvc.Components{
+		PrincipalRepo:  tenancyrepo.NewPrincipalRepository(components.DB),
+		TenantRepo:     tenancyrepo.NewTenantRepository(components.DB),
+		MembershipRepo: tenancyrepo.NewMembershipRepository(components.DB),
+		SpaceRefRepo:   tenancyrepo.NewSpaceRefRepository(components.DB),
+		AuditRepo:      tenancyrepo.NewAuditRepository(components.DB),
 	})
 	return ApplicationSVC
 }
@@ -46,12 +56,12 @@ type VersionResponse struct {
 }
 
 type BaselineResponse struct {
-	FormaVersion           string `json:"forma_version"`
-	FormaSchemaVersion     string `json:"forma_schema_version"`
-	FormaBaselineTag       string `json:"forma_baseline_tag"`
-	CozeBaselineCommit     string `json:"coze_baseline_commit"`
+	FormaVersion            string `json:"forma_version"`
+	FormaSchemaVersion      string `json:"forma_schema_version"`
+	FormaBaselineTag        string `json:"forma_baseline_tag"`
+	CozeBaselineCommit      string `json:"coze_baseline_commit"`
 	WorkspaceBaselineCommit string `json:"workspace_baseline_commit"`
-	RuntimeFoundation      string `json:"runtime_foundation"`
+	RuntimeFoundation       string `json:"runtime_foundation"`
 }
 
 func (s *ApplicationService) Health(_ context.Context) *HealthResponse {
