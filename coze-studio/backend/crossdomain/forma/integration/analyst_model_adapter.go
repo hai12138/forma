@@ -32,11 +32,8 @@ func (m *CozeEinoAnalystModel) GenerateInterviewTurn(ctx context.Context, req *a
 	if req == nil {
 		return nil, fmt.Errorf("%w: request required", entity.ErrModelFailed)
 	}
-	system := req.SystemPolicy
-	if system == "" {
-		system = AnalystSystemPolicy()
-	}
-	userMsg := buildAnalystUserMessage(req)
+	system := analystsvc.EnrichedSystemPolicy(req.SystemPolicy)
+	userMsg := formatInterviewUserPrompt(req.ContextText, req.UserMessage, req.NextQuestion)
 	start := time.Now()
 	content, modelRef, inTok, outTok, err := m.invoke(ctx, system, userMsg)
 	if err != nil {
@@ -51,26 +48,20 @@ func (m *CozeEinoAnalystModel) GenerateInterviewTurn(ctx context.Context, req *a
 	}, nil
 }
 
-func buildAnalystUserMessage(req *analystsvc.InterviewTurnRequest) string {
-	parts := []string{fmt.Sprintf("User message: %s", req.UserMessage)}
-	if req.NextQuestion != nil {
-		if req.NextQuestion.Goal != "" {
-			parts = append(parts, fmt.Sprintf("Interview goal: %s", req.NextQuestion.Goal))
-		}
-		if req.NextQuestion.Question != "" {
-			parts = append(parts, fmt.Sprintf("Suggested follow-up focus: %s", req.NextQuestion.Question))
-		}
-	}
-	parts = append(parts, "Respond as the Forma AI Business Analyst. Ask clarifying business questions. Do not auto-confirm facts.")
-	return strings.Join(parts, "\n")
+func formatExtractionUserPrompt(contextText, userTurnID, userTurnContent string) string {
+	return analystsvc.FormatExtractionUserPrompt(contextText, userTurnID, userTurnContent)
+}
+
+func formatInterviewUserPrompt(contextText, userMessage string, plan *entity.NextQuestionPlan) string {
+	return analystsvc.FormatInterviewUserPrompt(contextText, userMessage, plan)
 }
 
 func (m *CozeEinoAnalystModel) ExtractAssertions(ctx context.Context, req *analystsvc.ExtractionRequest) (*analystsvc.ExtractionOutcome, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: request required", entity.ErrInvalidExtraction)
 	}
-	system := extractionSystemPrompt()
-	user := fmt.Sprintf("User turn (%s): %s\n\nReturn JSON only.", req.UserTurnID, req.UserTurnContent)
+	system := analystsvc.EnrichedSystemPolicy(req.SystemPolicy) + "\n\n" + extractionSystemPrompt()
+	user := formatExtractionUserPrompt(req.ContextText, req.UserTurnID, req.UserTurnContent)
 	raw, modelRef, inTok, outTok, err := m.invoke(ctx, system, user)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", entity.ErrModelFailed, err)

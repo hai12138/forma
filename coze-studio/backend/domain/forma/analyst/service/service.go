@@ -39,6 +39,7 @@ type AnalystService interface {
 
 	ListConflicts(ctx context.Context, tenantID, businessID string) ([]*entity.AssertionConflict, error)
 	ListGaps(ctx context.Context, tenantID, businessID string) ([]*entity.AnalystGap, error)
+	AskGap(ctx context.Context, tenantID, businessID, sessionID, gapID, actorID string) (*entity.GapAskResult, error)
 
 	CreateProposal(ctx context.Context, tenantID, businessID, sessionID, actorID string, assertionIDs []string) (*entity.BusinessModelProposal, error)
 	GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error)
@@ -414,8 +415,11 @@ func (s *analystServiceImpl) GetProvenance(ctx context.Context, tenantID, busine
 	return s.repo.GetProvenance(ctx, tenantID, businessID, revisionNo)
 }
 
-func (s *analystServiceImpl) buildContextInput(ctx context.Context, tenantID, businessID, sessionID string) (*ContextInput, *entity.ContextManifest, error) {
+func (s *analystServiceImpl) buildContextInput(ctx context.Context, tenantID, businessID, sessionID string) (*ContextInput, *entity.ContextManifest, string, error) {
 	input := &ContextInput{EvidenceByTurn: map[string]*entity.BusinessEvidence{}}
+	if sess, _ := s.repo.GetSession(ctx, tenantID, sessionID); sess != nil {
+		input.FocusGapID = sess.FocusGapID
+	}
 	if s.businessSVC != nil {
 		_, model, _, err := s.businessSVC.GetModel(ctx, tenantID, businessID)
 		if err == nil {
@@ -443,8 +447,8 @@ func (s *analystServiceImpl) buildContextInput(ctx context.Context, tenantID, bu
 			input.EvidenceByTurn[e.TurnID] = e
 		}
 	}
-	manifest, _ := BuildContext(input)
-	return input, manifest, nil
+	manifest, contextText := BuildContext(input)
+	return input, manifest, contextText, nil
 }
 
 func newID(prefix string) string {

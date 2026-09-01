@@ -14,8 +14,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
+	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 )
 
 type SessionModel struct {
@@ -28,6 +28,7 @@ type SessionModel struct {
 	RuntimeConversationRef string     `gorm:"column:runtime_conversation_ref"`
 	ConfirmationPolicy     string     `gorm:"column:confirmation_policy"`
 	NextTurnSequence       int32      `gorm:"column:next_turn_sequence"`
+	FocusGapID             string     `gorm:"column:focus_gap_id"`
 	CreatedBy              string     `gorm:"column:created_by"`
 	CreatedAt              time.Time  `gorm:"column:created_at"`
 	UpdatedAt              time.Time  `gorm:"column:updated_at"`
@@ -37,20 +38,20 @@ type SessionModel struct {
 func (SessionModel) TableName() string { return "forma_analyst_session" }
 
 type TurnModel struct {
-	ID              int64     `gorm:"column:id;primaryKey;autoIncrement"`
-	TurnID          string    `gorm:"column:turn_id"`
-	TenantID        string    `gorm:"column:tenant_id"`
-	SessionID       string    `gorm:"column:session_id"`
-	Sequence        int32     `gorm:"column:sequence"`
-	Speaker         string    `gorm:"column:speaker"`
-	Content         string    `gorm:"column:content"`
-	ContentType     string    `gorm:"column:content_type"`
+	ID                    int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	TurnID                string    `gorm:"column:turn_id"`
+	TenantID              string    `gorm:"column:tenant_id"`
+	SessionID             string    `gorm:"column:session_id"`
+	Sequence              int32     `gorm:"column:sequence"`
+	Speaker               string    `gorm:"column:speaker"`
+	Content               string    `gorm:"column:content"`
+	ContentType           string    `gorm:"column:content_type"`
 	ClientRequestID       string    `gorm:"column:client_request_id"`
-	ModelRequestID      string    `gorm:"column:model_request_id"`
+	ModelRequestID        string    `gorm:"column:model_request_id"`
 	ReplyToTurnID         string    `gorm:"column:reply_to_turn_id"`
 	ReservedReplySequence int32     `gorm:"column:reserved_reply_sequence"`
 	AnalysisStatus        string    `gorm:"column:analysis_status"`
-	CreatedAt       time.Time `gorm:"column:created_at"`
+	CreatedAt             time.Time `gorm:"column:created_at"`
 }
 
 func (TurnModel) TableName() string { return "forma_analyst_turn" }
@@ -135,17 +136,17 @@ type ConflictModel struct {
 func (ConflictModel) TableName() string { return "forma_assertion_conflict" }
 
 type GapModel struct {
-	ID                       int64     `gorm:"column:id;primaryKey;autoIncrement"`
-	GapID                    string    `gorm:"column:gap_id"`
-	TenantID                 string    `gorm:"column:tenant_id"`
-	BusinessID               string    `gorm:"column:business_id"`
-	SessionID                string    `gorm:"column:session_id"`
-	GapType                  string    `gorm:"column:gap_type"`
-	Question                 string    `gorm:"column:question"`
-	RelatedAssertionIDsJSON  string    `gorm:"column:related_assertion_ids_json"`
-	Status                   string    `gorm:"column:status"`
-	CreatedAt                time.Time `gorm:"column:created_at"`
-	UpdatedAt                time.Time `gorm:"column:updated_at"`
+	ID                      int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	GapID                   string    `gorm:"column:gap_id"`
+	TenantID                string    `gorm:"column:tenant_id"`
+	BusinessID              string    `gorm:"column:business_id"`
+	SessionID               string    `gorm:"column:session_id"`
+	GapType                 string    `gorm:"column:gap_type"`
+	Question                string    `gorm:"column:question"`
+	RelatedAssertionIDsJSON string    `gorm:"column:related_assertion_ids_json"`
+	Status                  string    `gorm:"column:status"`
+	CreatedAt               time.Time `gorm:"column:created_at"`
+	UpdatedAt               time.Time `gorm:"column:updated_at"`
 }
 
 func (GapModel) TableName() string { return "forma_analyst_gap" }
@@ -243,6 +244,7 @@ func toSession(m *SessionModel) *entity.AnalystSession {
 		RuntimeConversationRef: m.RuntimeConversationRef,
 		ConfirmationPolicy:     entity.ConfirmationPolicy(m.ConfirmationPolicy),
 		NextTurnSequence:       m.NextTurnSequence,
+		FocusGapID:             m.FocusGapID,
 		CreatedBy:              m.CreatedBy,
 		CreatedAt:              m.CreatedAt,
 		UpdatedAt:              m.UpdatedAt,
@@ -252,19 +254,19 @@ func toSession(m *SessionModel) *entity.AnalystSession {
 
 func toTurn(m *TurnModel) *entity.AnalystTurn {
 	return &entity.AnalystTurn{
-		TurnID:          m.TurnID,
-		TenantID:        m.TenantID,
-		SessionID:       m.SessionID,
-		Sequence:        m.Sequence,
-		Speaker:         entity.Speaker(m.Speaker),
-		Content:         m.Content,
-		ContentType:     entity.ContentType(m.ContentType),
+		TurnID:                m.TurnID,
+		TenantID:              m.TenantID,
+		SessionID:             m.SessionID,
+		Sequence:              m.Sequence,
+		Speaker:               entity.Speaker(m.Speaker),
+		Content:               m.Content,
+		ContentType:           entity.ContentType(m.ContentType),
 		ClientRequestID:       m.ClientRequestID,
 		ModelRequestID:        m.ModelRequestID,
 		ReplyToTurnID:         m.ReplyToTurnID,
 		ReservedReplySequence: m.ReservedReplySequence,
 		AnalysisStatus:        entity.AnalysisStatus(m.AnalysisStatus),
-		CreatedAt:       m.CreatedAt,
+		CreatedAt:             m.CreatedAt,
 	}
 }
 
@@ -315,6 +317,7 @@ func (d *AnalystDAO) CreateSession(ctx context.Context, s *entity.AnalystSession
 		RuntimeConversationRef: s.RuntimeConversationRef,
 		ConfirmationPolicy:     string(s.ConfirmationPolicy),
 		NextTurnSequence:       s.NextTurnSequence,
+		FocusGapID:             s.FocusGapID,
 		CreatedBy:              s.CreatedBy,
 		CreatedAt:              s.CreatedAt,
 		UpdatedAt:              s.UpdatedAt,
@@ -357,6 +360,7 @@ func (d *AnalystDAO) UpdateSession(ctx context.Context, s *entity.AnalystSession
 			"status":             string(s.Status),
 			"title":              s.Title,
 			"next_turn_sequence": s.NextTurnSequence,
+			"focus_gap_id":       s.FocusGapID,
 			"updated_at":         s.UpdatedAt,
 			"closed_at":          s.ClosedAt,
 		}).Error
@@ -364,19 +368,19 @@ func (d *AnalystDAO) UpdateSession(ctx context.Context, s *entity.AnalystSession
 
 func (d *AnalystDAO) CreateTurn(ctx context.Context, t *entity.AnalystTurn) error {
 	return d.db.WithContext(ctx).Create(&TurnModel{
-		TurnID:          t.TurnID,
-		TenantID:        t.TenantID,
-		SessionID:       t.SessionID,
-		Sequence:        t.Sequence,
-		Speaker:         string(t.Speaker),
-		Content:         t.Content,
-		ContentType:     string(t.ContentType),
+		TurnID:                t.TurnID,
+		TenantID:              t.TenantID,
+		SessionID:             t.SessionID,
+		Sequence:              t.Sequence,
+		Speaker:               string(t.Speaker),
+		Content:               t.Content,
+		ContentType:           string(t.ContentType),
 		ClientRequestID:       t.ClientRequestID,
 		ModelRequestID:        t.ModelRequestID,
 		ReplyToTurnID:         t.ReplyToTurnID,
 		ReservedReplySequence: t.ReservedReplySequence,
 		AnalysisStatus:        string(t.AnalysisStatus),
-		CreatedAt:       t.CreatedAt,
+		CreatedAt:             t.CreatedAt,
 	}).Error
 }
 
@@ -456,7 +460,7 @@ func (d *AnalystDAO) UpdateTurnAnalysis(ctx context.Context, tenantID, turnID st
 	return d.db.WithContext(ctx).Model(&TurnModel{}).
 		Where("tenant_id = ? AND turn_id = ?", tenantID, turnID).
 		Updates(map[string]any{
-			"analysis_status": string(status),
+			"analysis_status":  string(status),
 			"model_request_id": modelRequestID,
 		}).Error
 }
@@ -530,16 +534,16 @@ func (d *AnalystDAO) UpdateAssertion(ctx context.Context, a *entity.BusinessAsse
 	return d.db.WithContext(ctx).Model(&AssertionModel{}).
 		Where("tenant_id = ? AND assertion_id = ?", a.TenantID, a.AssertionID).
 		Updates(map[string]any{
-			"assertion_type":           string(a.AssertionType),
-			"subject_ref":              a.SubjectRef,
-			"predicate":                a.Predicate,
-			"object_value":             a.ObjectValue,
-			"structured_value_json":    marshalJSON(a.StructuredValue),
-			"confidence":               a.Confidence,
-			"status":                   string(a.Status),
-			"source_marker":            string(a.SourceMarker),
+			"assertion_type":            string(a.AssertionType),
+			"subject_ref":               a.SubjectRef,
+			"predicate":                 a.Predicate,
+			"object_value":              a.ObjectValue,
+			"structured_value_json":     marshalJSON(a.StructuredValue),
+			"confidence":                a.Confidence,
+			"status":                    string(a.Status),
+			"source_marker":             string(a.SourceMarker),
 			"derived_from_assertion_id": a.DerivedFromAssertionID,
-			"updated_at":               a.UpdatedAt,
+			"updated_at":                a.UpdatedAt,
 		}).Error
 }
 

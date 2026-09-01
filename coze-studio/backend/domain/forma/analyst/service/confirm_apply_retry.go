@@ -113,6 +113,7 @@ func (s *analystServiceImpl) ConfirmAssertion(ctx context.Context, tenantID, bus
 	if err != nil {
 		return nil, err
 	}
+	s.tryResolveFocusedGap(ctx, tenantID, businessID, result.SessionID, result)
 	_ = s.audit.RecordAnalystAudit(ctx, tenantID, actorID, "ASSERTION_CONFIRMED", result.AssertionID, "")
 	return result, nil
 }

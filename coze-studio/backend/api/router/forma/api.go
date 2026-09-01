@@ -52,6 +52,7 @@ func Register(r *server.Hertz) {
 		v1.POST("/businesses/:id/analyst/sessions/:sessionId/turns", formahandler.SubmitAnalystTurn)
 		v1.GET("/businesses/:id/analyst/sessions/:sessionId/turns", formahandler.ListAnalystTurns)
 		v1.POST("/businesses/:id/analyst/sessions/:sessionId/turns/:turnId/retry-analysis", formahandler.RetryAnalystTurnAnalysis)
+		v1.POST("/businesses/:id/analyst/sessions/:sessionId/gaps/:gapId/ask", formahandler.AskAnalystGap)
 		v1.GET("/businesses/:id/assertions", formahandler.ListAssertions)
 		v1.GET("/businesses/:id/evidence", formahandler.ListBusinessEvidence)
 		v1.POST("/businesses/:id/assertions/:assertionId/confirm", formahandler.ConfirmAssertion)

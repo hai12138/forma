@@ -32,6 +32,7 @@ type InterviewTurnRequest struct {
 	BusinessID      string
 	SessionID       string
 	ContextManifest *entity.ContextManifest
+	ContextText     string
 	SystemPolicy    string
 	UserMessage     string
 	NextQuestion    *entity.NextQuestionPlan
@@ -50,6 +51,7 @@ type ExtractionRequest struct {
 	BusinessID      string
 	SessionID       string
 	ContextManifest *entity.ContextManifest
+	ContextText     string
 	SystemPolicy    string
 	UserTurnContent string
 	UserTurnID      string

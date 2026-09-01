@@ -28,19 +28,18 @@ type ContextInput struct {
 	OpenGaps       []*entity.AnalystGap
 	RecentTurns    []*entity.AnalystTurn
 	EvidenceByTurn map[string]*entity.BusinessEvidence
+	FocusGapID     string
 }
 
 func BuildContext(input *ContextInput) (*entity.ContextManifest, string) {
 	if input == nil {
-		return &entity.ContextManifest{}, analystSystemPolicy
+		return &entity.ContextManifest{}, ""
 	}
 	var parts []string
 	manifest := &entity.ContextManifest{
 		IncludedItems: []string{},
 		ExcludedItems: []string{},
 	}
-
-	parts = append(parts, analystSystemPolicy)
 
 	if input.CurrentModel != nil {
 		summary := fmt.Sprintf("Business Model snapshot: %d nodes, %d edges, %d states, %d rules",
@@ -65,7 +64,12 @@ func BuildContext(input *ContextInput) (*entity.ContextManifest, string) {
 
 	for _, g := range input.OpenGaps {
 		if g != nil && g.Status == entity.GapOpen {
-			parts = append(parts, fmt.Sprintf("GAP: %s", g.Question))
+			label := "GAP"
+			if input.FocusGapID != "" && g.GapID == input.FocusGapID {
+				label = "FOCUSED_GAP"
+				manifest.IncludedItems = append(manifest.IncludedItems, "focused_gap:"+g.GapID)
+			}
+			parts = append(parts, fmt.Sprintf("%s: %s", label, g.Question))
 			manifest.IncludedItems = append(manifest.IncludedItems, "gap:"+g.GapID)
 		}
 	}
@@ -111,11 +115,11 @@ func BuildContext(input *ContextInput) (*entity.ContextManifest, string) {
 	}
 
 	contextText := strings.Join(parts, "\n")
-	manifest.TokenEstimate = len(contextText) / 4
-	if manifest.TokenEstimate > contextBudgetTokens {
+	if len(contextText)/4 > contextBudgetTokens {
 		manifest.ExcludedItems = append(manifest.ExcludedItems, "context_truncated")
 		contextText = truncate(contextText, contextBudgetTokens*4)
 	}
+	manifest.TokenEstimate = len(contextText) / 4
 	return manifest, contextText
 }
 
@@ -125,6 +129,18 @@ func PlanNextQuestion(input *ContextInput) *entity.NextQuestionPlan {
 			Question: "请描述您的核心业务流程和参与角色。",
 			Goal:     "discover_actors_and_processes",
 			Priority: 1,
+		}
+	}
+	if input.FocusGapID != "" {
+		for _, g := range input.OpenGaps {
+			if g != nil && g.GapID == input.FocusGapID && g.Status == entity.GapOpen {
+				return &entity.NextQuestionPlan{
+					Question:        g.Question,
+					Goal:            "resolve_gap:" + g.GapID,
+					RelatedElements: g.RelatedAssertionIDs,
+					Priority:        0,
+				}
+			}
 		}
 	}
 	for _, g := range input.OpenGaps {

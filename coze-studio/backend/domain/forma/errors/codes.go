@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"net/http"
 
-	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	analystentity "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
+	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 )
 
@@ -30,29 +30,30 @@ const (
 	CodeVersionConflict     int32 = 40901 // HTTP 409
 	CodeInternal            int32 = 50001 // HTTP 500
 
-	CodeBusinessNotFound        int32 = 40410
-	CodeBusinessForbidden       int32 = 40310
-	CodeBusinessInvalidModel    int32 = 40010
-	CodeBusinessRevisionMissing int32 = 40411
-	CodeBusinessNoChange        int32 = 20010 // mapped as 200 with key, or 409-ish — use 200 OK with key in app; code for envelope
-	CodeBusinessLayoutConflict  int32 = 40911
-	CodeBusinessModelConflict   int32 = 40912
+	CodeBusinessNotFound                   int32 = 40410
+	CodeBusinessForbidden                  int32 = 40310
+	CodeBusinessInvalidModel               int32 = 40010
+	CodeBusinessRevisionMissing            int32 = 40411
+	CodeBusinessNoChange                   int32 = 20010 // mapped as 200 with key, or 409-ish — use 200 OK with key in app; code for envelope
+	CodeBusinessLayoutConflict             int32 = 40911
+	CodeBusinessModelConflict              int32 = 40912
 	CodeBusinessInvalidRelation            int32 = 40011
 	CodeBusinessLayoutModelRevisionMissing int32 = 40412
 
-	CodeAnalystSessionNotFound     int32 = 40420
-	CodeAnalystSessionClosed       int32 = 40020
-	CodeAnalystInvalidTurn         int32 = 40021
-	CodeAnalystModelFailed         int32 = 50020
-	CodeAnalystInvalidExtraction   int32 = 40022
-	CodeAssertionNotFound          int32 = 40421
-	CodeAssertionAlreadyDecided    int32 = 40920
-	CodeAssertionEvidenceRequired  int32 = 40023
-	CodeAnalystProposalNotFound    int32 = 40422
-	CodeAnalystProposalStale       int32 = 40921
-	CodeAnalystProposalInvalid      int32 = 40024
+	CodeAnalystSessionNotFound        int32 = 40420
+	CodeAnalystSessionClosed          int32 = 40020
+	CodeAnalystInvalidTurn            int32 = 40021
+	CodeAnalystModelFailed            int32 = 50020
+	CodeAnalystInvalidExtraction      int32 = 40022
+	CodeAssertionNotFound             int32 = 40421
+	CodeAssertionAlreadyDecided       int32 = 40920
+	CodeAssertionEvidenceRequired     int32 = 40023
+	CodeAnalystProposalNotFound       int32 = 40422
+	CodeAnalystProposalStale          int32 = 40921
+	CodeAnalystProposalInvalid        int32 = 40024
 	CodeAnalystProposalAlreadyApplied int32 = 40922
-	CodeAnalystForbidden           int32 = 40320
+	CodeAnalystForbidden              int32 = 40320
+	CodeAnalystGapNotFound            int32 = 40423
 )
 
 const (
@@ -68,13 +69,13 @@ const (
 	KeyVersionConflict     = "FORMA_VERSION_CONFLICT"
 	KeyInternal            = "FORMA_INTERNAL"
 
-	KeyBusinessNotFound        = "FORMA_BUSINESS_NOT_FOUND"
-	KeyBusinessForbidden       = "FORMA_BUSINESS_FORBIDDEN"
-	KeyBusinessInvalidModel    = "FORMA_BUSINESS_INVALID_MODEL"
-	KeyBusinessRevisionMissing = "FORMA_BUSINESS_REVISION_NOT_FOUND"
-	KeyBusinessNoChange        = "FORMA_BUSINESS_NO_CHANGE"
-	KeyBusinessLayoutConflict  = "FORMA_BUSINESS_LAYOUT_CONFLICT"
-	KeyBusinessModelConflict   = "FORMA_BUSINESS_MODEL_CONFLICT"
+	KeyBusinessNotFound                   = "FORMA_BUSINESS_NOT_FOUND"
+	KeyBusinessForbidden                  = "FORMA_BUSINESS_FORBIDDEN"
+	KeyBusinessInvalidModel               = "FORMA_BUSINESS_INVALID_MODEL"
+	KeyBusinessRevisionMissing            = "FORMA_BUSINESS_REVISION_NOT_FOUND"
+	KeyBusinessNoChange                   = "FORMA_BUSINESS_NO_CHANGE"
+	KeyBusinessLayoutConflict             = "FORMA_BUSINESS_LAYOUT_CONFLICT"
+	KeyBusinessModelConflict              = "FORMA_BUSINESS_MODEL_CONFLICT"
 	KeyBusinessInvalidRelation            = "FORMA_BUSINESS_INVALID_RELATION"
 	KeyBusinessLayoutModelRevisionMissing = "FORMA_BUSINESS_LAYOUT_MODEL_REVISION_NOT_FOUND"
 
@@ -91,6 +92,7 @@ const (
 	KeyAnalystProposalInvalid        = "FORMA_PROPOSAL_INVALID"
 	KeyAnalystProposalAlreadyApplied = "FORMA_PROPOSAL_ALREADY_APPLIED"
 	KeyAnalystForbidden              = "FORMA_ANALYST_FORBIDDEN"
+	KeyAnalystGapNotFound            = "FORMA_ANALYST_GAP_NOT_FOUND"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -346,6 +348,13 @@ func AnalystForbidden(msg string) *FormaError {
 	return New(CodeAnalystForbidden, http.StatusForbidden, KeyAnalystForbidden, msg)
 }
 
+func AnalystGapNotFound(msg string) *FormaError {
+	if msg == "" {
+		msg = "analyst gap not found"
+	}
+	return New(CodeAnalystGapNotFound, http.StatusNotFound, KeyAnalystGapNotFound, msg)
+}
+
 // AsFormaError extracts a FormaError from err.
 func AsFormaError(err error) (*FormaError, bool) {
 	var fe *FormaError
@@ -439,6 +448,9 @@ func MapDomainError(err error) *FormaError {
 	}
 	if errors.Is(err, analystentity.ErrForbidden) {
 		return AnalystForbidden(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrGapNotFound) {
+		return AnalystGapNotFound(err.Error())
 	}
 	return Internal(err.Error())
 }

@@ -127,6 +127,7 @@ type AnalystSession struct {
 	RuntimeConversationRef string
 	ConfirmationPolicy     ConfirmationPolicy
 	NextTurnSequence       int32
+	FocusGapID             string
 	CreatedBy              string
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
@@ -218,6 +219,11 @@ type AnalystGap struct {
 	Status              GapStatus
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+}
+
+type GapAskResult struct {
+	AnalystTurn *AnalystTurn
+	Gap         *AnalystGap
 }
 
 // PatchOpType semantic patch operations (not raw JSON Patch).

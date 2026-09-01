@@ -328,8 +328,27 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
     [assertions],
   );
 
-  const askGap = (gap: FormaGap) => {
-    setMessage(gap.question);
+  const askGap = async (gap: FormaGap) => {
+    if (!businessId || !session) return;
+    setProcessing(true);
+    setError(null);
+    try {
+      const resp = await client.askAnalystGap(businessId, session.session_id, gap.gap_id);
+      if (resp.data?.analyst_turn) {
+        setTurns(prev => {
+          const exists = prev.some(t => t.turn_id === resp.data!.analyst_turn.turn_id);
+          if (exists) {
+            return prev;
+          }
+          return [...prev, resp.data!.analyst_turn].sort((a, b) => a.sequence - b.sequence);
+        });
+      }
+      await loadSessionTurns();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gap ask failed');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const canApplyProposal =
@@ -645,7 +664,7 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
               {gaps.map(g => (
                 <div key={g.gap_id} className="forma-analyst-card">
                   <div>{g.question}</div>
-                  <button type="button" className="forma-btn" data-testid="gap-ask" onClick={() => askGap(g)}>
+                  <button type="button" className="forma-btn" data-testid="gap-ask" onClick={() => void askGap(g)} disabled={processing}>
                     Ask This
                   </button>
                 </div>

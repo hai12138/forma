@@ -570,6 +570,18 @@ export class FormaApiClient {
     );
   }
 
+  async askAnalystGap(
+    businessId: string,
+    sessionId: string,
+    gapId: string,
+  ): Promise<FormaApiEnvelope<{ analyst_turn: FormaAnalystTurn; gap: FormaGap }>> {
+    return this.request<{ analyst_turn: FormaAnalystTurn; gap: FormaGap }>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/analyst/sessions/${sessionId}/gaps/${gapId}/ask`,
+      {},
+    );
+  }
+
   async listAssertions(businessId: string): Promise<FormaApiEnvelope<FormaAssertion[]>> {
     return this.request<FormaAssertion[]>('GET', `/api/forma/v1/businesses/${businessId}/assertions`);
   }

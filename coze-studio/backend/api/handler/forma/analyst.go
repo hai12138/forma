@@ -148,6 +148,18 @@ func ListGaps(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, resp)
 }
 
+func AskAnalystGap(ctx context.Context, c *app.RequestContext) {
+	businessID := c.Param("id")
+	sessionID := c.Param("sessionId")
+	gapID := c.Param("gapId")
+	resp, err := formaapp.ApplicationSVC.AskAnalystGap(ctx, businessID, sessionID, gapID)
+	if err != nil {
+		writeError(ctx, c, err)
+		return
+	}
+	writeOK(ctx, c, resp)
+}
+
 func CreateProposal(ctx context.Context, c *app.RequestContext) {
 	businessID := c.Param("id")
 	var in formaapp.CreateProposalInput

@@ -23,4 +23,5 @@ var (
 	ErrForbidden                 = errors.New("analyst forbidden")
 	ErrNotFound                  = errors.New("analyst not found")
 	ErrNotConfigured             = errors.New("analyst service not configured")
+	ErrGapNotFound               = errors.New("analyst gap not found")
 )

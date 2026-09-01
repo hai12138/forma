@@ -142,11 +142,10 @@ func (s *analystServiceImpl) runFullAnalysis(
 	actorID string,
 ) (*entity.TurnSubmissionResult, error) {
 	now := time.Now().UTC()
-	ctxInput, manifest, err := s.buildContextInput(ctx, tenantID, businessID, sessionID)
+	ctxInput, manifest, contextText, err := s.buildContextInput(ctx, tenantID, businessID, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	_, contextText := BuildContext(ctxInput)
 	if contextText != "" {
 		manifest.IncludedItems = append(manifest.IncludedItems, "rendered_context")
 	}
@@ -159,6 +158,7 @@ func (s *analystServiceImpl) runFullAnalysis(
 		BusinessID:      businessID,
 		SessionID:       sessionID,
 		ContextManifest: manifest,
+		ContextText:     contextText,
 		SystemPolicy:    analystSystemPolicy,
 		UserTurnContent: userTurn.Content,
 		UserTurnID:      userTurn.TurnID,
@@ -222,7 +222,7 @@ func (s *analystServiceImpl) runFullAnalysis(
 		return result, nil
 	}
 
-	return s.completeGeneration(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID, manifest, ctxInput, assertions, conflicts, gaps, result)
+	return s.completeGeneration(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID, manifest, contextText, ctxInput, assertions, conflicts, gaps, result)
 }
 
 func (s *analystServiceImpl) runGenerationOnly(
@@ -232,7 +232,7 @@ func (s *analystServiceImpl) runGenerationOnly(
 	evidence *entity.BusinessEvidence,
 	actorID string,
 ) (*entity.TurnSubmissionResult, error) {
-	ctxInput, manifest, err := s.buildContextInput(ctx, tenantID, businessID, sessionID)
+	ctxInput, manifest, contextText, err := s.buildContextInput(ctx, tenantID, businessID, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +250,7 @@ func (s *analystServiceImpl) runGenerationOnly(
 		Conflicts:       conflicts,
 		Gaps:            gaps,
 	}
-	return s.completeGeneration(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID, manifest, ctxInput, assertions, conflicts, gaps, result)
+	return s.completeGeneration(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID, manifest, contextText, ctxInput, assertions, conflicts, gaps, result)
 }
 
 func (s *analystServiceImpl) completeGeneration(
@@ -260,6 +260,7 @@ func (s *analystServiceImpl) completeGeneration(
 	evidence *entity.BusinessEvidence,
 	actorID string,
 	manifest *entity.ContextManifest,
+	contextText string,
 	ctxInput *ContextInput,
 	assertions []*entity.BusinessAssertion,
 	conflicts []*entity.AssertionConflict,
@@ -275,6 +276,7 @@ func (s *analystServiceImpl) completeGeneration(
 		BusinessID:      businessID,
 		SessionID:       sessionID,
 		ContextManifest: manifest,
+		ContextText:     contextText,
 		SystemPolicy:    analystSystemPolicy,
 		UserMessage:     userTurn.Content,
 		NextQuestion:    plan,

@@ -105,6 +105,11 @@ type ProposalDTO struct {
 	CreatedAt     string                            `json:"created_at"`
 }
 
+type GapAskResponse struct {
+	AnalystTurn *TurnDTO `json:"analyst_turn"`
+	Gap         *GapDTO  `json:"gap"`
+}
+
 type TurnSubmissionResponse struct {
 	UserTurn     *TurnDTO                        `json:"user_turn"`
 	AnalystTurn  *TurnDTO                        `json:"analyst_turn,omitempty"`
@@ -217,6 +222,24 @@ func (s *ApplicationService) SubmitAnalystTurn(ctx context.Context, businessID, 
 		return nil, formaerrors.MapDomainError(err)
 	}
 	return toTurnSubmissionResponse(result), nil
+}
+
+func (s *ApplicationService) AskAnalystGap(ctx context.Context, businessID, sessionID, gapID string) (*GapAskResponse, error) {
+	tc, err := s.requireAnalystTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.GetAnalystSession(ctx, businessID, sessionID); err != nil {
+		return nil, err
+	}
+	result, err := s.AnalystSVC.AskGap(ctx, tc.TenantID, businessID, sessionID, gapID, tc.PrincipalID)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	return &GapAskResponse{
+		AnalystTurn: toTurnDTO(result.AnalystTurn),
+		Gap:         toGapDTO(result.Gap),
+	}, nil
 }
 
 func (s *ApplicationService) ListAnalystTurns(ctx context.Context, businessID, sessionID string) ([]*TurnDTO, error) {
