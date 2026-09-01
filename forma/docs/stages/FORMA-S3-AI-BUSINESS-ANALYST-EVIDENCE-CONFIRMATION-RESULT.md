@@ -2,18 +2,20 @@
 
 ## Status
 
-PASS_WITH_GATES
+**IN_PROGRESS — S3-G1-F2 backend green; awaiting CI + Live Model + Browser gates**
 
-S3 initial: `49821f80` — PASS_WITH_GATES  
-S3-G1: `e58d97d6` — FAIL (CI 33471829970)  
-S3-G1-F1: **pending CI** after this commit — Live Model + Browser E2E still pending runtime.
+Do **not** mark FROZEN. Do **not** start S4.
 
 ## Frozen Baseline
 
-- S2 Frozen Tag: `forma-s2-frozen` → `413c3bcc148dfe518b31d6267e1a0c72fc2f0645`
-- Post-Freeze main: `65b165dcd84d1b9f9c083e87d65bbf16f9061ad1`
-- S3 implementation: `49821f80ad427ab51ea53b984cdbb5482a57be2c`
-- S3-G1: `e58d97d6d2b2d2b25b25c9d0a46ce01b1903b292`
+| Milestone | SHA |
+|-----------|-----|
+| S2 Frozen Tag `forma-s2-frozen` | `413c3bcc148dfe518b31d6267e1a0c72fc2f0645` |
+| Post-Freeze main | `65b165dcd84d1b9f9c083e87d65bbf16f9061ad1` |
+| S3 initial | `49821f80ad427ab51ea53b984cdbb5482a57be2c` |
+| S3-G1 | `e58d97d6d2b2d2b25b25c9d0a46ce01b1903b292` |
+| S3-G1-F1 | `f25634efd5f6f8cd334843435412bbec2b8ad169` |
+| **S3-G1-F2** | **`f52e355c` — `fix(forma): close S3 G1 final backend gates`** |
 
 ## CI History
 
@@ -21,62 +23,85 @@ S3-G1-F1: **pending CI** after this commit — Live Model + Browser E2E still pe
 |-----|--------|-------|
 | `33469903703` | **FAIL** | backend compile, atlas checksum, rush shrinkwrap, hook mode |
 | `33471829970` | **FAIL** | `proposal.go` syntax `]}`; MySQL `CREATE UNIQUE INDEX IF NOT EXISTS`; backend tests blocked |
+| `33474851052` | **FAIL** | **migration PASS, frontend PASS, backend FAIL** — see root cause below |
+| *(pending)* | — | Post-`f52e355c` push — awaiting Forma CI |
 
-## S3-G1-F1 Closure (this round)
+### Run `33474851052` — Backend root cause
 
-### Backend compile
+1. Wrong `BusinessModelRevision` package on `ApplyProposal` interface (`entity` vs `businessentity`)
+2. Unused `conflicts` variable in `persistExtraction`
+3. `bool` appended to `IncludedItems` (`[]string`) in `analysis.go`
 
-- Fixed `splitOnce` in `proposal.go`: `]}` → valid slice return
-- `ExtractionOutcome` with `model_ref` on successful extract
+## S3-G1-F2 Closure (this round)
 
-### Migration (MySQL-compatible)
+### STEP 1 — Backend compile fixes
 
-- `20250902010000_s3_g1_integrity.sql`: `ALTER TABLE` + `ADD UNIQUE KEY` (no `IF NOT EXISTS`)
-- Added `next_turn_sequence`, `reply_to_turn_id`, `reserved_reply_sequence`
-- `atlas.sum` regenerated via `arigaio/atlas:0.32.1`
+- `ApplyProposal` returns `*businessentity.BusinessModelRevision` (no analyst-local alias)
+- Removed unused `conflicts` var; extraction persist moved to `extraction_persist.go`
+- Removed bool append to `IncludedItems`; optional `"rendered_context"` string when context non-empty
 
-### Turn sequence allocator
+### STEP 3 — Idempotency before sequence reservation
 
-- Session `next_turn_sequence`: reserve user + analyst pairs under `FOR UPDATE`
-- Analyst turn: `reply_to_turn_id` + reserved sequence (no `user+1` guess)
-- Idempotency: `GetTurnByReplyTo` instead of `sequence+1`
+- `createUserTurnWithEvidence`: `GetTurnByClientRequestID` **before** `next_turn_sequence += 2`
+- Duplicate `client_request_id` returns existing turn + evidence without consuming sequence
 
-### Analysis phase state machine
+### STEP 5 — Extraction persistence atomicity
 
-- `EXTRACTION_FAILED` / `RESPONSE_FAILED` / `COMPLETED`
-- Retry: extraction-failed → full pipeline; response-failed → generation only (no duplicate assertions)
+- `persistExtraction` wraps `repo.Transaction`
+- `persistExtractionWithRepo` uses `txRepo` for assertions, evidence refs, gaps, conflicts
 
-### Apply / stale / atomic
+### STEP 7–8 — Proposal STALE race + CAS
 
-- Stale proposal: persist `STALE` then return `FORMA_PROPOSAL_STALE` (no rollback of status)
-- Apply: fail-closed without `db`+`businessRepo`; `GetProposalForUpdate` for concurrent apply guard
-- Edit-before-confirm: `ValidateAssertionEdit` before supersede
+- Transaction内 stale → return `ErrProposalStale` (no in-tx status write → no rollback)
+- Post-tx: `MarkProposalStaleIfReady` (CAS `READY_FOR_REVIEW` → `STALE`)
+- `APPLIED` never overwritten by stale handler
 
-### Tests
+### STEP 10 — Transaction test infrastructure
 
-- Snapshot mem repo transaction rollback
-- Concurrent turn sequences (10 goroutines)
-- Same `client_request_id` idempotency
-- Response-failed retry without assertion duplication
-- Proposal stale persistence
+- `memAnalystRepo.txnMu` serializes snapshot transactions for concurrent tests
 
-### Frontend
+### STEP 11–13 — Contracts preserved
 
-- Retry button for `EXTRACTION_FAILED` / `RESPONSE_FAILED` / `FAILED`
+- Turn lineage: `next_turn_sequence` / `reserved_reply_sequence` / `reply_to_turn_id`
+- Retry state machine: `EXTRACTION_FAILED` → full; `RESPONSE_FAILED` → generation only
+- Production fail-closed: no `DeterministicFakeModel` in wiring
+- Analyst turns: unique `client_request_id` (turn id) to satisfy session idempotency unique key
 
-### Still pending
+### Local compile gate (Docker Go 1.24)
 
-- G16 Live Model E2E (requires configured Coze/Eino model)
-- G17 Browser E2E + `forma/cursor-results/s3-ui/`
-- Forma CI green verification after push
+```
+go test ./domain/forma/... ./crossdomain/forma/... ./application/forma/... -count=1  → PASS
+go test ./domain/forma/analyst/... -count=1                                         → PASS
+```
+
+### New / expanded tests
+
+- `TestConcurrentSameClientRequestIdempotent` — 10 concurrent same CR → 1 turn, `next_turn_sequence = 3`
+- `TestExtractionPersistenceRollback` — fail on 2nd assertion → 0 assertions; retry → single complete set
+- `TestProposalStaleDetectedInTransaction` — in-tx stale, CAS mark, no r3
+- `TestMarkProposalStaleDoesNotOverwriteApplied` — APPLIED not reverted to STALE
 
 ## Gate Evidence
 
 | Gate | Status |
 |------|--------|
-| G01–G15 | Implemented + expanded tests |
-| G16 Live model | **Pending / BLOCKED without real model** |
-| G17 Browser | **Pending** |
-| G21 Forma CI | **Pending push** |
+| Backend compile | **PASS** (local) |
+| Idempotency / sequence | **PASS** (tests) |
+| Extraction atomicity / rollback | **PASS** (tests) |
+| Stale race + CAS | **PASS** (tests) |
+| Transaction concurrency | **PASS** (tests) |
+| Retry state machine | **PASS** (tests) |
+| Forma CI all green | **PENDING** (post `f52e355c`) |
+| G16 Live Model E2E | **BLOCKED** — requires real Coze/Eino model |
+| G17 Browser E2E + `forma/cursor-results/s3-ui/` | **PENDING** |
+| No silent mutation | **PENDING** (browser) |
+| Provenance hard gate | **PENDING** (browser) |
+| Tenant isolation | **PENDING** (browser) |
+
+## Target final status
+
+When **CI ALL GREEN + Live Model PASS + Browser PASS + all hard gates PASS**:
+
+→ `PASS_WITH_REVIEW_GATE` (not FROZEN)
 
 **DO NOT START S4.** No `forma-s3-frozen`.
