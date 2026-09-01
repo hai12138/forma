@@ -160,3 +160,24 @@ func TestDiffDeterministicSorted(t *testing.T) {
 	require.Equal(t, imp1, imp2)
 	require.Equal(t, []string{"n1", "n3", "n5", "n9"}, imp1.AffectedNodeIDs)
 }
+
+func TestRejectGlobalSemanticIDCollision(t *testing.T) {
+	m := sampleModel()
+	m.States = append(m.States, entity.BusinessState{
+		ID: "n1", ObjectRef: "n2", Name: "碰撞", SourceMarker: entity.SourceManualModified,
+	})
+	require.ErrorIs(t, ValidateSemanticModel(m), entity.ErrInvalidModel)
+
+	m2 := sampleModel()
+	m2.Rules = append(m2.Rules, entity.BusinessRule{
+		ID: "e1", Name: "撞边", SourceMarker: entity.SourceManualModified,
+	})
+	require.ErrorIs(t, ValidateSemanticModel(m2), entity.ErrInvalidModel)
+
+	m3 := sampleModel()
+	m3.Edges = append(m3.Edges, entity.SemanticEdge{
+		ID: "r1", Source: "n1", Target: "n2", Type: entity.EdgeRelatesTo, Label: "x",
+		SourceMarker: entity.SourceManualModified,
+	})
+	require.ErrorIs(t, ValidateSemanticModel(m3), entity.ErrInvalidModel)
+}

@@ -17,6 +17,10 @@ import {
 } from './edit-buffer';
 import { computeAutoLayout } from './auto-layout';
 import { adaptModelForPersistence, canonicalizeNodeType } from './canonical';
+import {
+  formatValidationIssues,
+  validateEditorSemanticModel,
+} from './semantic-validator';
 import { emptyLayout, emptySemanticModel, workOrderSeed } from './work-order-seed';
 import { createBusinessSubmitHandler } from './create-handlers';
 
@@ -200,5 +204,89 @@ describe('edge endpoints', () => {
     expect(isEdgeEndpoint(model, 'obj_work_order')).toBe(true);
     expect(isEdgeEndpoint(model, 'st_pending')).toBe(true);
     expect(isEdgeEndpoint(model, 'rule_close_permission')).toBe(false);
+  });
+});
+
+describe('S2-G2 editor validity', () => {
+  it('blocks add-state when empty model has no nodes', () => {
+    const model = emptySemanticModel();
+    expect(model.nodes.length).toBe(0);
+    // UI disables add-state when nodes.length===0; creating with empty object_ref fails preflight
+    const illegal = {
+      ...model,
+      states: [
+        {
+          id: 'st_x',
+          object_ref: '',
+          name: '新状态',
+          source_marker: 'MANUAL_MODIFIED' as const,
+        },
+      ],
+    };
+    const result = validateEditorSemanticModel(illegal);
+    expect(result.ok).toBe(false);
+    expect(result.issues.some(i => i.code === 'STATE_OBJECT_REF_INVALID')).toBe(true);
+  });
+
+  it('state object_ref must point to existing node', () => {
+    const model = workOrderSeed();
+    const bad = structuredClone(model);
+    bad.states[0].object_ref = 'missing_node';
+    expect(validateEditorSemanticModel(bad).ok).toBe(false);
+    bad.states[0].object_ref = 'obj_work_order';
+    expect(validateEditorSemanticModel(bad).ok).toBe(true);
+  });
+
+  it('rule applies_to must reference node or state only', () => {
+    const model = workOrderSeed();
+    const bad = structuredClone(model);
+    bad.rules[0].applies_to = ['rule_close_permission'];
+    expect(validateEditorSemanticModel(bad).ok).toBe(false);
+    bad.rules[0].applies_to = ['obj_work_order', 'st_pending'];
+    expect(validateEditorSemanticModel(bad).ok).toBe(true);
+  });
+
+  it('blank node/state/rule names fail preflight', () => {
+    const model = workOrderSeed();
+    const blankNode = structuredClone(model);
+    blankNode.nodes[0].name = '   ';
+    expect(validateEditorSemanticModel(blankNode).issues.some(i => i.code === 'NODE_NAME_EMPTY')).toBe(
+      true,
+    );
+    const blankState = structuredClone(model);
+    blankState.states[0].name = '';
+    expect(
+      validateEditorSemanticModel(blankState).issues.some(i => i.code === 'STATE_NAME_EMPTY'),
+    ).toBe(true);
+    const blankRule = structuredClone(model);
+    blankRule.rules[0].name = ' ';
+    expect(validateEditorSemanticModel(blankRule).issues.some(i => i.code === 'RULE_NAME_EMPTY')).toBe(
+      true,
+    );
+  });
+
+  it('preflight invalid reference blocks save API', async () => {
+    const putBusinessModel = vi.fn();
+    const model = workOrderSeed();
+    model.states[0].object_ref = 'gone';
+    const preflight = validateEditorSemanticModel(model);
+    expect(preflight.ok).toBe(false);
+    if (!preflight.ok) {
+      // Save Model path must not call API
+      expect(putBusinessModel).not.toHaveBeenCalled();
+      expect(formatValidationIssues(preflight).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('valid work-order model passes preflight', () => {
+    expect(validateEditorSemanticModel(workOrderSeed()).ok).toBe(true);
+  });
+
+  it('duplicate semantic element IDs fail preflight', () => {
+    const model = workOrderSeed();
+    model.states[0].id = 'obj_work_order';
+    const result = validateEditorSemanticModel(model);
+    expect(result.ok).toBe(false);
+    expect(result.issues.some(i => i.code === 'ID_COLLISION')).toBe(true);
   });
 });

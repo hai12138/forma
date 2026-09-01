@@ -470,7 +470,18 @@ export function VisualModelEditor({
           <button
             type="button"
             className="forma-vme-btn"
+            data-testid="add-state"
+            disabled={model.nodes.length === 0}
+            title={
+              model.nodes.length === 0
+                ? '请先创建一个业务元素，再为其定义状态。'
+                : '新增状态'
+            }
             onClick={() => {
+              if (model.nodes.length === 0) {
+                setHint('请先创建一个业务元素，再为其定义状态。');
+                return;
+              }
               const id = `st_${Date.now().toString(36)}`;
               setSemantic(
                 {
@@ -479,7 +490,7 @@ export function VisualModelEditor({
                     ...model.states,
                     {
                       id,
-                      object_ref: model.nodes[0]?.id ?? '',
+                      object_ref: model.nodes[0].id,
                       name: '新状态',
                       source_marker: 'MANUAL_MODIFIED',
                     },
@@ -502,6 +513,7 @@ export function VisualModelEditor({
           <button
             type="button"
             className="forma-vme-btn"
+            data-testid="add-rule"
             onClick={() => {
               const id = `rule_${Date.now().toString(36)}`;
               setSemantic(
@@ -776,6 +788,7 @@ export function VisualModelEditor({
           <PropertyPanel
             readOnly={readOnly}
             nameInputRef={nameInputRef}
+            model={model}
             selectedNode={selectedNode}
             selectedEdge={selectedEdge}
             selectedState={selectedState}
@@ -820,6 +833,7 @@ export function VisualModelEditor({
                 '更新规则属性',
               );
             }}
+            onHint={setHint}
             onDelete={removeSelected}
           />
         </aside>
@@ -861,6 +875,7 @@ function SourceMarkerBadge({ marker }: { marker?: string }) {
 function PropertyPanel({
   readOnly,
   nameInputRef,
+  model,
   selectedNode,
   selectedEdge,
   selectedState,
@@ -869,10 +884,12 @@ function PropertyPanel({
   onUpdateEdge,
   onUpdateState,
   onUpdateRule,
+  onHint,
   onDelete,
 }: {
   readOnly?: boolean;
   nameInputRef?: RefObject<HTMLInputElement | null>;
+  model: FormaSemanticModel;
   selectedNode?: FormaSemanticNode;
   selectedEdge?: FormaSemanticEdge;
   selectedState?: FormaBusinessState;
@@ -881,6 +898,7 @@ function PropertyPanel({
   onUpdateEdge: (e: FormaSemanticEdge, note?: string) => void;
   onUpdateState: (s: FormaBusinessState) => void;
   onUpdateRule: (r: FormaBusinessRule) => void;
+  onHint: (msg: string) => void;
   onDelete: () => void;
 }) {
   if (selectedNode) {
@@ -890,16 +908,22 @@ function PropertyPanel({
         onBlur={e => {
           if (readOnly) return;
           const form = e.currentTarget;
-          const name = (form.elements.namedItem('name') as HTMLInputElement).value;
+          const nameInput = form.elements.namedItem('name') as HTMLInputElement;
+          const name = nameInput.value;
           const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
           const description = (form.elements.namedItem('description') as HTMLTextAreaElement)
             .value;
+          if (!name.trim()) {
+            onHint('节点名称不能为空');
+            nameInput.value = selectedNode.name;
+            return;
+          }
           if (
             name !== selectedNode.name ||
             type !== selectedNode.type ||
             description !== (selectedNode.description || '')
           ) {
-            onUpdateNode({ ...selectedNode, name, type, description });
+            onUpdateNode({ ...selectedNode, name: name.trim(), type, description });
           }
         }}
       >
@@ -917,6 +941,7 @@ function PropertyPanel({
             key={selectedNode.id + '-n'}
             disabled={readOnly}
             data-testid="node-name-input"
+            required
           />
         </label>
         <label>
@@ -960,14 +985,16 @@ function PropertyPanel({
         onBlur={e => {
           if (readOnly) return;
           const form = e.currentTarget;
-          const label = (form.elements.namedItem('label') as HTMLInputElement).value;
+          const labelInput = form.elements.namedItem('label') as HTMLInputElement;
+          const label = labelInput.value;
           const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
           if (!label.trim()) {
-            onUpdateEdge({ ...selectedEdge, label: selectedEdge.label || '关联', type });
+            onHint('关系标签不能为空');
+            labelInput.value = selectedEdge.label || '关联';
             return;
           }
           if (label !== (selectedEdge.label || '') || type !== selectedEdge.type) {
-            onUpdateEdge({ ...selectedEdge, label, type });
+            onUpdateEdge({ ...selectedEdge, label: label.trim(), type });
           }
         }}
       >
@@ -1016,16 +1043,27 @@ function PropertyPanel({
   }
 
   if (selectedState) {
+    const refValid = model.nodes.some(n => n.id === selectedState.object_ref);
     return (
       <form
         onSubmit={e => e.preventDefault()}
         onBlur={e => {
           if (readOnly) return;
           const form = e.currentTarget;
-          const name = (form.elements.namedItem('name') as HTMLInputElement).value;
-          const object_ref = (form.elements.namedItem('object_ref') as HTMLInputElement).value;
+          const nameInput = form.elements.namedItem('name') as HTMLInputElement;
+          const name = nameInput.value;
+          const object_ref = (form.elements.namedItem('object_ref') as HTMLSelectElement).value;
+          if (!name.trim()) {
+            onHint('状态名称不能为空');
+            nameInput.value = selectedState.name;
+            return;
+          }
+          if (!object_ref || !model.nodes.some(n => n.id === object_ref)) {
+            onHint('请选择合法的业务元素作为状态对象');
+            return;
+          }
           if (name !== selectedState.name || object_ref !== selectedState.object_ref) {
-            onUpdateState({ ...selectedState, name, object_ref });
+            onUpdateState({ ...selectedState, name: name.trim(), object_ref });
           }
         }}
       >
@@ -1041,16 +1079,31 @@ function PropertyPanel({
             defaultValue={selectedState.name}
             key={selectedState.id + '-n'}
             disabled={readOnly}
+            data-testid="state-name-input"
+            required
           />
         </label>
         <label>
-          对象引用
-          <input
-            name="object_ref"
-            defaultValue={selectedState.object_ref}
-            key={selectedState.id + '-o'}
-            disabled={readOnly}
-          />
+          对象
+          {readOnly && !refValid ? (
+            <p data-testid="invalid-object-ref" style={{ color: '#c0392b' }}>
+              Invalid reference: {selectedState.object_ref || '(empty)'}
+            </p>
+          ) : (
+            <select
+              name="object_ref"
+              defaultValue={refValid ? selectedState.object_ref : model.nodes[0]?.id}
+              key={selectedState.id + '-o'}
+              disabled={readOnly}
+              data-testid="state-object-ref-select"
+            >
+              {model.nodes.map(n => (
+                <option key={n.id} value={n.id}>
+                  {n.name}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
         {!readOnly && (
           <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
@@ -1062,21 +1115,39 @@ function PropertyPanel({
   }
 
   if (selectedRule) {
+    const appliesCandidates = [
+      ...model.nodes.map(n => ({
+        id: n.id,
+        label: `${n.name} · ${styleFor(n.type).label}`,
+        kind: 'node' as const,
+      })),
+      ...model.states.map(s => ({
+        id: s.id,
+        label: `${s.name} · 状态`,
+        kind: 'state' as const,
+      })),
+    ];
     return (
       <form
         onSubmit={e => e.preventDefault()}
         onBlur={e => {
           if (readOnly) return;
           const form = e.currentTarget;
-          const name = (form.elements.namedItem('name') as HTMLInputElement).value;
+          const nameInput = form.elements.namedItem('name') as HTMLInputElement;
+          const name = nameInput.value;
           const expression = (form.elements.namedItem('expression') as HTMLTextAreaElement)
             .value;
           const description = (form.elements.namedItem('description') as HTMLTextAreaElement)
             .value;
-          const applies = (form.elements.namedItem('applies_to') as HTMLInputElement).value
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean);
+          const checks = form.querySelectorAll<HTMLInputElement>(
+            'input[name="applies_to"]:checked',
+          );
+          const applies = [...checks].map(c => c.value);
+          if (!name.trim()) {
+            onHint('规则名称不能为空');
+            nameInput.value = selectedRule.name;
+            return;
+          }
           if (
             name !== selectedRule.name ||
             expression !== (selectedRule.expression || '') ||
@@ -1085,7 +1156,7 @@ function PropertyPanel({
           ) {
             onUpdateRule({
               ...selectedRule,
-              name,
+              name: name.trim(),
               expression,
               description,
               applies_to: applies,
@@ -1105,17 +1176,31 @@ function PropertyPanel({
             defaultValue={selectedRule.name}
             key={selectedRule.id + '-n'}
             disabled={readOnly}
+            data-testid="rule-name-input"
+            required
           />
         </label>
-        <label>
-          applies_to（逗号分隔）
-          <input
-            name="applies_to"
-            defaultValue={(selectedRule.applies_to ?? []).join(', ')}
-            key={selectedRule.id + '-a'}
-            disabled={readOnly}
-          />
-        </label>
+        <fieldset data-testid="rule-applies-to" style={{ border: '1px solid #e4e8f0', padding: 8 }}>
+          <legend>适用于</legend>
+          {appliesCandidates.length === 0 && (
+            <p style={{ color: '#758196' }}>暂无可选业务元素/状态</p>
+          )}
+          {appliesCandidates.map(c => (
+            <label
+              key={c.id}
+              style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}
+            >
+              <input
+                type="checkbox"
+                name="applies_to"
+                value={c.id}
+                defaultChecked={(selectedRule.applies_to ?? []).includes(c.id)}
+                disabled={readOnly}
+              />
+              <span>{c.label}</span>
+            </label>
+          ))}
+        </fieldset>
         <label>
           表达式
           <textarea

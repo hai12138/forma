@@ -22,6 +22,10 @@ import {
   resetSemanticBaseline,
   type EditBuffer,
 } from '../edit-buffer';
+import {
+  formatValidationIssues,
+  validateEditorSemanticModel,
+} from '../semantic-validator';
 import { emptyLayout, emptySemanticModel, workOrderDefaultLayout } from '../work-order-seed';
 import '../styles/editor.css';
 
@@ -115,6 +119,12 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
 
   const saveModel = async () => {
     if (!buffer || !businessId || !isSemanticDirty(buffer)) return;
+    const preflight = validateEditorSemanticModel(buffer.current.semantic_model);
+    if (!preflight.ok) {
+      setError(formatValidationIssues(preflight));
+      setMessage('保存已阻止：模型未通过编辑器校验');
+      return;
+    }
     setSavingModel(true);
     setError(null);
     try {

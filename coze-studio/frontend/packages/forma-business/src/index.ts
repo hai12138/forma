@@ -32,5 +32,10 @@ export {
   canonicalizeNodeType,
   adaptModelForPersistence,
 } from './canonical';
+export {
+  validateEditorSemanticModel,
+  formatValidationIssues,
+} from './semantic-validator';
+export type { SemanticValidationIssue, SemanticValidationResult } from './semantic-validator';
 
 export { workOrderSeed, workOrderDefaultLayout, emptySemanticModel, emptyLayout } from './work-order-seed';

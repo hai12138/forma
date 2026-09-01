@@ -2,9 +2,9 @@
 
 ## Status
 
-**PASS_WITH_REVIEW_GATE**
+**PASS_WITH_FINAL_REVIEW_GATE**
 
-S2 implementation + **S2-G1 Canonicality & Browser Closure** complete locally.
+S2 + **S2-G1 Canonicality & Browser Closure** + **S2-G2 Editor Validity Closure** complete.
 **DO NOT START S3.** Do **not** create `forma-s2-frozen` until human final review.
 
 ## Frozen Baseline
@@ -16,6 +16,8 @@ S2 implementation + **S2-G1 Canonicality & Browser Closure** complete locally.
 | S1 Tag CI | [33406827644](https://github.com/hai12138/forma/actions/runs/33406827644) ALL GREEN |
 | S2 tip (pre-G1) | `30112654dd8c349505c07c930ee18986023c1344` |
 | S2 Forma CI (pre-G1) | [33453550169](https://github.com/hai12138/forma/actions/runs/33453550169) ALL GREEN |
+| S2-G1 tip | `f6d24f9a907aad8f671fbe373d4cef8ca3ae9d12` |
+| S2-G1 Forma CI | [33460385171](https://github.com/hai12138/forma/actions/runs/33460385171) ALL GREEN |
 | Coze upstream | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 | Runtime | Coze / Eino |
 | STEP 0 | PASS — `forma-s1-frozen` present; main contains S1 |
@@ -34,6 +36,7 @@ S2 implementation + **S2-G1 Canonicality & Browser Closure** complete locally.
 - `docker/atlas/forma/migrations/20250901000000_s2_business_model.sql` + `atlas.sum`
 - `scripts/forma/live-business-e2e.mjs` (tenant isolation expansion)
 - `scripts/forma/s2-g1-browser-gates.mjs` (**MANUAL_LIVE_BROWSER_GATE**)
+- `scripts/forma/s2-g2-browser-validity-gates.mjs` (**MANUAL_LIVE_BROWSER_VALIDITY_GATE**)
 
 ### Frontend
 - `frontend/packages/forma-business/` — Visual Model Editor
@@ -42,6 +45,7 @@ S2 implementation + **S2-G1 Canonicality & Browser Closure** complete locally.
   - Dependency-aware delete; Rule not edge endpoint
   - Edge type dropdown + required label
   - Double-click name edit; historical revision read-only view
+  - S2-G2: State/Rule selectors, required-name guard, `semantic-validator.ts` preflight
 - `frontend/packages/forma-api-client` — Business API types/methods
 - `frontend/apps/forma` — routes `/business`, `/business/:businessId`
 
@@ -155,23 +159,39 @@ Golden Reference: `forma-reference/v1.2/Forma-Business-to-Agent-Platform-v1.2-Vi
 | Tenant Isolation Expansion | PASS — all business handlers |
 | CI | S0/S1/S2 jobs retained; G1 unit tests in domain + `@forma/business` |
 
+## S2-G2 Editor Validity Closure
+
+| Item | Result |
+|------|--------|
+| State creation validity | PASS — empty model disables ＋状态 |
+| State object_ref selector | PASS — select from model.nodes only |
+| Rule applies_to selector | PASS — checkbox Node/State candidates |
+| Required name validation | PASS — blank Node/State/Rule names blocked in UI |
+| Frontend preflight | PASS — `validateEditorSemanticModel` before Save Model API |
+| Semantic ID uniqueness | PASS — Nodes/States/Rules/Edges global unique (BE+FE) |
+| Browser validity gate | PASS — `s2-g2-browser-validity-gates.mjs` CASE A–E |
+| CI | Domain + `@forma/business` tests extended; await G2 tip CI |
+
 ## CI
 
 S2 pre-G1 tip CI: [33453550169](https://github.com/hai12138/forma/actions/runs/33453550169)
+
+S2-G1 Forma CI: [33460385171](https://github.com/hai12138/forma/actions/runs/33460385171)
 
 - forma-backend = PASS
 - forma-migration-apply = PASS
 - forma-frontend = PASS
 
-→ **GATE-18 = PASS**
+→ **GATE-18 = PASS** (S2-G1 confirmed ALL GREEN)
 
-S2-G1 push will re-run Forma CI; await ALL GREEN + human review before freeze.
+S2-G2 tip Forma CI will re-run on push; await ALL GREEN + human final review before `forma-s2-frozen`.
 
-Local verification:
-- `go test ./domain/forma/business/...` PASS (Docker golang:1.24)
-- `@forma/business` vitest 11/11 PASS
-- Live business E2E PASS
-- MANUAL_LIVE_BROWSER_GATE PASS (6/6)
+Local verification (S2-G2):
+- `go test ./domain/forma/business/...` PASS
+- `@forma/business` vitest 18/18 PASS
+- Live business E2E PASS (no regression)
+- S2-G1 MANUAL_LIVE_BROWSER_GATE PASS (6/6)
+- S2-G2 MANUAL_LIVE_BROWSER_VALIDITY_GATE PASS (6/6)
 
 ## Coze Core Files Modified
 
@@ -226,10 +246,10 @@ Local verification:
 
 ---
 
-**Status = PASS_WITH_REVIEW_GATE**
+**Status = PASS_WITH_FINAL_REVIEW_GATE**
 
 **DO NOT START S3.**
 
 **DO NOT create `forma-s2-frozen` this round.**
 
-等待人工审核。
+等待人工最终源码审核。

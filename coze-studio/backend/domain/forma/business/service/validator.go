@@ -92,13 +92,23 @@ func ValidateSemanticModel(m *entity.SemanticModel) error {
 	}
 
 	nodeIDs := map[string]bool{}
+	// Global semantic element ID namespace: nodes + states + rules + edges must be unique.
+	globalIDs := map[string]string{}
+	claimID := func(id, kind string) error {
+		if prev, ok := globalIDs[id]; ok {
+			return fmt.Errorf("%w: duplicate semantic id %q (%s conflicts with %s)", entity.ErrInvalidModel, id, kind, prev)
+		}
+		globalIDs[id] = kind
+		return nil
+	}
+
 	for i, n := range m.Nodes {
 		id := strings.TrimSpace(n.ID)
 		if id == "" {
 			return fmt.Errorf("%w: node[%d] id empty", entity.ErrInvalidModel, i)
 		}
-		if nodeIDs[id] {
-			return fmt.Errorf("%w: duplicate node id %q", entity.ErrInvalidModel, id)
+		if err := claimID(id, "node"); err != nil {
+			return err
 		}
 		nodeIDs[id] = true
 		if strings.TrimSpace(n.Name) == "" {
@@ -123,8 +133,8 @@ func ValidateSemanticModel(m *entity.SemanticModel) error {
 		if id == "" {
 			return fmt.Errorf("%w: state[%d] id empty", entity.ErrInvalidModel, i)
 		}
-		if stateIDs[id] || nodeIDs[id] {
-			return fmt.Errorf("%w: duplicate state id %q", entity.ErrInvalidModel, id)
+		if err := claimID(id, "state"); err != nil {
+			return err
 		}
 		stateIDs[id] = true
 		if strings.TrimSpace(s.Name) == "" {
@@ -142,16 +152,14 @@ func ValidateSemanticModel(m *entity.SemanticModel) error {
 
 	endpointOK := func(id string) bool { return nodeIDs[id] || stateIDs[id] }
 
-	edgeIDs := map[string]bool{}
 	for i, e := range m.Edges {
 		id := strings.TrimSpace(e.ID)
 		if id == "" {
 			return fmt.Errorf("%w: edge[%d] id empty", entity.ErrInvalidModel, i)
 		}
-		if edgeIDs[id] {
-			return fmt.Errorf("%w: duplicate edge id %q", entity.ErrInvalidModel, id)
+		if err := claimID(id, "edge"); err != nil {
+			return err
 		}
-		edgeIDs[id] = true
 		if !endpointOK(e.Source) || !endpointOK(e.Target) {
 			return fmt.Errorf("%w: edge %q dangling endpoints", entity.ErrInvalidRelation, id)
 		}
@@ -174,16 +182,14 @@ func ValidateSemanticModel(m *entity.SemanticModel) error {
 		m.Edges[i].SourceMarker = marker
 	}
 
-	ruleIDs := map[string]bool{}
 	for i, r := range m.Rules {
 		id := strings.TrimSpace(r.ID)
 		if id == "" {
 			return fmt.Errorf("%w: rule[%d] id empty", entity.ErrInvalidModel, i)
 		}
-		if ruleIDs[id] {
-			return fmt.Errorf("%w: duplicate rule id %q", entity.ErrInvalidModel, id)
+		if err := claimID(id, "rule"); err != nil {
+			return err
 		}
-		ruleIDs[id] = true
 		if strings.TrimSpace(r.Name) == "" {
 			return fmt.Errorf("%w: rule %q name empty", entity.ErrInvalidModel, id)
 		}
