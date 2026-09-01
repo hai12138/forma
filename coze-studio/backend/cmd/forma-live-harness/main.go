@@ -77,8 +77,7 @@ func main() {
 	}
 
 	oss := &memStorage{}
-	// Passport register reads config.Base(); full modelmgr init is not required for S1-G1 live gates.
-	bizconfig.InitBaseForLiveHarness(db)
+	bizconfig.InitLiveHarness(ctx, db, oss)
 	userSVC := userApp.InitService(ctx, db, oss, idGen)
 	crossuser.SetDefaultSVC(userImpl.InitDomainService(userSVC.DomainSVC))
 

@@ -265,7 +265,7 @@ func (m *memAnalystRepo) UpdateTurnAnalysis(_ context.Context, tenantID, turnID 
 	t.ModelRequestID = modelRequestID
 	return nil
 }
-func (m *memAnalystRepo) ClaimTurnForRetry(_ context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string) (bool, error) {
+func (m *memAnalystRepo) ClaimTurnForRetry(_ context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string, analysisLeaseCutoff time.Time) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if claimToken == "" {
@@ -285,8 +285,19 @@ func (m *memAnalystRepo) ClaimTurnForRetry(_ context.Context, tenantID, turnID s
 	if !statusOK {
 		return false, nil
 	}
-	if t.ModelRequestID != "" && t.ModelRequestID != claimToken && strings.HasPrefix(t.ModelRequestID, "retry_claim:") {
-		return false, nil
+	mrid := t.ModelRequestID
+	if mrid != "" && mrid != claimToken {
+		if strings.HasPrefix(mrid, retryClaimPrefix) {
+			return false, nil
+		}
+		if strings.HasPrefix(mrid, analysisClaimPrefix) && t.CreatedAt.After(analysisLeaseCutoff) {
+			return false, nil
+		}
+		if strings.HasPrefix(mrid, analysisClaimPrefix) && !t.CreatedAt.After(analysisLeaseCutoff) {
+			// expired analysis claim — allow retry takeover
+		} else if mrid != "" && !strings.HasPrefix(mrid, analysisClaimPrefix) {
+			// failed-state mreq id — allow retry
+		}
 	}
 	t.ModelRequestID = claimToken
 	return true, nil
@@ -1199,4 +1210,140 @@ func TestExtractionPersistenceRollback(t *testing.T) {
 	allAssertions, _ = ar.ListAssertions(ctx, "t1", "b1")
 	require.Greater(t, len(allAssertions), 0)
 	require.Equal(t, 1, evCount)
+}
+
+func seedPendingTurnWithEvidence(
+	ar *memAnalystRepo,
+	tenantID, businessID, sessionID, turnID, actorID, content string,
+	createdAt time.Time,
+	modelRequestID string,
+) {
+	now := createdAt
+	ar.turns[turnID] = &entity.AnalystTurn{
+		TurnID:          turnID,
+		TenantID:        tenantID,
+		SessionID:       sessionID,
+		Sequence:        1,
+		Speaker:         entity.SpeakerUser,
+		Content:         content,
+		ContentType:     entity.ContentText,
+		ClientRequestID: turnID,
+		ModelRequestID:  modelRequestID,
+		AnalysisStatus:  entity.AnalysisPending,
+		CreatedAt:       now,
+	}
+	evID := turnID + "_ev"
+	ar.evidence[evID] = &entity.BusinessEvidence{
+		EvidenceID:    evID,
+		TenantID:      tenantID,
+		BusinessID:    businessID,
+		SessionID:     sessionID,
+		TurnID:        turnID,
+		SourceType:    entity.EvidenceInterviewTurn,
+		SourceRef:     turnID,
+		Quote:         content,
+		ContentDigest: digestString(content),
+		CreatedBy:     actorID,
+		CreatedAt:     now,
+	}
+}
+
+func TestActivePendingCannotRetry(t *testing.T) {
+	ar := newMemAnalystRepo()
+	br := newBusinessTestMem()
+	model := &recordingAnalystModel{}
+	svc := NewAnalystService(&Components{
+		Repo:         ar,
+		BusinessSVC:  businesssvc.NewBusinessService(&businesssvc.Components{Repo: br}),
+		BusinessRepo: br,
+		Model:        model,
+	})
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+	sess, _ := svc.CreateSession(ctx, "t1", "b1", "test", "p1", entity.PolicyDevelopment)
+
+	turnID := "turn_pending_active"
+	seedPendingTurnWithEvidence(ar, "t1", "b1", sess.SessionID, turnID, "p1", "pending content", time.Now().UTC(), analysisClaimID("mreq_active"))
+
+	_, err := svc.RetryTurnAnalysis(ctx, "t1", "b1", sess.SessionID, turnID, "p1")
+	require.NoError(t, err)
+
+	model.mu.Lock()
+	extractCalls := len(model.extractCalls)
+	model.mu.Unlock()
+	require.Equal(t, 0, extractCalls, "active PENDING lease must block retry analysis")
+}
+
+func TestAbandonedPendingCanRetryAfterLease(t *testing.T) {
+	ar := newMemAnalystRepo()
+	br := newBusinessTestMem()
+	model := &recordingAnalystModel{}
+	svc := NewAnalystService(&Components{
+		Repo:         ar,
+		BusinessSVC:  businesssvc.NewBusinessService(&businesssvc.Components{Repo: br}),
+		BusinessRepo: br,
+		Model:        model,
+	})
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+	sess, _ := svc.CreateSession(ctx, "t1", "b1", "test", "p1", entity.PolicyDevelopment)
+
+	turnID := "turn_pending_abandoned"
+	staleAt := time.Now().UTC().Add(-analysisPendingLease - time.Minute)
+	seedPendingTurnWithEvidence(ar, "t1", "b1", sess.SessionID, turnID, "p1", "stale pending", staleAt, analysisClaimID("mreq_stale"))
+
+	res, err := svc.RetryTurnAnalysis(ctx, "t1", "b1", sess.SessionID, turnID, "p1")
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.False(t, res.ModelFailed)
+
+	model.mu.Lock()
+	extractCalls := len(model.extractCalls)
+	model.mu.Unlock()
+	require.Equal(t, 1, extractCalls, "abandoned PENDING must allow retry after lease")
+}
+
+func TestConcurrentRetryOnlyOneClaim(t *testing.T) {
+	ar := newMemAnalystRepo()
+	br := newBusinessTestMem()
+	model := &recordingAnalystModel{}
+	svc := NewAnalystService(&Components{
+		Repo:         ar,
+		BusinessSVC:  businesssvc.NewBusinessService(&businesssvc.Components{Repo: br}),
+		BusinessRepo: br,
+		Model:        model,
+	})
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+	sess, _ := svc.CreateSession(ctx, "t1", "b1", "test", "p1", entity.PolicyDevelopment)
+
+	res, err := svc.SubmitTurn(ctx, "t1", "b1", sess.SessionID, "fail path", "cr_fail_retry", "p1")
+	require.NoError(t, err)
+	_ = ar.UpdateTurnAnalysis(ctx, "t1", res.UserTurn.TurnID, entity.AnalysisExtractionFailed, "mreq_failed")
+
+	model.mu.Lock()
+	model.extractCalls = nil
+	model.mu.Unlock()
+
+	const n = 10
+	results := make([]*entity.TurnSubmissionResult, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = svc.RetryTurnAnalysis(ctx, "t1", "b1", sess.SessionID, res.UserTurn.TurnID, "p1")
+		}(i)
+	}
+	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		require.NoError(t, errs[i])
+	}
+
+	model.mu.Lock()
+	extractCalls := len(model.extractCalls)
+	model.mu.Unlock()
+	require.Equal(t, 1, extractCalls, "concurrent retry must claim exactly once")
 }

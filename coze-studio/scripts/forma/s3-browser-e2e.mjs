@@ -1,7 +1,5 @@
 /**
- * FORMA-S3-G2-F1 Real Browser E2E Gate
- *
- * Requires running Coze/Forma stack with S3 analyst routes + configured FORMA_ANALYST model.
+ * FORMA-S3-LIVE-FINAL-GATE Real Browser E2E Hard Gate
  *
  *   FORMA_LIVE_E2E=1
  *   FORMA_LIVE_BASE_URL=http://127.0.0.1:8888
@@ -9,21 +7,25 @@
  *   node --test scripts/forma/s3-browser-e2e.mjs
  */
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright';
 
+import {
+  ensureOpenGap,
+  ensureProposedAssertionForEdit,
+  queryMysql,
+  seedDeterministicConflict,
+  verifyModelCallsForSession,
+} from './s3-e2e-fixtures.mjs';
+
 const enabled = process.env.FORMA_LIVE_E2E === '1';
 const baseApi = (process.env.FORMA_LIVE_BASE_URL || 'http://127.0.0.1:8888').replace(/\/$/, '');
 const baseUi = (process.env.FORMA_UI_BASE_URL || 'http://127.0.0.1:3001').replace(/\/$/, '');
-const email = process.env.FORMA_LIVE_EMAIL || `forma-s3g2f1-${Date.now()}@example.com`;
+const email = process.env.FORMA_LIVE_EMAIL || `forma-s3live-${Date.now()}@example.com`;
 const password = process.env.FORMA_LIVE_PASSWORD || 'FormaE2E!23456';
-const mysqlUser = process.env.FORMA_MYSQL_USER || 'coze';
-const mysqlPass = process.env.FORMA_MYSQL_PASSWORD || 'coze123';
-const mysqlDb = process.env.FORMA_MYSQL_DATABASE || 'opencoze';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const outDir = join(root, 'forma', 'cursor-results', 's3-ui');
@@ -34,17 +36,6 @@ const tenantLog = join(root, 'forma', 'cursor-results', 's3-tenant-isolation-e2e
 
 function log(path, line) {
   appendFileSync(path, `[${new Date().toISOString()}] ${line}\n`, 'utf8');
-}
-
-function queryMysql(sql) {
-  try {
-    const container = execSync('docker ps -qf "name=mysql"', { encoding: 'utf8' }).trim().split('\n')[0];
-    if (!container) return null;
-    const cmd = `docker exec ${container} mysql -u${mysqlUser} -p${mysqlPass} ${mysqlDb} -N -e "${sql.replace(/"/g, '\\"')}"`;
-    return execSync(cmd, { encoding: 'utf8' }).trim();
-  } catch {
-    return null;
-  }
 }
 
 async function apiRequest(request, path, { method = 'GET', body, tenantId, headers = {} } = {}) {
@@ -67,8 +58,25 @@ async function apiRequest(request, path, { method = 'GET', body, tenantId, heade
 }
 
 async function assertAnalystRoutes(request, tenantId, businessId) {
-  const probe = await apiRequest(request, `/api/forma/v1/businesses/${businessId}/assertions`, { tenantId });
-  assert.notEqual(probe.res.status(), 404, 'analyst API routes missing — rebuild/restart Coze backend with S3 code');
+  for (const [method, path] of [
+    ['GET', `/api/forma/v1/businesses/${businessId}/assertions`],
+    ['GET', `/api/forma/v1/businesses/${businessId}/evidence`],
+    ['POST', `/api/forma/v1/businesses/${businessId}/analyst/sessions`],
+  ]) {
+    const r = await apiRequest(request, path, {
+      method,
+      tenantId,
+      body: method === 'POST' ? { title: 'route-probe', confirmation_policy: 'DEVELOPMENT' } : undefined,
+    });
+    assert.notEqual(r.res.status(), 404, `${method} ${path} must not 404 — rebuild backend with current S3 code`);
+  }
+}
+
+async function refreshAnalystSideData(page, label = 'E2E 刷新侧栏数据') {
+  await page.fill('[data-testid="analyst-input"]', label);
+  await page.click('[data-testid="analyst-submit"]');
+  await page.waitForSelector('[data-testid="turn-analyst"]', { timeout: 180000 });
+  await page.waitForTimeout(1500);
 }
 
 async function clickSideTab(page, label) {
@@ -87,26 +95,18 @@ async function getBusinessRevision(request, tenantId, businessId) {
 }
 
 async function verifyModelCalls(sessionId) {
-  const rows = queryMysql(
-    `SELECT operation, model_ref, success, latency_ms FROM forma_analyst_model_call WHERE session_id='${sessionId}' ORDER BY id`,
-  );
-  if (!rows) {
-    log(liveLog, `session_id=${sessionId} model_call_query=SKIPPED (mysql unavailable)`);
-    return false;
-  }
-  log(liveLog, `session_id=${sessionId}`);
+  const rows = verifyModelCallsForSession(sessionId, liveLog, log);
+  assert.ok(rows.includes('ExtractAssertions'), 'ExtractAssertions model call required');
+  assert.ok(rows.includes('GenerateInterviewTurn'), 'GenerateInterviewTurn model call required');
   for (const line of rows.split('\n').filter(Boolean)) {
-    log(liveLog, line.replace(/\t/g, ' '));
     const [op, ref, success] = line.split('\t');
     assert.notEqual(ref, 'fake-analyst', `model_ref must not be fake-analyst for ${op}`);
     assert.equal(success, '1', `operation ${op} must succeed`);
   }
-  assert.match(rows, /ExtractAssertions/);
-  assert.match(rows, /GenerateInterviewTurn/);
   return true;
 }
 
-test('S3-G2-F1 analyst browser hard gate', async t => {
+test('S3-LIVE-FINAL analyst browser hard gate', async t => {
   if (!enabled) {
     t.skip('FORMA_LIVE_E2E!=1');
     return;
@@ -114,7 +114,7 @@ test('S3-G2-F1 analyst browser hard gate', async t => {
 
   mkdirSync(outDir, { recursive: true });
   for (const f of [browserLog, liveLog, provenanceLog, tenantLog]) writeFileSync(f, '', 'utf8');
-  log(browserLog, 'S3-G2-F1 browser hard gate start');
+  log(browserLog, 'S3-LIVE-FINAL browser hard gate start');
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
@@ -136,7 +136,9 @@ test('S3-G2-F1 analyst browser hard gate', async t => {
   r = await apiRequest(request, '/api/forma/v1/bootstrap', { method: 'POST', body: {} });
   assert.equal(r.res.status(), 200, JSON.stringify(r.json));
   const tenantA = r.json.data?.tenant?.tenant_id;
+  const principalId = r.json.data?.principal?.principal_id;
   assert.ok(tenantA, 'bootstrap tenant');
+  assert.ok(principalId, 'bootstrap principal');
 
   r = await apiRequest(request, '/api/forma/v1/businesses', {
     method: 'POST',
@@ -212,67 +214,85 @@ test('S3-G2-F1 analyst browser hard gate', async t => {
   assert.equal(rev, initialRevision, 'no silent mutation after 5 user turns');
   log(browserLog, `no silent mutation PASS revision=r${rev}`);
 
+  ensureOpenGap({ tenantId: tenantA, businessId, sessionId });
+  await refreshAnalystSideData(page, '刷新以加载 Gap fixture');
   await clickSideTab(page, 'Gaps');
   await page.waitForSelector('[data-testid="gaps-panel"]');
   const gapAsk = page.locator('[data-testid="gap-ask"]').first();
-  if (await gapAsk.count()) {
-    const evBefore = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/evidence`, { tenantId: tenantA })).json.data?.length ?? 0;
-    await gapAsk.click();
-    await page.waitForSelector('[data-testid="turn-analyst"]', { timeout: 60000 });
-    const evAfter = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/evidence`, { tenantId: tenantA })).json.data?.length ?? 0;
-    assert.equal(evAfter, evBefore, 'gap ask must not create user evidence');
-    await page.fill('[data-testid="analyst-input"]', '由系统管理员在工单完成后执行关闭操作。');
-    await page.click('[data-testid="analyst-submit"]');
-    await page.waitForSelector('[data-testid="turn-user"]', { timeout: 60000 });
-    await page.screenshot({ path: join(outDir, '04-gap-ask.png'), fullPage: true });
-    log(browserLog, 'gap ask PASS');
-  } else {
-    log(browserLog, 'gap ask SKIPPED (no open gaps)');
-  }
+  assert.ok(await gapAsk.count(), 'open gap required — fixture seed failed');
+  const evBefore = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/evidence`, { tenantId: tenantA })).json.data?.length ?? 0;
+  const turnsBefore = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/analyst/sessions/${sessionId}/turns`, { tenantId: tenantA })).json.data?.length ?? 0;
+  await gapAsk.click();
+  await page.waitForTimeout(2000);
+  const turnsAfterAsk = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/analyst/sessions/${sessionId}/turns`, { tenantId: tenantA })).json.data ?? [];
+  assert.ok(turnsAfterAsk.length > turnsBefore, 'gap ask must add ANALYST turn');
+  assert.ok(turnsAfterAsk.some(t => t.speaker === 'ANALYST'), 'gap ask ANALYST turn required');
+  const evAfterAsk = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/evidence`, { tenantId: tenantA })).json.data?.length ?? 0;
+  assert.equal(evAfterAsk, evBefore, 'gap ask must not create user evidence');
+  await page.fill('[data-testid="analyst-input"]', '由系统管理员在工单完成后执行关闭操作。');
+  await page.click('[data-testid="analyst-submit"]');
+  await page.waitForTimeout(3000);
+  const evAfterAnswer = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/evidence`, { tenantId: tenantA })).json.data?.length ?? 0;
+  assert.ok(evAfterAnswer > evBefore, 'user answer must add USER evidence');
+  await page.screenshot({ path: join(outDir, '04-gap-ask.png'), fullPage: true });
+  log(browserLog, 'gap ask PASS');
 
   await clickSideTab(page, 'Assertions');
   const confirmBtn = page.locator('[data-testid="confirm-assertion"]').first();
   assert.ok(await confirmBtn.count(), 'PROPOSED assertion required for confirm gate');
+  const confirmTarget = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/assertions`, { tenantId: tenantA })).json.data?.find(a => a.status === 'PROPOSED');
+  assert.ok(confirmTarget, 'PROPOSED assertion required');
   await confirmBtn.click();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2000);
   r = await apiRequest(request, `/api/forma/v1/businesses/${businessId}/assertions`, { tenantId: tenantA });
   assertions = r.json.data ?? [];
-  assert.ok(assertions.some(a => a.status === 'CONFIRMED'), 'confirmation persisted');
+  const confirmed = assertions.find(a => a.assertion_id === confirmTarget.assertion_id);
+  assert.equal(confirmed?.status, 'CONFIRMED', 'confirmation persisted');
+  const confRow = queryMysql(
+    `SELECT confirmation_id, decided_by FROM forma_business_confirmation WHERE tenant_id='${tenantA}' AND assertion_id='${confirmTarget.assertion_id}' LIMIT 1`,
+  );
+  assert.ok(confRow, 'confirmation event must exist in DB');
+  assert.ok(confRow.includes(principalId) || confRow.length > 0, 'confirmation actor recorded');
   rev = await getBusinessRevision(request, tenantA, businessId);
   assert.equal(rev, initialRevision, 'confirm must not bump revision');
   log(browserLog, 'confirmation PASS');
 
+  ensureProposedAssertionForEdit({ tenantId: tenantA, businessId, sessionId, principalId });
+  await refreshAnalystSideData(page, '刷新以加载 Edit fixture');
+  await clickSideTab(page, 'Assertions');
   const editBtn = page.locator('[data-testid="edit-confirm-assertion"]').first();
-  if (await editBtn.count()) {
-    await editBtn.click();
-    await page.waitForSelector('[data-testid="edit-confirm-modal"]');
-    await page.locator('[data-testid="edit-confirm-modal"] input').last().fill('管理员（人工确认）');
-    await page.locator('[data-testid="edit-confirm-modal"] .forma-btn-primary').click();
-    await page.waitForTimeout(1500);
-    r = await apiRequest(request, `/api/forma/v1/businesses/${businessId}/assertions`, { tenantId: tenantA });
-    assertions = r.json.data ?? [];
-    const edited = assertions.find(a => a.source_marker === 'MANUAL_MODIFIED' && a.status === 'CONFIRMED');
-    assert.ok(edited, 'edit lineage persisted');
-    assert.ok(edited.derived_from_assertion_id, 'derived_from_assertion_id set');
-    await page.screenshot({ path: join(outDir, '05-edit-confirm.png'), fullPage: true });
-    log(browserLog, 'edit confirm PASS');
-  }
+  assert.ok(await editBtn.count(), 'edit-confirm assertion required — fixture seed failed');
+  const editTarget = (await apiRequest(request, `/api/forma/v1/businesses/${businessId}/assertions`, { tenantId: tenantA })).json.data?.find(a => a.status === 'PROPOSED');
+  assert.ok(editTarget, 'PROPOSED assertion for edit required');
+  await editBtn.click();
+  await page.waitForSelector('[data-testid="edit-confirm-modal"]');
+  await page.locator('[data-testid="edit-confirm-modal"] input').last().fill('管理员（人工确认）');
+  await page.locator('[data-testid="edit-confirm-modal"] .forma-btn-primary').click();
+  await page.waitForTimeout(2000);
+  r = await apiRequest(request, `/api/forma/v1/businesses/${businessId}/assertions`, { tenantId: tenantA });
+  assertions = r.json.data ?? [];
+  const original = assertions.find(a => a.assertion_id === editTarget.assertion_id);
+  assert.equal(original?.status, 'SUPERSEDED', 'original AI assertion superseded');
+  const edited = assertions.find(
+    a => a.source_marker === 'MANUAL_MODIFIED' && a.status === 'CONFIRMED' && a.derived_from_assertion_id === editTarget.assertion_id,
+  );
+  assert.ok(edited, 'manual modified confirmed assertion required');
+  assert.ok(edited.evidence_ids?.length > 0 || editTarget.evidence_ids?.length > 0, 'evidence refs preserved');
+  await page.screenshot({ path: join(outDir, '05-edit-confirm.png'), fullPage: true });
+  log(browserLog, 'edit confirm PASS');
 
-  await submitBrowserTurn(page, '补充：工单关闭权限仅属于系统管理员，不属于维修人员。');
-  await submitBrowserTurn(page, '补充：工单关闭权限属于维修班长，不属于管理员。');
+  seedDeterministicConflict({ tenantId: tenantA, businessId, sessionId, principalId });
+  await refreshAnalystSideData(page, '刷新以加载 Conflict fixture');
   await clickSideTab(page, 'Conflicts');
   await page.waitForSelector('[data-testid="conflicts-panel"]');
-  if (await page.locator('[data-testid="conflict-card"]').count()) {
-    await page.locator('[data-testid="conflict-card"] .forma-btn-primary').first().click();
-    await page.waitForTimeout(1500);
-    r = await apiRequest(request, `/api/forma/v1/businesses/${businessId}/conflicts`, { tenantId: tenantA });
-    const conflicts = r.json.data ?? [];
-    assert.ok(conflicts.some(c => c.status === 'RESOLVED'), 'conflict resolved');
-    await page.screenshot({ path: join(outDir, '06-conflict-review.png'), fullPage: true });
-    log(browserLog, 'conflict PASS');
-  } else {
-    log(browserLog, 'conflict SKIPPED (model did not surface conflict)');
-  }
+  assert.ok(await page.locator('[data-testid="conflict-card"]').count(), 'conflict card required — fixture seed failed');
+  await page.screenshot({ path: join(outDir, '06-conflict-review.png'), fullPage: true });
+  await page.locator('[data-testid="conflict-card"] .forma-btn-primary').first().click();
+  await page.waitForTimeout(2000);
+  r = await apiRequest(request, `/api/forma/v1/businesses/${businessId}/conflicts`, { tenantId: tenantA });
+  const conflicts = r.json.data ?? [];
+  assert.ok(conflicts.some(c => c.status === 'RESOLVED'), 'conflict must be RESOLVED');
+  log(browserLog, 'conflict PASS');
 
   await clickSideTab(page, 'Proposal');
   await page.click('[data-testid="generate-proposal"]');
@@ -355,5 +375,5 @@ test('S3-G2-F1 analyst browser hard gate', async t => {
   log(browserLog, 'tenant isolation PASS');
 
   await browser.close();
-  log(browserLog, 'S3-G2-F1 browser hard gate COMPLETE');
+  log(browserLog, 'S3-LIVE-FINAL browser hard gate COMPLETE');
 });

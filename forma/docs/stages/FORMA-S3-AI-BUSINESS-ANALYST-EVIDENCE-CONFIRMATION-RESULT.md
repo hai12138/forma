@@ -2,103 +2,92 @@
 
 ## Status
 
-**IN_PROGRESS — S3-G2-F1 idempotency + retry claim fixed; Live Model / Browser gates BLOCKED on runtime**
+**IN_PROGRESS — S3 Live Final Gate: engineering closure complete; Live Model E2E BLOCKED on Coze Model config**
 
 Do **not** mark FROZEN. Do **not** start S4.
 
 | Gate | Status |
 |------|--------|
-| Analysis idempotency (`createdNew`) | **PASS** (local 100/100 + race) |
-| Retry claim CAS | **PASS** (unit/integration) |
-| PENDING frontend UX | **PASS** (analysis-pending + retry-analysis) |
-| Forma CI (implementation) | **PENDING** — awaiting push + green run on new HEAD |
-| Live Model E2E | **BLOCKED_ON_LIVE_MODEL** |
-| Browser E2E + UI evidence | **BLOCKED** (runtime) |
-| PASS_WITH_REVIEW_GATE | **NOT YET** |
+| CI `33489002205` (HEAD `65f3d610`) | **PASS** — forma-backend / migration / frontend |
+| Analysis idempotency (`createdNew`) | **PASS** |
+| PENDING retry lease (`analysisPendingLease`) | **PASS** (tests) |
+| Browser harness (no SKIP + fixtures) | **PASS** (script ready) |
+| Runtime rebuild + S3 routes | **PASS** (`s3-route-probe.log`) |
+| S3 migrations on live MySQL | **PASS** |
+| Real Model + Browser E2E | **BLOCKED_ON_LIVE_MODEL** |
+| **PASS_WITH_REVIEW_GATE** | **NOT YET** |
 
 ## Frozen Baseline
 
 | Milestone | SHA |
 |-----------|-----|
-| S2 Frozen Tag `forma-s2-frozen` | `413c3bcc148dfe518b31d6267e1a0c72fc2f0645` |
-| S3 initial | `49821f80ad427ab51ea53b984cdbb5482a57be2c` |
-| S3-G1 | `e58d97d6d2b2d2b25b25c9d0a46ce01b1903b292` |
-| S3-G1-F1 | `f25634efd5f6f8cd334843435412bbec2b8ad169` |
-| S3-G1-F2 | `f52e355c99c178c3ff4d4647620a5aef88046dfe` |
-| S3-G2 | `7ff6e5830d0494edd5f2cc9f98d98f7324f30e49` |
-| S3-G2-F1 (this round) | pending push |
+| S2 Frozen `forma-s2-frozen` | `413c3bcc148dfe518b31d6267e1a0c72fc2f0645` |
+| S3-G2-F1 | `65f3d6106609840998c40a1dc8f41b1d16f84bc5` |
+| S3 Live Final (this round) | pending push — freeze candidate |
 
 ## CI History
 
 | Run | Result | Notes |
 |-----|--------|-------|
-| `33469903703` | **FAIL** | backend compile, atlas checksum, rush, hook |
-| `33471829970` | **FAIL** | proposal syntax; MySQL migration |
-| `33474851052` | **FAIL** | migration PASS, frontend PASS, backend FAIL |
-| `33475985604` | **PASS** | `f52e355c` — all Forma jobs green |
-| `33476030584` | **PASS** | docs RESULT |
-| `33476235800` | **PASS** | docs CI |
-| `33480332921` | **PASS** | `7ff6e583` — **S3-G2 migration + backend + frontend ALL GREEN** |
-| `33484440794` | **FAIL** | docs-only on `2a36bd52` — `TestConcurrentSameClientRequestIdempotent` expected 1 analyst turn, actual 2 |
+| `33484440794` | **FAIL** | `TestConcurrentSameClientRequestIdempotent` expected 1 / actual 2 |
+| `33489002205` | **PASS** | `65f3d610` — **ALL GREEN** after idempotency fix |
 
-**Current Forma CI:** NOT GREEN on HEAD until S3-G2-F1 implementation CI passes.
+**Current Forma CI:** **PASS** on `33489002205`.
 
-## S3-G2-F1 — Analysis Idempotency / Live Gates (this round)
+## S3 Live Final Gate (this round)
 
-### BLOCKER-01 — Same `client_request_id` must not re-run analysis
+### FIX-01 — PENDING Retry Lease
 
-**Root cause:** concurrent duplicate requests both passed external idempotency pre-check; transaction path returned existing User Turn but still invoked `runAnalysisForUserTurn` → duplicate extraction / analyst turns.
+- Constant `analysisPendingLease = 5 * time.Minute`
+- Initial analysis sets `model_request_id = analysis_claim:<request_id>`
+- PENDING retry blocked while active lease; abandoned after lease expiry
+- `ClaimTurnForRetry` CAS respects expired `analysis_claim:*`
+- Tests: `TestActivePendingCannotRetry`, `TestAbandonedPendingCanRetryAfterLease`, `TestConcurrentRetryOnlyOneClaim`
 
-**Fix:**
+### FIX-02 — Browser Hard Gate (no SKIP)
 
-- `createUserTurnWithEvidence(...)` returns `(userTurn, evidence, createdNew bool, err)`
-- `SubmitTurn`: `createdNew == false` → `buildIdempotentResult(...)` only; no analysis
-- `TestConcurrentSameClientRequestIdempotent`: 10 goroutines, 1 user turn / 1 evidence / 1 extract call / 1 analyst turn / `NextTurnSequence=3`
+- `scripts/forma/s3-e2e-fixtures.mjs` — deterministic Gap / Conflict / Edit fixtures via test DB only
+- `scripts/forma/s3-browser-e2e.mjs` — all mandatory gates assert PASS or FAIL (no SKIPPED)
+- Playwright `BrowserContext.request` shared auth; correct UI selectors
 
-### STEP 4 — Retry claim CAS
+### Runtime rebuild
 
-- `ClaimTurnForRetry(tenantID, turnID, expectedStatuses, claimToken)` — DB conditional update
-- `RetryTurnAnalysis`: only claimed request runs analysis; others return current persisted state
+- Rebuilt `forma-live-harness` from current repo (`InitLiveHarness` + ModelConf)
+- Applied Forma migrations to `forma-live-mysql` (S0–S3-G2)
+- Route probe: `node scripts/forma/s3-live-route-probe.mjs` → **PASS**
+  - Evidence: `forma/cursor-results/s3-route-probe.log`
 
-### STEP 3 — PENDING recovery contract (frontend)
+### Live Model blocker
 
-- User turn `PENDING` without analyst reply → `data-testid="analysis-pending"` + Retry Analysis
-- `data-testid="start-session"` on 开始访谈 button
+Coze builtin model via `modelbuilder.GetBuiltinChatModel` requires **Coze Model Manager config**:
 
-### Local test evidence
+- `BUILTIN_CM_TYPE` + matching `BUILTIN_CM_*_API_KEY` / `BUILTIN_CM_*_MODEL` on `forma-live-harness`, **or**
+- `model_instance` rows in live MySQL
 
-```text
-go test ./domain/forma/analyst/service -run TestConcurrentSameClientRequestIdempotent -count=100  → 100/100 PASS
-go test -race ./domain/forma/analyst/service -run "Concurrent|Idempotent|Retry" -count=10         → PASS
-go test ./domain/forma/... ./crossdomain/forma/... ./application/forma/... -count=1              → PASS (docker golang:1.24)
+Local harness has **no configured chat model** (empty `BUILTIN_CM_*`, `model_instance` count = 0, no Ollama on `:11434`).
+
+**Do not** use `DeterministicFakeModel` or fabricate `s3-live-model-e2e.log`.
+
+To unblock:
+
+```bash
+# Example: DeepSeek via Coze BUILTIN_CM (not FORMA_ANALYST_*)
+docker stop forma-live-harness
+docker run -d --name forma-live-harness \
+  -p 127.0.0.1:8888:8888 \
+  -e MYSQL_DSN='coze:coze123@tcp(forma-live-mysql:3306)/opencoze?charset=utf8mb4&parseTime=True' \
+  -e REDIS_ADDR='forma-live-redis:6379' \
+  -e BUILTIN_CM_TYPE=deepseek \
+  -e BUILTIN_CM_DEEPSEEK_API_KEY='***' \
+  -e BUILTIN_CM_DEEPSEEK_MODEL='deepseek-chat' \
+  -v .../coze-studio/bin/forma-live-harness:/app/forma-live-harness \
+  --network ... debian:bookworm-slim /app/forma-live-harness
+
+FORMA_LIVE_E2E=1 node --test scripts/forma/s3-browser-e2e.mjs
 ```
 
-### Browser harness (STEP 7–22)
+## Preserved (do not redo)
 
-- `scripts/forma/s3-browser-e2e.mjs` rewritten:
-  - Playwright `BrowserContext.request` shares auth cookies with page
-  - Correct selectors: `start-session`, `analyst-input`, `analyst-submit`, `turn-user`, `turn-analyst`
-  - Full S3 hard gate structure with asserts + 11 screenshots + log outputs
+Context Builder, Evidence, Assertion, Confirmation, Proposal, Transaction, Gap Ask, Tenant, Business Model architecture.
 
-### Live runtime blockers
-
-Local probe against `127.0.0.1:8888` (2026-09-01):
-
-- `/api/forma/v1/businesses/:id/analyst/sessions` → **404 Not Found**
-- `/api/forma/v1/businesses/:id/assertions` → **404 Not Found**
-
-Running backend predates S3 analyst route registration. Additionally `FORMA_ANALYST` builtin chat model must be configured (`modelbuilder.GetBuiltinChatModel`).
-
-**Do not fabricate** `s3-live-model-e2e.log` / screenshots without real model execution.
-
-**Status = `BLOCKED_ON_LIVE_MODEL`** until:
-
-1. Coze backend rebuilt/restarted with current S3 code
-2. `FORMA_ANALYST_*` model env configured
-3. `FORMA_LIVE_E2E=1 node --test scripts/forma/s3-browser-e2e.mjs` produces logs under `forma/cursor-results/`
-
-## Preserved S3-G2 gates (do not redo)
-
-ContextText → Model, Context Budget, Gap Ask → ANALYST Turn, Production Model Fail Closed, Extraction/Confirmation/Proposal Apply transactions, STALE CAS, Migration, Frontend architecture.
-
-**DO NOT START S4.** No `forma-s3-frozen`.
+**DO NOT START S4.** No `forma-s3-frozen` tag until human review after live gates pass.

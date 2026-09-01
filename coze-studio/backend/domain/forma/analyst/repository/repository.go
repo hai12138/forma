@@ -28,7 +28,7 @@ type AnalystRepository interface {
 	ListTurns(ctx context.Context, tenantID, sessionID string) ([]*entity.AnalystTurn, error)
 	MaxTurnSequence(ctx context.Context, tenantID, sessionID string) (int32, error)
 	UpdateTurnAnalysis(ctx context.Context, tenantID, turnID string, status entity.AnalysisStatus, modelRequestID string) error
-	ClaimTurnForRetry(ctx context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string) (bool, error)
+	ClaimTurnForRetry(ctx context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string, analysisLeaseCutoff time.Time) (bool, error)
 
 	CreateEvidence(ctx context.Context, e *entity.BusinessEvidence) error
 	ListEvidence(ctx context.Context, tenantID, businessID string) ([]*entity.BusinessEvidence, error)
@@ -118,8 +118,8 @@ func (r *gormAnalystRepo) MaxTurnSequence(ctx context.Context, tenantID, session
 func (r *gormAnalystRepo) UpdateTurnAnalysis(ctx context.Context, tenantID, turnID string, status entity.AnalysisStatus, modelRequestID string) error {
 	return r.dao.UpdateTurnAnalysis(ctx, tenantID, turnID, status, modelRequestID)
 }
-func (r *gormAnalystRepo) ClaimTurnForRetry(ctx context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string) (bool, error) {
-	return r.dao.ClaimTurnForRetry(ctx, tenantID, turnID, expectedStatuses, claimToken)
+func (r *gormAnalystRepo) ClaimTurnForRetry(ctx context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string, analysisLeaseCutoff time.Time) (bool, error) {
+	return r.dao.ClaimTurnForRetry(ctx, tenantID, turnID, expectedStatuses, claimToken, analysisLeaseCutoff)
 }
 func (r *gormAnalystRepo) CreateEvidence(ctx context.Context, e *entity.BusinessEvidence) error {
 	return r.dao.CreateEvidence(ctx, e)

@@ -308,8 +308,11 @@ func (s *analystServiceImpl) RetryTurnAnalysis(ctx context.Context, tenantID, bu
 	default:
 		return nil, entity.ErrInvalidTurn
 	}
-	claimToken := "retry_claim:" + newID("retry")
-	claimed, err := s.repo.ClaimTurnForRetry(ctx, tenantID, turnID, expected, claimToken)
+	if turn.AnalysisStatus == entity.AnalysisPending && hasActiveAnalysisLease(turn, time.Now().UTC()) {
+		return s.buildIdempotentResult(ctx, tenantID, businessID, sessionID, turn)
+	}
+	claimToken := retryClaimPrefix + newID("retry")
+	claimed, err := s.repo.ClaimTurnForRetry(ctx, tenantID, turnID, expected, claimToken, time.Now().UTC().Add(-analysisPendingLease))
 	if err != nil {
 		return nil, err
 	}

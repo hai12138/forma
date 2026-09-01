@@ -153,6 +153,9 @@ func (s *analystServiceImpl) runFullAnalysis(
 	}
 
 	extractReqID := newID("mreq")
+	analysisClaim := analysisClaimID(extractReqID)
+	_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisPending, analysisClaim)
+	userTurn.ModelRequestID = analysisClaim
 	startExtract := time.Now()
 	extractReq := &ExtractionRequest{
 		RequestID:       extractReqID,

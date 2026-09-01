@@ -465,7 +465,7 @@ func (d *AnalystDAO) UpdateTurnAnalysis(ctx context.Context, tenantID, turnID st
 		}).Error
 }
 
-func (d *AnalystDAO) ClaimTurnForRetry(ctx context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string) (bool, error) {
+func (d *AnalystDAO) ClaimTurnForRetry(ctx context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string, analysisLeaseCutoff time.Time) (bool, error) {
 	if claimToken == "" {
 		return false, nil
 	}
@@ -475,7 +475,12 @@ func (d *AnalystDAO) ClaimTurnForRetry(ctx context.Context, tenantID, turnID str
 	}
 	res := d.db.WithContext(ctx).Model(&TurnModel{}).
 		Where("tenant_id = ? AND turn_id = ? AND analysis_status IN ?", tenantID, turnID, statuses).
-		Where("(model_request_id = '' OR model_request_id = ? OR model_request_id NOT LIKE ?)", claimToken, "retry_claim:%").
+		Where(`(
+			model_request_id = '' OR
+			model_request_id = ? OR
+			(model_request_id LIKE ? AND created_at < ?) OR
+			(model_request_id NOT LIKE ? AND model_request_id NOT LIKE ?)
+		)`, claimToken, "analysis_claim:%", analysisLeaseCutoff, "analysis_claim:%", "retry_claim:%").
 		Updates(map[string]any{"model_request_id": claimToken})
 	if res.Error != nil {
 		return false, res.Error
