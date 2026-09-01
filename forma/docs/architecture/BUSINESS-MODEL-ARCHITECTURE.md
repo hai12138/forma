@@ -20,11 +20,17 @@ Business Model is Forma’s **Business-to-Agent Source of Truth**. Prompt, Coze 
 
 `schema_version`, `nodes[]`, `edges[]`, `rules[]`, `states[]`, plus reserved `evidence_refs[]` / `assertion_refs[]` (skeleton only in S2).
 
-Node types (formal): `ACTOR`, `BUSINESS_OBJECT`, `PROCESS`, `EVENT`, `DECISION`, `SYSTEM`, `POLICY` (+ v1.2 UI aliases accepted by validator).
+Node types (canonical, persisted SoT only): `ACTOR`, `BUSINESS_OBJECT`, `PROCESS`, `EVENT`, `DECISION`, `SYSTEM`, `POLICY`.
 
-Edge types (extensible): `PERFORMS`, `CREATES`, `UPDATES`, `TRIGGERS`, `REQUIRES`, `DEPENDS_ON`, `TRANSITIONS_TO`, `RELATES_TO`.
+State / Rule continue as first-class `states[]` / `rules[]` — **not** NodeTypes.
 
-`source_marker`: `AI_GENERATED` | `MANUAL_MODIFIED` (S2 writes MANUAL_MODIFIED; AI Analyst later).
+v1.2 aliases (`role`/`entity`/`process`/`external`) may be converted by FE/import adapters to canonical types **before** persistence. Downstream asset types `agent` / `application` are **rejected**.
+
+Edge types (formal dropdown): `PERFORMS`, `CREATES`, `UPDATES`, `TRIGGERS`, `REQUIRES`, `DEPENDS_ON`, `TRANSITIONS_TO`, `RELATES_TO`. Edge `label` required (non-empty).
+
+`source_marker`: only `AI_GENERATED` | `MANUAL_MODIFIED` (empty → default `MANUAL_MODIFIED`; other strings rejected).
+
+Relationship endpoints: **node** and **state** only. Rules associate via `applies_to[]`.
 
 ## Revision & Digest
 

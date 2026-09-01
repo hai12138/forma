@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type RefObject } from 'react';
 
 import type {
   FormaBusinessRule,
@@ -9,10 +9,15 @@ import type {
   FormaViewLayout,
 } from '@forma/api-client';
 
+import { computeAutoLayout } from '../auto-layout';
+import { EDGE_TYPES } from '../canonical';
 import {
+  analyzeNodeDeleteImpact,
   applyLayoutChange,
   applySemanticChange,
   collectCanvasItems,
+  deleteNodeWithDependencies,
+  isEdgeEndpoint,
   isLayoutDirty,
   isSemanticDirty,
   redo,
@@ -35,6 +40,10 @@ type Props = {
   onOpenRevisions: () => void;
   onOpenDiff: () => void;
   message?: string;
+  /** Historical revision view — canvas + props read-only. */
+  readOnly?: boolean;
+  viewingRevision?: number | null;
+  onBackToCurrent?: () => void;
 };
 
 export function VisualModelEditor({
@@ -48,15 +57,20 @@ export function VisualModelEditor({
   onOpenRevisions,
   onOpenDiff,
   message,
+  readOnly = false,
+  viewingRevision = null,
+  onBackToCurrent,
 }: Props) {
   const root = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const marker = useId().replace(/:/g, '');
   const [selected, setSelected] = useState<string | null>(null);
   const [tool, setTool] = useState<'select' | 'pan'>('select');
   const [connection, setConnection] = useState<string | null>(null);
   const [preview, setPreview] = useState<FormaViewLayout | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [focusName, setFocusName] = useState(false);
   const [hint, setHint] = useState(
     message ?? '拖拽调整布局；编辑属性保存语义；布局与语义分别保存。',
   );
@@ -74,6 +88,7 @@ export function VisualModelEditor({
   const items = collectCanvasItems(model);
   const semanticDirty = isSemanticDirty(buffer);
   const layoutDirty = isLayoutDirty(buffer);
+  const layoutMode = layout.mode === 'auto' ? 'auto' : 'manual';
 
   useEffect(() => {
     const sync = () => setFullscreen(document.fullscreenElement === root.current);
@@ -85,12 +100,22 @@ export function VisualModelEditor({
     if (message) setHint(message);
   }, [message]);
 
+  useEffect(() => {
+    if (focusName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+      setFocusName(false);
+    }
+  }, [focusName, selected]);
+
   const setLayout = (next: FormaViewLayout, note: string) => {
+    if (readOnly) return;
     onBufferChange(applyLayoutChange(buffer, next));
     setHint(note);
   };
 
   const setSemantic = (next: FormaSemanticModel, note: string, lay?: FormaViewLayout) => {
+    if (readOnly) return;
     onBufferChange(applySemanticChange(buffer, next, lay));
     setHint(note);
   };
@@ -121,7 +146,23 @@ export function VisualModelEditor({
     );
   };
 
+  const runAutoLayout = () => {
+    if (readOnly) return;
+    const next = computeAutoLayout(
+      model,
+      buffer.current.layout,
+      items.map(i => i.id),
+    );
+    setLayout(next, 'Auto Layout · 仅布局脏（语义未变）');
+  };
+
   const connect = (from: string, target: string) => {
+    if (readOnly) return;
+    if (!isEdgeEndpoint(model, from) || !isEdgeEndpoint(model, target)) {
+      setHint('关系只能连接节点或状态（规则不是端点）。');
+      setConnection(null);
+      return;
+    }
     if (from === target) {
       setHint('请选择另一个节点作为关系终点。');
       return;
@@ -149,16 +190,26 @@ export function VisualModelEditor({
   };
 
   const removeSelected = () => {
-    if (!selected) return;
+    if (readOnly || !selected) return;
     if (model.nodes.some(n => n.id === selected)) {
-      setSemantic(
-        {
-          ...model,
-          nodes: model.nodes.filter(n => n.id !== selected),
-          edges: model.edges.filter(e => e.source !== selected && e.target !== selected),
-        },
-        '删除节点',
-      );
+      const impact = analyzeNodeDeleteImpact(model, selected);
+      if (impact.edgeCount || impact.stateCount || impact.ruleRefCount) {
+        const ok = window.confirm(
+          `删除该业务元素将同时影响：\n` +
+            `${impact.edgeCount} 个关系\n` +
+            `${impact.stateCount} 个状态（将删除）\n` +
+            `${impact.ruleRefCount} 个规则引用（仅移除引用，规则保留）`,
+        );
+        if (!ok) return;
+      }
+      const next = deleteNodeWithDependencies(model, selected);
+      const positions = { ...buffer.current.layout.node_positions };
+      delete positions[selected];
+      for (const sid of impact.dependentStateIds) delete positions[sid];
+      setSemantic(next, '删除节点（依赖级联）', {
+        ...buffer.current.layout,
+        node_positions: positions,
+      });
     } else if (model.edges.some(e => e.id === selected)) {
       setSemantic(
         { ...model, edges: model.edges.filter(e => e.id !== selected) },
@@ -183,6 +234,7 @@ export function VisualModelEditor({
   };
 
   const addNode = (type: string) => {
+    if (readOnly) return;
     const id = `n_${Date.now().toString(36)}`;
     const st = styleFor(type);
     const pos = {
@@ -205,6 +257,7 @@ export function VisualModelEditor({
       '新增节点 · 未保存语义变更',
       {
         ...buffer.current.layout,
+        mode: 'manual',
         node_positions: { ...buffer.current.layout.node_positions, [id]: pos },
       },
     );
@@ -221,7 +274,14 @@ export function VisualModelEditor({
       className="forma-vme"
       ref={root}
       aria-label="Visual Business Model Editor"
+      data-readonly={readOnly ? 'true' : 'false'}
+      data-layout-mode={layoutMode}
+      data-semantic-dirty={semanticDirty ? 'true' : 'false'}
+      data-layout-dirty={layoutDirty ? 'true' : 'false'}
+      data-model-revision={buffer.modelRevision}
+      data-layout-revision={buffer.layoutRevision}
       onKeyDown={e => {
+        if (readOnly) return;
         if ((e.target as HTMLElement).closest('input,textarea,select')) return;
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
           e.preventDefault();
@@ -243,60 +303,109 @@ export function VisualModelEditor({
         }
       }}
     >
+      {readOnly && viewingRevision != null && (
+        <div
+          className="forma-vme-readonly-banner"
+          data-testid="revision-readonly-banner"
+          style={{
+            background: '#fff8e6',
+            borderBottom: '1px solid #f0d48a',
+            padding: '8px 16px',
+            display: 'flex',
+            gap: 12,
+            alignItems: 'center',
+          }}
+        >
+          <strong>Viewing revision r{viewingRevision}</strong>
+          <span>Read only</span>
+          <button type="button" className="forma-vme-btn primary" onClick={onBackToCurrent}>
+            Back to Current
+          </button>
+        </div>
+      )}
+
       <header className="forma-vme-header">
         <div className="forma-vme-header-title">
           <span className="forma-vme-dot" />
           <b>{businessName}</b>
           <small>
-            r{buffer.modelRevision} · {items.length} 节点 / {model.edges.length} 关系
+            r{buffer.modelRevision} · lr{buffer.layoutRevision} · {items.length} 节点 /{' '}
+            {model.edges.length} 关系 · {layoutMode}
           </small>
-          {semanticDirty && <span className="forma-vme-dirty">未保存语义变更</span>}
+          {semanticDirty && (
+            <span className="forma-vme-dirty" data-testid="semantic-dirty">
+              未保存语义变更
+            </span>
+          )}
           {!semanticDirty && layoutDirty && (
-            <span className="forma-vme-dirty">布局未保存</span>
+            <span className="forma-vme-dirty" data-testid="layout-dirty">
+              布局未保存
+            </span>
           )}
         </div>
         <div className="forma-vme-actions">
-          <button
-            type="button"
-            className="forma-vme-btn primary"
-            disabled={!semanticDirty || savingModel}
-            onClick={onSaveModel}
-          >
-            {savingModel ? '保存中…' : 'Save Model'}
-          </button>
-          <button
-            type="button"
-            className="forma-vme-btn"
-            disabled={!layoutDirty || savingLayout}
-            onClick={onSaveLayout}
-          >
-            {savingLayout ? '保存中…' : 'Save Layout'}
-          </button>
-          <button
-            type="button"
-            className="forma-vme-btn"
-            disabled={!buffer.past.length}
-            onClick={() => onBufferChange(undo(buffer))}
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            className="forma-vme-btn"
-            disabled={!buffer.future.length}
-            onClick={() => onBufferChange(redo(buffer))}
-          >
-            Redo
-          </button>
+          {!readOnly && (
+            <>
+              <button
+                type="button"
+                className="forma-vme-btn primary"
+                data-testid="save-model"
+                disabled={!semanticDirty || savingModel}
+                onClick={onSaveModel}
+              >
+                {savingModel ? '保存中…' : 'Save Model'}
+              </button>
+              <button
+                type="button"
+                className="forma-vme-btn"
+                data-testid="save-layout"
+                disabled={!layoutDirty || savingLayout}
+                onClick={onSaveLayout}
+              >
+                {savingLayout ? '保存中…' : 'Save Layout'}
+              </button>
+              <button
+                type="button"
+                className="forma-vme-btn"
+                data-testid="auto-layout"
+                onClick={runAutoLayout}
+              >
+                Auto Layout
+              </button>
+              <button
+                type="button"
+                className="forma-vme-btn"
+                aria-pressed={layoutMode === 'manual'}
+                onClick={() =>
+                  setLayout({ ...layout, mode: 'manual' }, 'Manual layout mode')
+                }
+              >
+                Manual
+              </button>
+              <button
+                type="button"
+                className="forma-vme-btn"
+                disabled={!buffer.past.length}
+                onClick={() => onBufferChange(undo(buffer))}
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                className="forma-vme-btn"
+                disabled={!buffer.future.length}
+                onClick={() => onBufferChange(redo(buffer))}
+              >
+                Redo
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="forma-vme-btn"
             onClick={() =>
               setLayout(
-                {
-                  ...layout,
-                  zoom: Math.min(2, layout.zoom * 1.15),
-                },
+                { ...layout, zoom: Math.min(2, layout.zoom * 1.15) },
                 '放大',
               )
             }
@@ -308,10 +417,7 @@ export function VisualModelEditor({
             className="forma-vme-btn"
             onClick={() =>
               setLayout(
-                {
-                  ...layout,
-                  zoom: Math.max(0.2, layout.zoom / 1.15),
-                },
+                { ...layout, zoom: Math.max(0.2, layout.zoom / 1.15) },
                 '缩小',
               )
             }
@@ -335,91 +441,98 @@ export function VisualModelEditor({
           >
             {fullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
           </button>
-          <button type="button" className="forma-vme-btn" onClick={onOpenRevisions}>
-            Revisions
-          </button>
-          <button type="button" className="forma-vme-btn" onClick={onOpenDiff}>
-            Diff
-          </button>
+          {!readOnly && (
+            <>
+              <button type="button" className="forma-vme-btn" onClick={onOpenRevisions}>
+                Revisions
+              </button>
+              <button type="button" className="forma-vme-btn" onClick={onOpenDiff}>
+                Diff
+              </button>
+            </>
+          )}
         </div>
       </header>
 
-      <div className="forma-vme-toolbar" role="toolbar" aria-label="模型编辑工具">
-        {ADDABLE_NODE_TYPES.map(type => (
+      {!readOnly && (
+        <div className="forma-vme-toolbar" role="toolbar" aria-label="模型编辑工具">
+          {ADDABLE_NODE_TYPES.map(type => (
+            <button
+              key={type}
+              type="button"
+              className="forma-vme-btn"
+              onClick={() => addNode(type)}
+            >
+              ＋{styleFor(type).label}
+            </button>
+          ))}
+          <span className="forma-vme-sep" />
           <button
-            key={type}
             type="button"
             className="forma-vme-btn"
-            onClick={() => addNode(type)}
+            onClick={() => {
+              const id = `st_${Date.now().toString(36)}`;
+              setSemantic(
+                {
+                  ...model,
+                  states: [
+                    ...model.states,
+                    {
+                      id,
+                      object_ref: model.nodes[0]?.id ?? '',
+                      name: '新状态',
+                      source_marker: 'MANUAL_MODIFIED',
+                    },
+                  ],
+                },
+                '新增状态',
+                {
+                  ...buffer.current.layout,
+                  node_positions: {
+                    ...buffer.current.layout.node_positions,
+                    [id]: { x: 100, y: 400 },
+                  },
+                },
+              );
+              setSelected(id);
+            }}
           >
-            ＋{styleFor(type).label}
+            ＋状态
           </button>
-        ))}
-        <span className="forma-vme-sep" />
-        <button
-          type="button"
-          className="forma-vme-btn"
-          onClick={() => {
-            const id = `st_${Date.now().toString(36)}`;
-            setSemantic(
-              {
-                ...model,
-                states: [
-                  ...model.states,
-                  {
-                    id,
-                    object_ref: model.nodes[0]?.id ?? '',
-                    name: '新状态',
-                    source_marker: 'MANUAL_MODIFIED',
-                  },
-                ],
-              },
-              '新增状态',
-              {
-                ...buffer.current.layout,
-                node_positions: {
-                  ...buffer.current.layout.node_positions,
-                  [id]: { x: 100, y: 400 },
+          <button
+            type="button"
+            className="forma-vme-btn"
+            onClick={() => {
+              const id = `rule_${Date.now().toString(36)}`;
+              setSemantic(
+                {
+                  ...model,
+                  rules: [
+                    ...model.rules,
+                    {
+                      id,
+                      name: '新规则',
+                      applies_to: model.nodes[0] ? [model.nodes[0].id] : [],
+                      source_marker: 'MANUAL_MODIFIED',
+                    },
+                  ],
                 },
-              },
-            );
-            setSelected(id);
-          }}
-        >
-          ＋状态
-        </button>
-        <button
-          type="button"
-          className="forma-vme-btn"
-          onClick={() => {
-            const id = `rule_${Date.now().toString(36)}`;
-            setSemantic(
-              {
-                ...model,
-                rules: [
-                  ...model.rules,
-                  {
-                    id,
-                    name: '新规则',
-                    source_marker: 'MANUAL_MODIFIED',
+                '新增规则',
+                {
+                  ...buffer.current.layout,
+                  node_positions: {
+                    ...buffer.current.layout.node_positions,
+                    [id]: { x: 100, y: 520 },
                   },
-                ],
-              },
-              '新增规则',
-              {
-                ...buffer.current.layout,
-                node_positions: {
-                  ...buffer.current.layout.node_positions,
-                  [id]: { x: 100, y: 520 },
                 },
-              },
-            );
-            setSelected(id);
-          }}
-        >
-          ＋规则
-        </button>
-      </div>
+              );
+              setSelected(id);
+            }}
+          >
+            ＋规则
+          </button>
+        </div>
+      )}
 
       <div className="forma-vme-body">
         <div
@@ -453,7 +566,7 @@ export function VisualModelEditor({
             aria-label="可编辑业务模型画布"
             tabIndex={0}
             onPointerDown={e => {
-              if (e.button !== 0) return;
+              if (readOnly || e.button !== 0) return;
               const target = (e.target as Element).closest('[data-node]');
               const id = target?.getAttribute('data-node') ?? undefined;
               if ((e.target as Element).closest('[data-edge]')) return;
@@ -472,11 +585,12 @@ export function VisualModelEditor({
               };
               if (kind === 'edge' && id) {
                 setConnection(id);
-                setHint('松开到目标节点，或点击目标节点建立关系。');
+                setHint('松开到目标节点/状态，或点击目标建立关系。');
               }
               e.currentTarget.setPointerCapture(e.pointerId);
             }}
             onPointerMove={e => {
+              if (readOnly) return;
               const d = drag.current;
               if (!d) return;
               const dx = e.clientX - d.x;
@@ -508,6 +622,7 @@ export function VisualModelEditor({
               }
             }}
             onPointerUp={e => {
+              if (readOnly) return;
               const d = drag.current;
               if (!d) return;
               const target = document
@@ -590,6 +705,7 @@ export function VisualModelEditor({
               {items.map(item => {
                 const pos = layout.node_positions[item.id] ?? { x: 0, y: 0 };
                 const st = styleFor(item.type);
+                const canConnect = item.kind !== 'rule';
                 return (
                   <foreignObject
                     key={item.id}
@@ -600,6 +716,7 @@ export function VisualModelEditor({
                   >
                     <div
                       data-node={item.id}
+                      data-kind={item.kind}
                       className={`forma-vme-node${selected === item.id ? ' selected' : ''}`}
                       style={
                         {
@@ -607,24 +724,33 @@ export function VisualModelEditor({
                           '--vme-bg': st.background,
                         } as CSSProperties
                       }
+                      onDoubleClick={e => {
+                        if (readOnly || item.kind !== 'node') return;
+                        e.stopPropagation();
+                        setSelected(item.id);
+                        setFocusName(true);
+                        setHint('编辑名称 · 仅缓冲（未保存不产生修订）');
+                      }}
                     >
                       <span>
                         <small>{st.label}</small>
                         <b>{item.name}</b>
                         <em>{item.description || item.id}</em>
                       </span>
-                      <div
-                        data-handle={item.id}
-                        style={{
-                          marginLeft: 'auto',
-                          width: 10,
-                          height: 10,
-                          borderRadius: '50%',
-                          background: st.color,
-                          flexShrink: 0,
-                        }}
-                        title="拖出以建立关系"
-                      />
+                      {canConnect && !readOnly && (
+                        <div
+                          data-handle={item.id}
+                          style={{
+                            marginLeft: 'auto',
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: st.color,
+                            flexShrink: 0,
+                          }}
+                          title="拖出以建立关系"
+                        />
+                      )}
                     </div>
                   </foreignObject>
                 );
@@ -648,6 +774,8 @@ export function VisualModelEditor({
 
         <aside className="forma-vme-props">
           <PropertyPanel
+            readOnly={readOnly}
+            nameInputRef={nameInputRef}
             selectedNode={selectedNode}
             selectedEdge={selectedEdge}
             selectedState={selectedState}
@@ -661,13 +789,17 @@ export function VisualModelEditor({
                 '更新节点属性',
               );
             }}
-            onUpdateEdge={edge => {
+            onUpdateEdge={(edge, note) => {
+              if (!edge.label?.trim()) {
+                setHint('关系标签不能为空');
+                return;
+              }
               setSemantic(
                 {
                   ...model,
                   edges: model.edges.map(e => (e.id === edge.id ? edge : e)),
                 },
-                '更新关系属性',
+                note ?? '更新关系属性',
               );
             }}
             onUpdateState={state => {
@@ -727,6 +859,8 @@ function SourceMarkerBadge({ marker }: { marker?: string }) {
 }
 
 function PropertyPanel({
+  readOnly,
+  nameInputRef,
   selectedNode,
   selectedEdge,
   selectedState,
@@ -737,12 +871,14 @@ function PropertyPanel({
   onUpdateRule,
   onDelete,
 }: {
+  readOnly?: boolean;
+  nameInputRef?: RefObject<HTMLInputElement | null>;
   selectedNode?: FormaSemanticNode;
   selectedEdge?: FormaSemanticEdge;
   selectedState?: FormaBusinessState;
   selectedRule?: FormaBusinessRule;
   onUpdateNode: (n: FormaSemanticNode) => void;
-  onUpdateEdge: (e: FormaSemanticEdge) => void;
+  onUpdateEdge: (e: FormaSemanticEdge, note?: string) => void;
   onUpdateState: (s: FormaBusinessState) => void;
   onUpdateRule: (r: FormaBusinessRule) => void;
   onDelete: () => void;
@@ -752,6 +888,7 @@ function PropertyPanel({
       <form
         onSubmit={e => e.preventDefault()}
         onBlur={e => {
+          if (readOnly) return;
           const form = e.currentTarget;
           const name = (form.elements.namedItem('name') as HTMLInputElement).value;
           const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
@@ -773,11 +910,23 @@ function PropertyPanel({
         <SourceMarkerBadge marker={selectedNode.source_marker} />
         <label>
           名称
-          <input name="name" defaultValue={selectedNode.name} key={selectedNode.id + '-n'} />
+          <input
+            name="name"
+            ref={nameInputRef}
+            defaultValue={selectedNode.name}
+            key={selectedNode.id + '-n'}
+            disabled={readOnly}
+            data-testid="node-name-input"
+          />
         </label>
         <label>
           类型
-          <select name="type" defaultValue={selectedNode.type} key={selectedNode.id + '-t'}>
+          <select
+            name="type"
+            defaultValue={selectedNode.type}
+            key={selectedNode.id + '-t'}
+            disabled={readOnly}
+          >
             {ADDABLE_NODE_TYPES.map(t => (
               <option key={t} value={t}>
                 {styleFor(t).label}
@@ -792,11 +941,14 @@ function PropertyPanel({
             rows={3}
             defaultValue={selectedNode.description || ''}
             key={selectedNode.id + '-d'}
+            disabled={readOnly}
           />
         </label>
-        <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
-          删除
-        </button>
+        {!readOnly && (
+          <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
+            删除
+          </button>
+        )}
       </form>
     );
   }
@@ -806,9 +958,14 @@ function PropertyPanel({
       <form
         onSubmit={e => e.preventDefault()}
         onBlur={e => {
+          if (readOnly) return;
           const form = e.currentTarget;
           const label = (form.elements.namedItem('label') as HTMLInputElement).value;
-          const type = (form.elements.namedItem('type') as HTMLInputElement).value;
+          const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
+          if (!label.trim()) {
+            onUpdateEdge({ ...selectedEdge, label: selectedEdge.label || '关联', type });
+            return;
+          }
           if (label !== (selectedEdge.label || '') || type !== selectedEdge.type) {
             onUpdateEdge({ ...selectedEdge, label, type });
           }
@@ -820,23 +977,40 @@ function PropertyPanel({
         </div>
         <SourceMarkerBadge marker={selectedEdge.source_marker} />
         <label>
-          标签
+          标签（必填）
           <input
             name="label"
             defaultValue={selectedEdge.label || ''}
             key={selectedEdge.id + '-l'}
+            required
+            disabled={readOnly}
+            data-testid="edge-label-input"
           />
         </label>
         <label>
           类型
-          <input name="type" defaultValue={selectedEdge.type} key={selectedEdge.id + '-t'} />
+          <select
+            name="type"
+            defaultValue={selectedEdge.type}
+            key={selectedEdge.id + '-t'}
+            disabled={readOnly}
+            data-testid="edge-type-select"
+          >
+            {EDGE_TYPES.map(t => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </label>
         <p style={{ color: '#758196' }}>
           {selectedEdge.source} → {selectedEdge.target}
         </p>
-        <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
-          删除
-        </button>
+        {!readOnly && (
+          <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
+            删除
+          </button>
+        )}
       </form>
     );
   }
@@ -846,6 +1020,7 @@ function PropertyPanel({
       <form
         onSubmit={e => e.preventDefault()}
         onBlur={e => {
+          if (readOnly) return;
           const form = e.currentTarget;
           const name = (form.elements.namedItem('name') as HTMLInputElement).value;
           const object_ref = (form.elements.namedItem('object_ref') as HTMLInputElement).value;
@@ -861,7 +1036,12 @@ function PropertyPanel({
         <SourceMarkerBadge marker={selectedState.source_marker} />
         <label>
           名称
-          <input name="name" defaultValue={selectedState.name} key={selectedState.id + '-n'} />
+          <input
+            name="name"
+            defaultValue={selectedState.name}
+            key={selectedState.id + '-n'}
+            disabled={readOnly}
+          />
         </label>
         <label>
           对象引用
@@ -869,11 +1049,14 @@ function PropertyPanel({
             name="object_ref"
             defaultValue={selectedState.object_ref}
             key={selectedState.id + '-o'}
+            disabled={readOnly}
           />
         </label>
-        <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
-          删除
-        </button>
+        {!readOnly && (
+          <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
+            删除
+          </button>
+        )}
       </form>
     );
   }
@@ -883,18 +1066,30 @@ function PropertyPanel({
       <form
         onSubmit={e => e.preventDefault()}
         onBlur={e => {
+          if (readOnly) return;
           const form = e.currentTarget;
           const name = (form.elements.namedItem('name') as HTMLInputElement).value;
           const expression = (form.elements.namedItem('expression') as HTMLTextAreaElement)
             .value;
           const description = (form.elements.namedItem('description') as HTMLTextAreaElement)
             .value;
+          const applies = (form.elements.namedItem('applies_to') as HTMLInputElement).value
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
           if (
             name !== selectedRule.name ||
             expression !== (selectedRule.expression || '') ||
-            description !== (selectedRule.description || '')
+            description !== (selectedRule.description || '') ||
+            JSON.stringify(applies) !== JSON.stringify(selectedRule.applies_to ?? [])
           ) {
-            onUpdateRule({ ...selectedRule, name, expression, description });
+            onUpdateRule({
+              ...selectedRule,
+              name,
+              expression,
+              description,
+              applies_to: applies,
+            });
           }
         }}
       >
@@ -905,7 +1100,21 @@ function PropertyPanel({
         <SourceMarkerBadge marker={selectedRule.source_marker} />
         <label>
           名称
-          <input name="name" defaultValue={selectedRule.name} key={selectedRule.id + '-n'} />
+          <input
+            name="name"
+            defaultValue={selectedRule.name}
+            key={selectedRule.id + '-n'}
+            disabled={readOnly}
+          />
+        </label>
+        <label>
+          applies_to（逗号分隔）
+          <input
+            name="applies_to"
+            defaultValue={(selectedRule.applies_to ?? []).join(', ')}
+            key={selectedRule.id + '-a'}
+            disabled={readOnly}
+          />
         </label>
         <label>
           表达式
@@ -914,6 +1123,7 @@ function PropertyPanel({
             rows={3}
             defaultValue={selectedRule.expression || ''}
             key={selectedRule.id + '-e'}
+            disabled={readOnly}
           />
         </label>
         <label>
@@ -923,11 +1133,14 @@ function PropertyPanel({
             rows={2}
             defaultValue={selectedRule.description || ''}
             key={selectedRule.id + '-d'}
+            disabled={readOnly}
           />
         </label>
-        <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
-          删除
-        </button>
+        {!readOnly && (
+          <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
+            删除
+          </button>
+        )}
       </form>
     );
   }
@@ -937,7 +1150,7 @@ function PropertyPanel({
       <strong>属性面板</strong>
       <p style={{ color: '#758196', lineHeight: 1.7 }}>
         选中节点、关系、状态或规则以编辑。Source Marker（AI_GENERATED /
-        MANUAL_MODIFIED）会显示在此处。
+        MANUAL_MODIFIED）。规则通过 applies_to 关联，不是关系端点。
       </p>
     </div>
   );

@@ -312,6 +312,16 @@ func (s *businessServiceImpl) SaveLayout(
 	if basedOnModelRevision == 0 {
 		basedOnModelRevision = master.CurrentRevision
 	}
+	if basedOnModelRevision <= 0 {
+		return nil, fmt.Errorf("%w: based_on_model_revision must be > 0", entity.ErrLayoutModelRevisionNotFound)
+	}
+	rev, err := s.repo.GetRevision(ctx, tenantID, businessID, basedOnModelRevision)
+	if err != nil {
+		return nil, err
+	}
+	if rev == nil {
+		return nil, entity.ErrLayoutModelRevisionNotFound
+	}
 	raw, err := json.Marshal(layout)
 	if err != nil {
 		return nil, err

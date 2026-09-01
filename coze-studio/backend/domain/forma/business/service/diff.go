@@ -7,6 +7,7 @@ package service
 
 import (
 	"encoding/json"
+	"sort"
 
 	"github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 )
@@ -19,10 +20,10 @@ func DiffSemanticModels(fromRev, toRev int32, from, to *entity.SemanticModel) *e
 	if to == nil {
 		to = &entity.SemanticModel{}
 	}
-	d.Nodes = diffMaps(indexNodes(from.Nodes), indexNodes(to.Nodes))
-	d.Edges = diffMaps(indexEdges(from.Edges), indexEdges(to.Edges))
-	d.Rules = diffMaps(indexRules(from.Rules), indexRules(to.Rules))
-	d.States = diffMaps(indexStates(from.States), indexStates(to.States))
+	d.Nodes = sortElementDiff(diffMaps(indexNodes(from.Nodes), indexNodes(to.Nodes)))
+	d.Edges = sortElementDiff(diffMaps(indexEdges(from.Edges), indexEdges(to.Edges)))
+	d.Rules = sortElementDiff(diffMaps(indexRules(from.Rules), indexRules(to.Rules)))
+	d.States = sortElementDiff(diffMaps(indexStates(from.States), indexStates(to.States)))
 	return d
 }
 
@@ -34,9 +35,9 @@ func ImpactFromDiff(d *entity.BusinessModelDiff) *entity.BusinessImpactSummary {
 		len(d.Edges.Added)+len(d.Edges.Removed)+len(d.Edges.Modified)+
 		len(d.Rules.Added)+len(d.Rules.Removed)+len(d.Rules.Modified)+
 		len(d.States.Added)+len(d.States.Removed)+len(d.States.Modified) > 0
-	nodes := append(append(append([]string{}, d.Nodes.Added...), d.Nodes.Removed...), d.Nodes.Modified...)
-	rules := append(append(append([]string{}, d.Rules.Added...), d.Rules.Removed...), d.Rules.Modified...)
-	states := append(append(append([]string{}, d.States.Added...), d.States.Removed...), d.States.Modified...)
+	nodes := uniqueSorted(append(append(append([]string{}, d.Nodes.Added...), d.Nodes.Removed...), d.Nodes.Modified...))
+	rules := uniqueSorted(append(append(append([]string{}, d.Rules.Added...), d.Rules.Removed...), d.Rules.Modified...))
+	states := uniqueSorted(append(append(append([]string{}, d.States.Added...), d.States.Removed...), d.States.Modified...))
 	return &entity.BusinessImpactSummary{
 		SemanticChanged:  changed,
 		AffectedNodeIDs:  nodes,
@@ -99,4 +100,25 @@ func diffMaps(a, b map[string]string) entity.ElementDiff {
 		}
 	}
 	return d
+}
+
+func sortElementDiff(d entity.ElementDiff) entity.ElementDiff {
+	sort.Strings(d.Added)
+	sort.Strings(d.Removed)
+	sort.Strings(d.Modified)
+	return d
+}
+
+func uniqueSorted(ids []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }

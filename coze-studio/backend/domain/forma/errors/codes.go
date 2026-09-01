@@ -36,7 +36,8 @@ const (
 	CodeBusinessNoChange        int32 = 20010 // mapped as 200 with key, or 409-ish — use 200 OK with key in app; code for envelope
 	CodeBusinessLayoutConflict  int32 = 40911
 	CodeBusinessModelConflict   int32 = 40912
-	CodeBusinessInvalidRelation int32 = 40011
+	CodeBusinessInvalidRelation            int32 = 40011
+	CodeBusinessLayoutModelRevisionMissing int32 = 40412
 )
 
 const (
@@ -59,7 +60,8 @@ const (
 	KeyBusinessNoChange        = "FORMA_BUSINESS_NO_CHANGE"
 	KeyBusinessLayoutConflict  = "FORMA_BUSINESS_LAYOUT_CONFLICT"
 	KeyBusinessModelConflict   = "FORMA_BUSINESS_MODEL_CONFLICT"
-	KeyBusinessInvalidRelation = "FORMA_BUSINESS_INVALID_RELATION"
+	KeyBusinessInvalidRelation            = "FORMA_BUSINESS_INVALID_RELATION"
+	KeyBusinessLayoutModelRevisionMissing = "FORMA_BUSINESS_LAYOUT_MODEL_REVISION_NOT_FOUND"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -217,6 +219,13 @@ func BusinessInvalidRelation(msg string) *FormaError {
 	return New(CodeBusinessInvalidRelation, http.StatusBadRequest, KeyBusinessInvalidRelation, msg)
 }
 
+func BusinessLayoutModelRevisionNotFound(msg string) *FormaError {
+	if msg == "" {
+		msg = "layout based_on_model_revision not found"
+	}
+	return New(CodeBusinessLayoutModelRevisionMissing, http.StatusNotFound, KeyBusinessLayoutModelRevisionMissing, msg)
+}
+
 // AsFormaError extracts a FormaError from err.
 func AsFormaError(err error) (*FormaError, bool) {
 	var fe *FormaError
@@ -268,6 +277,9 @@ func MapDomainError(err error) *FormaError {
 	}
 	if errors.Is(err, businessentity.ErrInvalidRelation) {
 		return BusinessInvalidRelation(err.Error())
+	}
+	if errors.Is(err, businessentity.ErrLayoutModelRevisionNotFound) {
+		return BusinessLayoutModelRevisionNotFound(err.Error())
 	}
 	return Internal(err.Error())
 }

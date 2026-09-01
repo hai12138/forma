@@ -221,10 +221,65 @@ test('S2 live Business Model gates', async (t) => {
       cookies: cookiesB,
     });
     const tenantB = boot.json.data.tenant.tenant_id;
-    const denied = await api(`/api/forma/v1/businesses/${businessId}`, {
-      tenantId: tenantB,
-      cookies: cookiesB,
+
+    const deny = async (path, opts = {}) => {
+      const denied = await api(path, {
+        tenantId: tenantB,
+        cookies: cookiesB,
+        ...opts,
+      });
+      assert.ok(
+        denied.res.status === 404 ||
+          denied.res.status === 403 ||
+          denied.json.error_key === 'FORMA_BUSINESS_NOT_FOUND' ||
+          denied.json.error_key === 'FORMA_BUSINESS_FORBIDDEN',
+        `${opts.method || 'GET'} ${path} → ${denied.res.status} ${JSON.stringify(denied.json)}`,
+      );
+    };
+
+    await deny(`/api/forma/v1/businesses/${businessId}`);
+    await deny(`/api/forma/v1/businesses/${businessId}/model`);
+    await deny(`/api/forma/v1/businesses/${businessId}/revisions/1`);
+    await deny(`/api/forma/v1/businesses/${businessId}/layout`);
+    await deny(`/api/forma/v1/businesses/${businessId}/diff?from=1&to=1`);
+    await deny(`/api/forma/v1/businesses/${businessId}`, {
+      method: 'PATCH',
+      body: { name: 'hijack' },
     });
-    assert.ok(denied.res.status === 404 || denied.json.error_key === 'FORMA_BUSINESS_NOT_FOUND');
+    await deny(`/api/forma/v1/businesses/${businessId}/archive`, { method: 'POST', body: {} });
+    await deny(`/api/forma/v1/businesses/${businessId}/model`, {
+      method: 'PUT',
+      body: {
+        expected_revision: 1,
+        semantic_model: workOrderSeed,
+        change_summary: 'hijack',
+      },
+    });
+    await deny(`/api/forma/v1/businesses/${businessId}/layout`, {
+      method: 'PUT',
+      body: {
+        expected_layout_revision: 1,
+        based_on_model_revision: 1,
+        layout: { node_positions: {}, zoom: 1, viewport: { x: 0, y: 0 }, mode: 'manual' },
+      },
+    });
+  });
+
+  await t.test('layout based_on_model_revision integrity', async () => {
+    const bad = await api(`/api/forma/v1/businesses/${businessId}/layout`, {
+      method: 'PUT',
+      tenantId,
+      cookies,
+      body: {
+        expected_layout_revision: layoutRevision,
+        based_on_model_revision: 99999,
+        layout: { node_positions: {}, zoom: 1, viewport: { x: 0, y: 0 }, mode: 'manual' },
+      },
+    });
+    assert.ok(
+      bad.res.status === 404 ||
+        bad.json.error_key === 'FORMA_BUSINESS_LAYOUT_MODEL_REVISION_NOT_FOUND',
+      JSON.stringify(bad.json),
+    );
   });
 });

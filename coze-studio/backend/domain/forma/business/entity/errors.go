@@ -8,11 +8,12 @@ package entity
 import "errors"
 
 var (
-	ErrInvalidModel       = errors.New("invalid business model")
-	ErrNotFound           = errors.New("business not found")
-	ErrRevisionNotFound   = errors.New("business revision not found")
-	ErrRevisionConflict   = errors.New("business model revision conflict")
-	ErrLayoutConflict     = errors.New("business layout revision conflict")
-	ErrNoChange           = errors.New("business model no change")
-	ErrInvalidRelation    = errors.New("invalid business relation")
+	ErrInvalidModel                = errors.New("invalid business model")
+	ErrNotFound                    = errors.New("business not found")
+	ErrRevisionNotFound            = errors.New("business revision not found")
+	ErrRevisionConflict            = errors.New("business model revision conflict")
+	ErrLayoutConflict              = errors.New("business layout revision conflict")
+	ErrLayoutModelRevisionNotFound = errors.New("layout based_on_model_revision not found")
+	ErrNoChange                    = errors.New("business model no change")
+	ErrInvalidRelation             = errors.New("invalid business relation")
 )

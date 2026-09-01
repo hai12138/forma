@@ -220,3 +220,72 @@ export function collectCanvasItems(model: FormaSemanticModel): CanvasItem[] {
   }));
   return [...nodes, ...states, ...rules];
 }
+
+/** Rule is NOT a relationship endpoint — only node/state are. */
+export function isEdgeEndpoint(model: FormaSemanticModel, id: string): boolean {
+  return model.nodes.some(n => n.id === id) || model.states.some(s => s.id === id);
+}
+
+export type NodeDeleteImpact = {
+  edgeCount: number;
+  stateCount: number;
+  ruleRefCount: number;
+  dependentStateIds: string[];
+  dependentEdgeIds: string[];
+  ruleIdsWithRef: string[];
+};
+
+export function analyzeNodeDeleteImpact(
+  model: FormaSemanticModel,
+  nodeId: string,
+): NodeDeleteImpact {
+  const dependentStateIds = model.states
+    .filter(s => s.object_ref === nodeId)
+    .map(s => s.id);
+  const stateSet = new Set(dependentStateIds);
+  const dependentEdgeIds = model.edges
+    .filter(
+      e =>
+        e.source === nodeId ||
+        e.target === nodeId ||
+        stateSet.has(e.source) ||
+        stateSet.has(e.target),
+    )
+    .map(e => e.id);
+  const ruleIdsWithRef = model.rules
+    .filter(r => (r.applies_to ?? []).includes(nodeId))
+    .map(r => r.id);
+  return {
+    edgeCount: dependentEdgeIds.length,
+    stateCount: dependentStateIds.length,
+    ruleRefCount: ruleIdsWithRef.length,
+    dependentStateIds,
+    dependentEdgeIds,
+    ruleIdsWithRef,
+  };
+}
+
+/**
+ * Cascade delete node:
+ * - remove direct + dependent-state edges
+ * - delete states with object_ref == node
+ * - strip node from rule.applies_to (keep rule)
+ */
+export function deleteNodeWithDependencies(
+  model: FormaSemanticModel,
+  nodeId: string,
+): FormaSemanticModel {
+  const impact = analyzeNodeDeleteImpact(model, nodeId);
+  const dropStates = new Set(impact.dependentStateIds);
+  const dropEdges = new Set(impact.dependentEdgeIds);
+  return {
+    ...model,
+    nodes: model.nodes.filter(n => n.id !== nodeId),
+    states: model.states.filter(s => !dropStates.has(s.id)),
+    edges: model.edges.filter(e => !dropEdges.has(e.id)),
+    rules: model.rules.map(r => ({
+      ...r,
+      applies_to: (r.applies_to ?? []).filter(ref => ref !== nodeId),
+    })),
+  };
+}

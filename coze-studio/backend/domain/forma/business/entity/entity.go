@@ -19,26 +19,29 @@ const (
 	SourceManualModified SourceMarker = "MANUAL_MODIFIED"
 )
 
-// NodeType — formal types; v1.2 aliases accepted by validator.
+// NodeType — canonical Business Model types only (persisted SoT).
+// v1.2 aliases (role/entity/process/external) may be converted by import/FE adapters
+// before persistence. agent/application/state/rule must never be persisted as NodeType.
 type NodeType string
 
 const (
-	NodeActor           NodeType = "ACTOR"
-	NodeBusinessObject  NodeType = "BUSINESS_OBJECT"
-	NodeProcess         NodeType = "PROCESS"
-	NodeEvent           NodeType = "EVENT"
-	NodeDecision        NodeType = "DECISION"
-	NodeSystem          NodeType = "SYSTEM"
-	NodePolicy          NodeType = "POLICY"
-	// v1.2 VisualModelEditor aliases (compatible)
-	NodeRoleV12         NodeType = "role"
-	NodeEntityV12       NodeType = "entity"
-	NodeProcessV12      NodeType = "process"
-	NodeStateV12        NodeType = "state"
-	NodeRuleV12         NodeType = "rule"
-	NodeExternalV12     NodeType = "external"
-	NodeAgentV12        NodeType = "agent"
-	NodeApplicationV12  NodeType = "application"
+	NodeActor          NodeType = "ACTOR"
+	NodeBusinessObject NodeType = "BUSINESS_OBJECT"
+	NodeProcess        NodeType = "PROCESS"
+	NodeEvent          NodeType = "EVENT"
+	NodeDecision       NodeType = "DECISION"
+	NodeSystem         NodeType = "SYSTEM"
+	NodePolicy         NodeType = "POLICY"
+
+	// Rejected / non-canonical markers (validator rejects; not stored).
+	NodeRoleAlias        NodeType = "role"
+	NodeEntityAlias      NodeType = "entity"
+	NodeProcessAlias     NodeType = "process"
+	NodeStateAlias       NodeType = "state"
+	NodeRuleAlias        NodeType = "rule"
+	NodeExternalAlias    NodeType = "external"
+	NodeAgentAlias       NodeType = "agent"
+	NodeApplicationAlias NodeType = "application"
 )
 
 type EdgeType string

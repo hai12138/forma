@@ -6,10 +6,13 @@ import type {
   FormaBusiness,
   FormaBusinessRevision,
   FormaDiffResponse,
+  FormaSemanticModel,
   FormaTenant,
+  FormaViewLayout,
 } from '@forma/api-client';
 import { FormaApiError } from '@forma/api-client';
 
+import { adaptModelForPersistence } from '../canonical';
 import { VisualModelEditor } from '../components/VisualModelEditor';
 import {
   createEditBuffer,
@@ -42,6 +45,36 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
   const [diffFrom, setDiffFrom] = useState(1);
   const [diffTo, setDiffTo] = useState(1);
   const [diffResult, setDiffResult] = useState<FormaDiffResponse | null>(null);
+  const [viewingRevision, setViewingRevision] = useState<number | null>(null);
+  const [historicalBuffer, setHistoricalBuffer] = useState<EditBuffer | null>(null);
+  const [liveBufferSnapshot, setLiveBufferSnapshot] = useState<EditBuffer | null>(null);
+
+  const normalizeSemantic = (semanticRaw: FormaSemanticModel): FormaSemanticModel => ({
+    ...semanticRaw,
+    nodes: semanticRaw.nodes ?? [],
+    edges: semanticRaw.edges ?? [],
+    rules: semanticRaw.rules ?? [],
+    states: semanticRaw.states ?? [],
+  });
+
+  const ensureLayoutPositions = (
+    semantic: FormaSemanticModel,
+    lay: FormaViewLayout,
+  ): FormaViewLayout => {
+    const positions = { ...(lay.node_positions ?? {}) };
+    let i = 0;
+    for (const id of [
+      ...semantic.nodes.map(n => n.id),
+      ...semantic.states.map(s => s.id),
+      ...semantic.rules.map(r => r.id),
+    ]) {
+      if (!positions[id]) {
+        positions[id] = { x: 40 + (i % 4) * 220, y: 40 + Math.floor(i / 4) * 120 };
+      }
+      i += 1;
+    }
+    return { ...lay, node_positions: positions };
+  };
 
   const load = useCallback(async () => {
     if (!businessId) return;
@@ -54,38 +87,20 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
         client.getBusinessLayout(businessId).catch(() => null),
       ]);
       setBusiness(biz.data);
-      const semanticRaw = model.data.semantic_model ?? emptySemanticModel();
-      const semantic = {
-        ...semanticRaw,
-        nodes: semanticRaw.nodes ?? [],
-        edges: semanticRaw.edges ?? [],
-        rules: semanticRaw.rules ?? [],
-        states: semanticRaw.states ?? [],
-      };
+      const semantic = normalizeSemantic(model.data.semantic_model ?? emptySemanticModel());
       const lay =
         layout?.data.layout ??
         (semantic.nodes.length ? workOrderDefaultLayout() : emptyLayout());
-      // Ensure positions for all canvas items
-      const positions = { ...(lay.node_positions ?? {}) };
-      let i = 0;
-      for (const id of [
-        ...semantic.nodes.map(n => n.id),
-        ...semantic.states.map(s => s.id),
-        ...semantic.rules.map(r => r.id),
-      ]) {
-        if (!positions[id]) {
-          positions[id] = { x: 40 + (i % 4) * 220, y: 40 + Math.floor(i / 4) * 120 };
-        }
-        i += 1;
-      }
       setBuffer(
         createEditBuffer({
           semantic_model: semantic,
-          layout: { ...lay, node_positions: positions },
+          layout: ensureLayoutPositions(semantic, lay),
           modelRevision: model.data.current_revision,
           layoutRevision: layout?.data.layout_revision ?? 1,
         }),
       );
+      setViewingRevision(null);
+      setHistoricalBuffer(null);
     } catch (err) {
       setError(err instanceof FormaApiError ? err.message : '加载失败');
       setBuffer(null);
@@ -103,9 +118,10 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
     setSavingModel(true);
     setError(null);
     try {
+      const semantic_model = adaptModelForPersistence(buffer.current.semantic_model);
       const resp = await client.putBusinessModel(businessId, {
         expected_revision: buffer.modelRevision,
-        semantic_model: buffer.current.semantic_model,
+        semantic_model,
         change_summary: 'Visual editor save',
       });
       setBuffer(
@@ -158,6 +174,38 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
     }
   };
 
+  const openHistoricalRevision = async (revNo: number) => {
+    if (!buffer) return;
+    try {
+      const resp = await client.getBusinessRevision(businessId, revNo);
+      const semantic = normalizeSemantic(resp.data.semantic_model);
+      setLiveBufferSnapshot(buffer);
+      setHistoricalBuffer(
+        createEditBuffer({
+          semantic_model: semantic,
+          layout: ensureLayoutPositions(semantic, buffer.current.layout),
+          modelRevision: revNo,
+          layoutRevision: buffer.layoutRevision,
+        }),
+      );
+      setViewingRevision(revNo);
+      setShowRevisions(false);
+      setMessage(`Viewing revision r${revNo} · Read only`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载历史修订失败');
+    }
+  };
+
+  const backToCurrent = () => {
+    if (liveBufferSnapshot) {
+      setBuffer(liveBufferSnapshot);
+    }
+    setHistoricalBuffer(null);
+    setViewingRevision(null);
+    setLiveBufferSnapshot(null);
+    setMessage('已返回当前编辑缓冲');
+  };
+
   const openDiff = async () => {
     setShowDiff(true);
     setShowRevisions(false);
@@ -205,7 +253,8 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
     );
   }
 
-  if (!buffer || !business) {
+  const activeBuffer = viewingRevision != null ? historicalBuffer : buffer;
+  if (!activeBuffer || !business) {
     return (
       <div className="forma-panel">
         <p className="forma-placeholder">未找到业务</p>
@@ -227,8 +276,8 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
       </div>
 
       <VisualModelEditor
-        buffer={buffer}
-        onBufferChange={setBuffer}
+        buffer={activeBuffer}
+        onBufferChange={viewingRevision != null ? () => undefined : setBuffer}
         businessName={business.name}
         onSaveModel={() => void saveModel()}
         onSaveLayout={() => void saveLayout()}
@@ -237,10 +286,13 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
         onOpenRevisions={() => void openRevisions()}
         onOpenDiff={() => void openDiff()}
         message={message}
+        readOnly={viewingRevision != null}
+        viewingRevision={viewingRevision}
+        onBackToCurrent={backToCurrent}
       />
 
       {showRevisions && (
-        <div className="forma-biz-side-panel">
+        <div className="forma-biz-side-panel" data-testid="revisions-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <h3>修订历史</h3>
             <button type="button" className="forma-vme-btn" onClick={() => setShowRevisions(false)}>
@@ -251,8 +303,15 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
             {revisions.map(r => (
               <li key={r.revision_no} style={{ marginBottom: 8 }}>
-                <b>r{r.revision_no}</b> · {r.change_summary || '—'} ·{' '}
-                {new Date(r.created_at).toLocaleString()}
+                <button
+                  type="button"
+                  className="forma-vme-btn"
+                  data-testid={`revision-r${r.revision_no}`}
+                  onClick={() => void openHistoricalRevision(r.revision_no)}
+                >
+                  r{r.revision_no}
+                </button>{' '}
+                · {r.change_summary || '—'} · {new Date(r.created_at).toLocaleString()}
                 <br />
                 <span className="forma-placeholder">digest {r.content_digest.slice(0, 12)}…</span>
               </li>
@@ -262,7 +321,7 @@ export function BusinessEditorPage({ client, currentTenant }: BusinessEditorPage
       )}
 
       {showDiff && (
-        <div className="forma-biz-side-panel">
+        <div className="forma-biz-side-panel" data-testid="diff-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
             <h3>Diff</h3>
             <button type="button" className="forma-vme-btn" onClick={() => setShowDiff(false)}>

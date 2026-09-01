@@ -226,3 +226,35 @@ func TestLayoutConflict(t *testing.T) {
 	_, err = svc.SaveLayout(ctx, "ten_a", "biz_1", "b", 1, 1, layout)
 	require.ErrorIs(t, err, entity.ErrLayoutConflict)
 }
+
+func TestLayoutBasedOnModelRevisionIntegrity(t *testing.T) {
+	svc := NewBusinessService(&Components{Repo: newMem()})
+	ctx := context.Background()
+	_, _, _, err := svc.InitBusiness(ctx, "ten_a", "biz_1", "biz_1", "prin_1", sampleModel(), "seed")
+	require.NoError(t, err)
+	// bump semantic to r2 so historical r1 remains valid
+	m2 := sampleModel()
+	m2.Nodes[0].Name = "报修客户"
+	_, _, err = svc.SaveModel(ctx, "ten_a", "biz_1", "prin_1", 1, m2, "rename")
+	require.NoError(t, err)
+
+	layout := &entity.ViewLayout{NodePositions: map[string]entity.NodePosition{"n1": {X: 1, Y: 2}}, Zoom: 1, Mode: "manual"}
+
+	// current rev valid
+	_, err = svc.SaveLayout(ctx, "ten_a", "biz_1", "a", 1, 2, layout)
+	require.NoError(t, err)
+
+	// historical rev valid
+	_, err = svc.SaveLayout(ctx, "ten_a", "biz_1", "a", 2, 1, layout)
+	require.NoError(t, err)
+
+	// future nonexistent
+	_, err = svc.SaveLayout(ctx, "ten_a", "biz_1", "a", 3, 99, layout)
+	require.ErrorIs(t, err, entity.ErrLayoutModelRevisionNotFound)
+
+	// other business revision not visible
+	_, _, _, err = svc.InitBusiness(ctx, "ten_a", "biz_2", "biz_2", "prin_1", sampleModel(), "seed2")
+	require.NoError(t, err)
+	_, err = svc.SaveLayout(ctx, "ten_a", "biz_2", "a", 1, 2, layout) // biz_2 only has r1
+	require.ErrorIs(t, err, entity.ErrLayoutModelRevisionNotFound)
+}

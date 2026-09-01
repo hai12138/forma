@@ -18,7 +18,19 @@ export {
   redo,
   resetSemanticBaseline,
   resetLayoutBaseline,
+  analyzeNodeDeleteImpact,
+  deleteNodeWithDependencies,
+  isEdgeEndpoint,
+  collectCanvasItems,
 } from './edit-buffer';
-export type { EditBuffer, EditSnapshot } from './edit-buffer';
+export type { EditBuffer, EditSnapshot, NodeDeleteImpact } from './edit-buffer';
+
+export { layoutGraph, computeAutoLayout } from './auto-layout';
+export {
+  CANONICAL_NODE_TYPES,
+  EDGE_TYPES,
+  canonicalizeNodeType,
+  adaptModelForPersistence,
+} from './canonical';
 
 export { workOrderSeed, workOrderDefaultLayout, emptySemanticModel, emptyLayout } from './work-order-seed';

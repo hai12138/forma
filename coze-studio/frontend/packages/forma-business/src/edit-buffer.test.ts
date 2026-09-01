@@ -5,12 +5,18 @@ import React from 'react';
 import {
   applyLayoutChange,
   applySemanticChange,
+  analyzeNodeDeleteImpact,
+  collectCanvasItems,
   createEditBuffer,
+  deleteNodeWithDependencies,
+  isEdgeEndpoint,
   isLayoutDirty,
   isSemanticDirty,
   redo,
   undo,
 } from './edit-buffer';
+import { computeAutoLayout } from './auto-layout';
+import { adaptModelForPersistence, canonicalizeNodeType } from './canonical';
 import { emptyLayout, emptySemanticModel, workOrderSeed } from './work-order-seed';
 import { createBusinessSubmitHandler } from './create-handlers';
 
@@ -126,5 +132,73 @@ describe('undo/redo buffer', () => {
     buffer = redo(buffer);
     expect(buffer.current.semantic_model.nodes).toHaveLength(1);
     expect(buffer.current.semantic_model.nodes[0].name).toBe('A');
+  });
+});
+
+describe('auto layout', () => {
+  it('is deterministic for same model', () => {
+    const model = workOrderSeed();
+    const ids = [
+      ...model.nodes.map(n => n.id),
+      ...model.states.map(s => s.id),
+      ...model.rules.map(r => r.id),
+    ];
+    const a = computeAutoLayout(model, emptyLayout(), ids);
+    const b = computeAutoLayout(model, emptyLayout(), ids);
+    expect(a.node_positions).toEqual(b.node_positions);
+    expect(a.mode).toBe('auto');
+  });
+
+  it('auto layout marks layout dirty only', () => {
+    const model = workOrderSeed();
+    let buffer = createEditBuffer({
+      semantic_model: model,
+      layout: emptyLayout(),
+      modelRevision: 1,
+      layoutRevision: 1,
+    });
+    const ids = collectCanvasItems(model).map(i => i.id);
+    buffer = applyLayoutChange(buffer, computeAutoLayout(model, buffer.current.layout, ids));
+    expect(isLayoutDirty(buffer)).toBe(true);
+    expect(isSemanticDirty(buffer)).toBe(false);
+  });
+});
+
+describe('dependency-aware delete', () => {
+  it('cascades states and strips rule applies_to', () => {
+    const model = workOrderSeed();
+    const impact = analyzeNodeDeleteImpact(model, 'obj_work_order');
+    expect(impact.stateCount).toBeGreaterThan(0);
+    expect(impact.ruleRefCount).toBeGreaterThan(0);
+    const next = deleteNodeWithDependencies(model, 'obj_work_order');
+    expect(next.nodes.find(n => n.id === 'obj_work_order')).toBeUndefined();
+    expect(next.states.every(s => s.object_ref !== 'obj_work_order')).toBe(true);
+    expect(
+      next.rules.every(r => !(r.applies_to ?? []).includes('obj_work_order')),
+    ).toBe(true);
+    expect(next.rules.find(r => r.id === 'rule_close_permission')).toBeTruthy();
+  });
+});
+
+describe('canonical adapter', () => {
+  it('maps v1.2 aliases and rejects agent', () => {
+    expect(canonicalizeNodeType('role')).toBe('ACTOR');
+    expect(canonicalizeNodeType('entity')).toBe('BUSINESS_OBJECT');
+    const adapted = adaptModelForPersistence({
+      nodes: [{ type: 'role' }, { type: 'external' }],
+    });
+    expect(adapted.nodes.map(n => n.type)).toEqual(['ACTOR', 'SYSTEM']);
+    expect(() =>
+      adaptModelForPersistence({ nodes: [{ type: 'agent' }] }),
+    ).toThrow(/agent/);
+  });
+});
+
+describe('edge endpoints', () => {
+  it('rules are not edge endpoints', () => {
+    const model = workOrderSeed();
+    expect(isEdgeEndpoint(model, 'obj_work_order')).toBe(true);
+    expect(isEdgeEndpoint(model, 'st_pending')).toBe(true);
+    expect(isEdgeEndpoint(model, 'rule_close_permission')).toBe(false);
   });
 });

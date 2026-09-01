@@ -12,19 +12,60 @@ import (
 	"github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 )
 
+// Canonical NodeTypes persisted in Business Model SoT.
 var allowedNodeTypes = map[entity.NodeType]bool{
 	entity.NodeActor: true, entity.NodeBusinessObject: true, entity.NodeProcess: true,
 	entity.NodeEvent: true, entity.NodeDecision: true, entity.NodeSystem: true, entity.NodePolicy: true,
-	entity.NodeRoleV12: true, entity.NodeEntityV12: true, entity.NodeProcessV12: true,
-	entity.NodeStateV12: true, entity.NodeRuleV12: true, entity.NodeExternalV12: true,
-	entity.NodeAgentV12: true, entity.NodeApplicationV12: true,
+}
+
+// Import/FE compatibility aliases → canonical. Applied before persistence.
+var nodeTypeAliases = map[entity.NodeType]entity.NodeType{
+	entity.NodeRoleAlias:     entity.NodeActor,
+	entity.NodeEntityAlias:   entity.NodeBusinessObject,
+	entity.NodeProcessAlias:  entity.NodeProcess,
+	entity.NodeExternalAlias: entity.NodeSystem,
+}
+
+// Downstream asset types and dual-expression aliases — never allowed as NodeType.
+var rejectedNodeTypes = map[entity.NodeType]string{
+	entity.NodeAgentAlias:       "agent is not a Business Model NodeType (downstream Agent Engineering)",
+	entity.NodeApplicationAlias: "application is not a Business Model NodeType (downstream Application Graph)",
+	entity.NodeStateAlias:       "state must use states[] first-class structure, not NodeType",
+	entity.NodeRuleAlias:        "rule must use rules[] first-class structure, not NodeType",
 }
 
 var allowedEdgeTypes = map[entity.EdgeType]bool{
 	entity.EdgePerforms: true, entity.EdgeCreates: true, entity.EdgeUpdates: true,
 	entity.EdgeTriggers: true, entity.EdgeRequires: true, entity.EdgeDependsOn: true,
 	entity.EdgeTransitionsTo: true, entity.EdgeRelatesTo: true,
-	"": true, // label-only edges from v1.2 allowed; treat as RELATES_TO
+}
+
+var allowedSourceMarkers = map[entity.SourceMarker]bool{
+	entity.SourceAIGenerated:    true,
+	entity.SourceManualModified: true,
+}
+
+func canonicalizeNodeType(t entity.NodeType) (entity.NodeType, error) {
+	if reason, bad := rejectedNodeTypes[t]; bad {
+		return "", fmt.Errorf("%w: %s", entity.ErrInvalidModel, reason)
+	}
+	if canon, ok := nodeTypeAliases[t]; ok {
+		return canon, nil
+	}
+	if allowedNodeTypes[t] {
+		return t, nil
+	}
+	return "", fmt.Errorf("%w: unsupported node type %q", entity.ErrInvalidModel, t)
+}
+
+func normalizeSourceMarker(m entity.SourceMarker) (entity.SourceMarker, error) {
+	if m == "" {
+		return entity.SourceManualModified, nil
+	}
+	if !allowedSourceMarkers[m] {
+		return "", fmt.Errorf("%w: unsupported source_marker %q", entity.ErrInvalidModel, m)
+	}
+	return m, nil
 }
 
 func ValidateSemanticModel(m *entity.SemanticModel) error {
@@ -63,12 +104,16 @@ func ValidateSemanticModel(m *entity.SemanticModel) error {
 		if strings.TrimSpace(n.Name) == "" {
 			return fmt.Errorf("%w: node %q name empty", entity.ErrInvalidModel, id)
 		}
-		if !allowedNodeTypes[n.Type] {
-			return fmt.Errorf("%w: unsupported node type %q", entity.ErrInvalidModel, n.Type)
+		canon, err := canonicalizeNodeType(n.Type)
+		if err != nil {
+			return err
 		}
-		if n.SourceMarker == "" {
-			m.Nodes[i].SourceMarker = entity.SourceManualModified
+		m.Nodes[i].Type = canon
+		marker, err := normalizeSourceMarker(n.SourceMarker)
+		if err != nil {
+			return fmt.Errorf("%w: node %q: %v", entity.ErrInvalidModel, id, err)
 		}
+		m.Nodes[i].SourceMarker = marker
 	}
 
 	// Collect state IDs first so TRANSITIONS_TO may reference states as endpoints.
@@ -88,9 +133,11 @@ func ValidateSemanticModel(m *entity.SemanticModel) error {
 		if s.ObjectRef == "" || !nodeIDs[s.ObjectRef] {
 			return fmt.Errorf("%w: state %q object_ref missing/invalid", entity.ErrInvalidModel, id)
 		}
-		if s.SourceMarker == "" {
-			m.States[i].SourceMarker = entity.SourceManualModified
+		marker, err := normalizeSourceMarker(s.SourceMarker)
+		if err != nil {
+			return fmt.Errorf("%w: state %q: %v", entity.ErrInvalidModel, id, err)
 		}
+		m.States[i].SourceMarker = marker
 	}
 
 	endpointOK := func(id string) bool { return nodeIDs[id] || stateIDs[id] }
@@ -117,9 +164,14 @@ func ValidateSemanticModel(m *entity.SemanticModel) error {
 		if e.Type == "" {
 			m.Edges[i].Type = entity.EdgeRelatesTo
 		}
-		if e.SourceMarker == "" {
-			m.Edges[i].SourceMarker = entity.SourceManualModified
+		if strings.TrimSpace(e.Label) == "" {
+			return fmt.Errorf("%w: edge %q label required (non-empty)", entity.ErrInvalidModel, id)
 		}
+		marker, err := normalizeSourceMarker(e.SourceMarker)
+		if err != nil {
+			return fmt.Errorf("%w: edge %q: %v", entity.ErrInvalidModel, id, err)
+		}
+		m.Edges[i].SourceMarker = marker
 	}
 
 	ruleIDs := map[string]bool{}
@@ -140,9 +192,11 @@ func ValidateSemanticModel(m *entity.SemanticModel) error {
 				return fmt.Errorf("%w: rule %q applies_to unknown ref %q", entity.ErrInvalidModel, id, ref)
 			}
 		}
-		if r.SourceMarker == "" {
-			m.Rules[i].SourceMarker = entity.SourceManualModified
+		marker, err := normalizeSourceMarker(r.SourceMarker)
+		if err != nil {
+			return fmt.Errorf("%w: rule %q: %v", entity.ErrInvalidModel, id, err)
 		}
+		m.Rules[i].SourceMarker = marker
 	}
 	return nil
 }
