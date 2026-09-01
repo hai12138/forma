@@ -13,9 +13,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 )
 
 func BuildProposalPatch(assertions []*entity.BusinessAssertion) *entity.SemanticModelPatch {

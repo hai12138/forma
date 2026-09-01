@@ -845,6 +845,19 @@ func (d *AnalystDAO) UpdateProposalStatus(ctx context.Context, tenantID, proposa
 		}).Error
 }
 
+func (d *AnalystDAO) MarkProposalStaleIfReady(ctx context.Context, tenantID, proposalID string, at time.Time) (bool, error) {
+	res := d.db.WithContext(ctx).Model(&ProposalModel{}).
+		Where("tenant_id = ? AND proposal_id = ? AND status = ?", tenantID, proposalID, string(entity.ProposalReadyForReview)).
+		Updates(map[string]any{
+			"status":     string(entity.ProposalStale),
+			"updated_at": at,
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
 func toProposal(m *ProposalModel) *entity.BusinessModelProposal {
 	var patch entity.SemanticModelPatch
 	if m.PatchJSON != "" {

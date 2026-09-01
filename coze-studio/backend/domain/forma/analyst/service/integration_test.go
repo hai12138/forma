@@ -12,29 +12,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
+	analystrepo "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
-	analystrepo "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
 	"github.com/stretchr/testify/require"
 )
 
 // memAnalystRepo is an in-memory AnalystRepository for domain integration tests.
 type memAnalystRepo struct {
-	mu            sync.Mutex
-	sessions      map[string]*entity.AnalystSession
-	turns         map[string]*entity.AnalystTurn
-	evidence      map[string]*entity.BusinessEvidence
-	assertions    map[string]*entity.BusinessAssertion
-	confirmations map[string]*entity.BusinessConfirmation
-	conflicts     map[string]*entity.AssertionConflict
-	gaps          map[string]*entity.AnalystGap
-	proposals     map[string]*entity.BusinessModelProposal
-	provenance    map[string]*entity.RevisionProvenance
-	modelCalls    []*entity.ModelCallRecord
-	evRefs        map[string]map[string]bool // assertionID -> evidenceIDs
-	failOn        string
+	mu                   sync.Mutex
+	txnMu                sync.Mutex
+	sessions             map[string]*entity.AnalystSession
+	turns                map[string]*entity.AnalystTurn
+	evidence             map[string]*entity.BusinessEvidence
+	assertions           map[string]*entity.BusinessAssertion
+	confirmations        map[string]*entity.BusinessConfirmation
+	conflicts            map[string]*entity.AssertionConflict
+	gaps                 map[string]*entity.AnalystGap
+	proposals            map[string]*entity.BusinessModelProposal
+	provenance           map[string]*entity.RevisionProvenance
+	modelCalls           []*entity.ModelCallRecord
+	evRefs               map[string]map[string]bool // assertionID -> evidenceIDs
+	failOn               string
+	failAfterAssertion   int
+	createAssertionCalls int
 }
 
 func newMemAnalystRepo() *memAnalystRepo {
@@ -55,6 +58,8 @@ func newMemAnalystRepo() *memAnalystRepo {
 func (m *memAnalystRepo) cloneLocked() *memAnalystRepo {
 	out := newMemAnalystRepo()
 	out.failOn = m.failOn
+	out.failAfterAssertion = m.failAfterAssertion
+	out.createAssertionCalls = m.createAssertionCalls
 	for k, v := range m.sessions {
 		cp := *v
 		out.sessions[k] = &cp
@@ -117,9 +122,13 @@ func (m *memAnalystRepo) applyFrom(src *memAnalystRepo) {
 	m.evRefs = src.evRefs
 	m.modelCalls = src.modelCalls
 	m.failOn = src.failOn
+	m.failAfterAssertion = src.failAfterAssertion
+	m.createAssertionCalls = src.createAssertionCalls
 }
 
 func (m *memAnalystRepo) Transaction(_ context.Context, fn func(txRepo analystrepo.AnalystRepository) error) error {
+	m.txnMu.Lock()
+	defer m.txnMu.Unlock()
 	m.mu.Lock()
 	snap := m.cloneLocked()
 	m.mu.Unlock()
@@ -177,9 +186,11 @@ func (m *memAnalystRepo) GetSessionForUpdate(ctx context.Context, tenantID, sess
 func (m *memAnalystRepo) CreateTurn(_ context.Context, t *entity.AnalystTurn) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, ex := range m.turns {
-		if ex.TenantID == t.TenantID && ex.SessionID == t.SessionID && ex.ClientRequestID == t.ClientRequestID {
-			return fmt.Errorf("duplicate entry 1062 client_request_id")
+	if t.ClientRequestID != "" {
+		for _, ex := range m.turns {
+			if ex.TenantID == t.TenantID && ex.SessionID == t.SessionID && ex.ClientRequestID == t.ClientRequestID {
+				return fmt.Errorf("duplicate entry 1062 client_request_id")
+			}
 		}
 	}
 	cp := *t
@@ -285,6 +296,10 @@ func (m *memAnalystRepo) GetEvidence(_ context.Context, tenantID, evidenceID str
 func (m *memAnalystRepo) CreateAssertion(_ context.Context, a *entity.BusinessAssertion) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.createAssertionCalls++
+	if m.failAfterAssertion > 0 && m.createAssertionCalls >= m.failAfterAssertion {
+		return fmt.Errorf("injected CreateAssertion failure")
+	}
 	cp := *a
 	m.assertions[a.AssertionID] = &cp
 	return nil
@@ -480,6 +495,20 @@ func (m *memAnalystRepo) UpdateProposalStatus(_ context.Context, tenantID, propo
 	}
 	p.Status = status
 	return nil
+}
+func (m *memAnalystRepo) MarkProposalStaleIfReady(_ context.Context, tenantID, proposalID string, at time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p := m.proposals[proposalID]
+	if p == nil || p.TenantID != tenantID {
+		return false, entity.ErrProposalNotFound
+	}
+	if p.Status != entity.ProposalReadyForReview {
+		return false, nil
+	}
+	p.Status = entity.ProposalStale
+	p.UpdatedAt = at
+	return true, nil
 }
 func (m *memAnalystRepo) CreateProvenance(_ context.Context, p *entity.RevisionProvenance) error {
 	m.mu.Lock()
@@ -683,7 +712,7 @@ func TestAIAssertionAlwaysProposedOnSubmit(t *testing.T) {
 	for _, a := range res.Assertions {
 		require.Equal(t, entity.AssertionProposed, a.Status)
 	}
-	master, _, _ := br.GetMaster(ctx, "t1", "b1")
+	master, _ := br.GetMaster(ctx, "t1", "b1")
 	require.Equal(t, int32(1), master.CurrentRevision)
 }
 
@@ -885,6 +914,26 @@ func TestConcurrentSameClientRequestIdempotent(t *testing.T) {
 		}
 	}
 	require.Equal(t, 1, userTurns)
+
+	session, err := ar.GetSession(ctx, "t1", sess.SessionID)
+	require.NoError(t, err)
+	require.Equal(t, int32(3), session.NextTurnSequence)
+
+	analystTurns := 0
+	for _, t := range turns {
+		if t.Speaker == entity.SpeakerAnalyst && t.ReplyToTurnID == first {
+			analystTurns++
+		}
+	}
+	require.Equal(t, 1, analystTurns)
+
+	evCount := 0
+	for _, e := range ar.evidence {
+		if e.BusinessID == "b1" && e.SessionID == sess.SessionID {
+			evCount++
+		}
+	}
+	require.Equal(t, 1, evCount)
 }
 
 func TestResponseFailedRetryNoDuplicateAssertions(t *testing.T) {
@@ -894,7 +943,7 @@ func TestResponseFailedRetryNoDuplicateAssertions(t *testing.T) {
 		Repo:         ar,
 		BusinessSVC:  businesssvc.NewBusinessService(&businesssvc.Components{Repo: br}),
 		BusinessRepo: br,
-		Model:        genFailFakeModel{},
+		Model:        &genFailFakeModel{},
 	})
 	ctx := context.Background()
 	seedBusiness(ctx, br, "t1", "b1")
@@ -941,7 +990,7 @@ func TestProposalStalePersisted(t *testing.T) {
 	ctx := context.Background()
 	seedBusiness(ctx, br, "t1", "b1")
 	// bump revision
-	m, _, _ := br.GetMaster(ctx, "t1", "b1")
+	m, _ := br.GetMaster(ctx, "t1", "b1")
 	m.CurrentRevision = 2
 	_ = br.CreateRevision(ctx, &businessentity.BusinessModelRevision{
 		TenantID:          "t1",
@@ -968,9 +1017,9 @@ func TestProposalStalePersisted(t *testing.T) {
 		Patch:         &entity.SemanticModelPatch{},
 		Status:        entity.ProposalReadyForReview,
 		ContentDigest: "dig",
-		CreatedBy:       "p1",
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		CreatedBy:     "p1",
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	require.NoError(t, ar.CreateProposal(ctx, prop))
 
@@ -978,4 +1027,132 @@ func TestProposalStalePersisted(t *testing.T) {
 	require.ErrorIs(t, err, entity.ErrProposalStale)
 	updated, _ := ar.GetProposal(ctx, "t1", "prop_stale")
 	require.Equal(t, entity.ProposalStale, updated.Status)
+}
+
+func TestProposalStaleDetectedInTransaction(t *testing.T) {
+	ar := newMemAnalystRepo()
+	br := newBusinessTestMem()
+	svc := newTestAnalystSvc(ar, br)
+	svcImpl := svc.(*analystServiceImpl)
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+
+	m, _ := br.GetMaster(ctx, "t1", "b1")
+	m.CurrentRevision = 2
+	_ = br.CreateRevision(ctx, &businessentity.BusinessModelRevision{
+		TenantID:          "t1",
+		BusinessID:        "b1",
+		RevisionNo:        2,
+		BaseRevisionNo:    1,
+		SchemaVersion:     businessentity.SemanticSchemaVersion,
+		SemanticModelJSON: `{"schema_version":"1.0","nodes":[],"edges":[],"rules":[],"states":[]}`,
+		ContentDigest:     "d2",
+		ChangeSummary:     "bump",
+		CreatedBy:         "p1",
+		CreatedAt:         time.Now().UTC(),
+	})
+	_ = br.CreateMaster(ctx, m)
+
+	now := time.Now().UTC()
+	prop := &entity.BusinessModelProposal{
+		ProposalID:    "prop_tx_stale",
+		TenantID:      "t1",
+		BusinessID:    "b1",
+		SessionID:     "s1",
+		BaseRevision:  1,
+		AssertionIDs:  []string{"a1"},
+		Patch:         &entity.SemanticModelPatch{},
+		Status:        entity.ProposalReadyForReview,
+		ContentDigest: "dig",
+		CreatedBy:     "p1",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	require.NoError(t, ar.CreateProposal(ctx, prop))
+
+	_, err := svcImpl.applyProposalWithRepos(ctx, ar, br, "t1", "b1", "prop_tx_stale", "p1")
+	require.ErrorIs(t, err, entity.ErrProposalStale)
+
+	ok, err := ar.MarkProposalStaleIfReady(ctx, "t1", "prop_tx_stale", time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	updated, _ := ar.GetProposal(ctx, "t1", "prop_tx_stale")
+	require.Equal(t, entity.ProposalStale, updated.Status)
+
+	master, _ := br.GetMaster(ctx, "t1", "b1")
+	require.Equal(t, int32(2), master.CurrentRevision)
+}
+
+func TestMarkProposalStaleDoesNotOverwriteApplied(t *testing.T) {
+	ar := newMemAnalystRepo()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	prop := &entity.BusinessModelProposal{
+		ProposalID:    "prop_applied",
+		TenantID:      "t1",
+		BusinessID:    "b1",
+		SessionID:     "s1",
+		BaseRevision:  1,
+		AssertionIDs:  []string{"a1"},
+		Patch:         &entity.SemanticModelPatch{},
+		Status:        entity.ProposalApplied,
+		ContentDigest: "dig",
+		CreatedBy:     "p1",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	require.NoError(t, ar.CreateProposal(ctx, prop))
+
+	ok, err := ar.MarkProposalStaleIfReady(ctx, "t1", "prop_applied", time.Now().UTC())
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	updated, _ := ar.GetProposal(ctx, "t1", "prop_applied")
+	require.Equal(t, entity.ProposalApplied, updated.Status)
+}
+
+func TestExtractionPersistenceRollback(t *testing.T) {
+	ar := newMemAnalystRepo()
+	ar.failAfterAssertion = 2
+	br := newBusinessTestMem()
+	svc := newTestAnalystSvc(ar, br)
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+	sess, _ := svc.CreateSession(ctx, "t1", "b1", "test", "p1", entity.PolicyDevelopment)
+
+	content := "员工发现设备故障后提交报修，维修人员接单处理，完成后由管理员关闭。"
+	res, err := svc.SubmitTurn(ctx, "t1", "b1", sess.SessionID, content, "cr_extract_fail", "p1")
+	require.NoError(t, err)
+	require.Equal(t, entity.AnalysisExtractionFailed, res.UserTurn.AnalysisStatus)
+
+	allAssertions, _ := ar.ListAssertions(ctx, "t1", "b1")
+	require.Len(t, allAssertions, 0)
+	gaps, _ := ar.ListGaps(ctx, "t1", "b1")
+	require.Len(t, gaps, 0)
+	conflicts, _ := ar.ListConflicts(ctx, "t1", "b1")
+	require.Len(t, conflicts, 0)
+	for _, refs := range ar.evRefs {
+		require.Len(t, refs, 0)
+	}
+
+	evCount := 0
+	for _, e := range ar.evidence {
+		if e.BusinessID == "b1" {
+			evCount++
+		}
+	}
+	require.Equal(t, 1, evCount)
+
+	ar.failAfterAssertion = 0
+	ar.createAssertionCalls = 0
+	retryRes, err := svc.RetryTurnAnalysis(ctx, "t1", "b1", sess.SessionID, res.UserTurn.TurnID, "p1")
+	require.NoError(t, err)
+	require.False(t, retryRes.ModelFailed)
+	require.NotNil(t, retryRes.AnalystTurn)
+	require.Greater(t, len(retryRes.Assertions), 0)
+
+	allAssertions, _ = ar.ListAssertions(ctx, "t1", "b1")
+	require.Greater(t, len(allAssertions), 0)
+	require.Equal(t, 1, evCount)
 }

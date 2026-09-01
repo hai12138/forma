@@ -11,10 +11,10 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/coze-dev/coze-studio/backend/crossdomain/forma/integration"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/repository"
-	assetsvc "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/service"
 	analystrepo "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
 	analystsvc "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/service"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/repository"
+	assetsvc "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/service"
 	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/meta"

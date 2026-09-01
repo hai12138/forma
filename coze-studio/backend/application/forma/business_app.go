@@ -80,16 +80,16 @@ type DiffResponse struct {
 }
 
 type PutLayoutInput struct {
-	ExpectedLayoutRevision int32                     `json:"expected_layout_revision"`
-	BasedOnModelRevision   int32                     `json:"based_on_model_revision"`
+	ExpectedLayoutRevision int32                      `json:"expected_layout_revision"`
+	BasedOnModelRevision   int32                      `json:"based_on_model_revision"`
 	Layout                 *businessentity.ViewLayout `json:"layout"`
 }
 
 type LayoutResponse struct {
-	BusinessID             string                     `json:"business_id"`
-	LayoutRevision         int32                      `json:"layout_revision"`
-	BasedOnModelRevision   int32                      `json:"based_on_model_revision"`
-	Layout                 *businessentity.ViewLayout `json:"layout"`
+	BusinessID           string                     `json:"business_id"`
+	LayoutRevision       int32                      `json:"layout_revision"`
+	BasedOnModelRevision int32                      `json:"based_on_model_revision"`
+	Layout               *businessentity.ViewLayout `json:"layout"`
 }
 
 func (s *ApplicationService) CreateBusiness(ctx context.Context, in *CreateBusinessInput) (*BusinessDTO, error) {

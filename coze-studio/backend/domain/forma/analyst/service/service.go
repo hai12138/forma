@@ -16,11 +16,11 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
 )
 
 type AnalystService interface {
@@ -42,7 +42,7 @@ type AnalystService interface {
 
 	CreateProposal(ctx context.Context, tenantID, businessID, sessionID, actorID string, assertionIDs []string) (*entity.BusinessModelProposal, error)
 	GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error)
-	ApplyProposal(ctx context.Context, tenantID, businessID, proposalID, actorID string) (*entity.BusinessModelRevision, error)
+	ApplyProposal(ctx context.Context, tenantID, businessID, proposalID, actorID string) (*businessentity.BusinessModelRevision, error)
 	GetProvenance(ctx context.Context, tenantID, businessID string, revisionNo int32) (*entity.RevisionProvenance, error)
 	RetryTurnAnalysis(ctx context.Context, tenantID, businessID, sessionID, turnID, actorID string) (*entity.TurnSubmissionResult, error)
 	GetProposalPreview(ctx context.Context, tenantID, proposalID string) (*ProposalPreviewResult, error)
@@ -215,135 +215,6 @@ func (s *analystServiceImpl) buildIdempotentResult(ctx context.Context, tenantID
 		Evidence:    evidence,
 		Assertions:  assertions,
 	}, nil
-}
-
-func (s *analystServiceImpl) persistExtraction(
-	ctx context.Context,
-	tenantID, businessID, sessionID, actorID string,
-	evidence *entity.BusinessEvidence,
-	extraction *entity.ExtractionResult,
-	now time.Time,
-) ([]*entity.BusinessAssertion, []*entity.AssertionConflict, []*entity.AnalystGap, error) {
-	if extraction == nil {
-		return nil, nil, nil, nil
-	}
-	var assertions []*entity.BusinessAssertion
-	turnEvidenceMap := map[string]string{}
-	if evidence != nil {
-		turnEvidenceMap[evidence.TurnID] = evidence.EvidenceID
-	}
-
-	for _, ea := range extraction.Assertions {
-		a := &entity.BusinessAssertion{
-			AssertionID:   newID("assert"),
-			TenantID:      tenantID,
-			BusinessID:    businessID,
-			SessionID:     sessionID,
-			AssertionType: ea.AssertionType,
-			SubjectRef:    ea.SubjectRef,
-			Predicate:     ea.Predicate,
-			ObjectValue:   ea.ObjectValue,
-			StructuredValue: ea.StructuredValue,
-			Confidence:    ea.Confidence,
-			Status:        entity.AssertionProposed,
-			SourceMarker:  businessentity.SourceAIGenerated,
-			CreatedBy:     actorID,
-			CreatedAt:     now,
-			UpdatedAt:     now,
-		}
-		if err := s.repo.CreateAssertion(ctx, a); err != nil {
-			return nil, nil, nil, err
-		}
-		linked := false
-		for _, tid := range ea.EvidenceTurnIDs {
-			eid := turnEvidenceMap[tid]
-			if eid == "" && evidence != nil && evidence.TurnID == tid {
-				eid = evidence.EvidenceID
-			}
-			if eid != "" {
-				if err := s.repo.CreateAssertionEvidenceRef(ctx, tenantID, a.AssertionID, eid, now); err != nil {
-					return nil, nil, nil, err
-				}
-				linked = true
-			}
-		}
-		if !linked && evidence != nil {
-			if err := s.repo.CreateAssertionEvidenceRef(ctx, tenantID, a.AssertionID, evidence.EvidenceID, now); err != nil {
-				return nil, nil, nil, err
-			}
-		}
-		a.EvidenceIDs, _ = s.repo.ListEvidenceIDsForAssertion(ctx, tenantID, a.AssertionID)
-		assertions = append(assertions, a)
-		_ = s.audit.RecordAnalystAudit(ctx, tenantID, actorID, "ASSERTION_CREATED", a.AssertionID, "")
-	}
-
-	for _, link := range extraction.EvidenceLinks {
-		if link.AssertionIndex < 0 || link.AssertionIndex >= len(assertions) {
-			continue
-		}
-		a := assertions[link.AssertionIndex]
-		eid := turnEvidenceMap[link.EvidenceTurnID]
-		if eid != "" {
-			_ = s.repo.CreateAssertionEvidenceRef(ctx, tenantID, a.AssertionID, eid, now)
-		}
-	}
-
-	var gaps []*entity.AnalystGap
-	for _, g := range extraction.Gaps {
-		gap := &entity.AnalystGap{
-			GapID:      newID("gap"),
-			TenantID:   tenantID,
-			BusinessID: businessID,
-			SessionID:  sessionID,
-			GapType:    g.GapType,
-			Question:   g.Question,
-			Status:     entity.GapOpen,
-			CreatedAt:  now,
-			UpdatedAt:  now,
-		}
-		if err := s.repo.CreateGap(ctx, gap); err != nil {
-			return nil, nil, nil, err
-		}
-		gaps = append(gaps, gap)
-	}
-
-	var conflicts []*entity.AssertionConflict
-	// Deterministic conflict detection from persisted assertions
-	allProposed := append([]*entity.BusinessAssertion{}, assertions...)
-	existing, _ := s.loadAssertionsWithEvidence(ctx, tenantID, businessID)
-	for _, e := range existing {
-		if e.Status == entity.AssertionProposed {
-			allProposed = append(allProposed, e)
-		}
-	}
-	var outConflicts []*entity.AssertionConflict
-	detected := detectConflicts(allProposed, tenantID, businessID, sessionID, now)
-	for _, c := range detected {
-		uc, err := s.upsertConflict(ctx, s.repo, tenantID, businessID, sessionID, c.AssertionIDA, c.AssertionIDB, c.SubjectRef, c.Predicate, now)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		outConflicts = append(outConflicts, uc)
-	}
-
-	// Model-reported conflicts
-	for _, mc := range extraction.Conflicts {
-		if mc.AssertionIndexA < len(assertions) && mc.AssertionIndexB < len(assertions) {
-			uc, err := s.upsertConflict(ctx, s.repo, tenantID, businessID, sessionID,
-				assertions[mc.AssertionIndexA].AssertionID,
-				assertions[mc.AssertionIndexB].AssertionID,
-				assertions[mc.AssertionIndexA].SubjectRef,
-				assertions[mc.AssertionIndexA].Predicate,
-				now,
-			)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			outConflicts = append(outConflicts, uc)
-		}
-	}
-
-	return assertions, outConflicts, gaps, nil
 }
 
 func detectConflicts(assertions []*entity.BusinessAssertion, tenantID, businessID, sessionID string, now time.Time) []*entity.AssertionConflict {
@@ -584,6 +455,3 @@ func digestString(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }
-
-// BusinessModelRevision alias for ApplyProposal return
-type BusinessModelRevision = businessentity.BusinessModelRevision

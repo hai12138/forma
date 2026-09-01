@@ -59,6 +59,7 @@ type AnalystRepository interface {
 	GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error)
 	GetProposalForUpdate(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error)
 	UpdateProposalStatus(ctx context.Context, tenantID, proposalID string, status entity.ProposalStatus, at time.Time) error
+	MarkProposalStaleIfReady(ctx context.Context, tenantID, proposalID string, at time.Time) (bool, error)
 
 	CreateProvenance(ctx context.Context, p *entity.RevisionProvenance) error
 	GetProvenance(ctx context.Context, tenantID, businessID string, revisionNo int32) (*entity.RevisionProvenance, error)
@@ -187,6 +188,9 @@ func (r *gormAnalystRepo) GetProposalForUpdate(ctx context.Context, tenantID, pr
 }
 func (r *gormAnalystRepo) UpdateProposalStatus(ctx context.Context, tenantID, proposalID string, status entity.ProposalStatus, at time.Time) error {
 	return r.dao.UpdateProposalStatus(ctx, tenantID, proposalID, status, at)
+}
+func (r *gormAnalystRepo) MarkProposalStaleIfReady(ctx context.Context, tenantID, proposalID string, at time.Time) (bool, error) {
+	return r.dao.MarkProposalStaleIfReady(ctx, tenantID, proposalID, at)
 }
 func (r *gormAnalystRepo) CreateProvenance(ctx context.Context, p *entity.RevisionProvenance) error {
 	return r.dao.CreateProvenance(ctx, p)

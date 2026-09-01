@@ -14,11 +14,11 @@ import (
 type SessionStatus string
 
 const (
-	SessionDraft      SessionStatus = "DRAFT"
-	SessionActive     SessionStatus = "ACTIVE"
-	SessionReviewing  SessionStatus = "REVIEWING"
-	SessionCompleted  SessionStatus = "COMPLETED"
-	SessionCancelled  SessionStatus = "CANCELLED"
+	SessionDraft     SessionStatus = "DRAFT"
+	SessionActive    SessionStatus = "ACTIVE"
+	SessionReviewing SessionStatus = "REVIEWING"
+	SessionCompleted SessionStatus = "COMPLETED"
+	SessionCancelled SessionStatus = "CANCELLED"
 )
 
 type Speaker string
@@ -51,11 +51,11 @@ const (
 	AssertionEventExists          AssertionType = "EVENT_EXISTS"
 	AssertionSystemExists         AssertionType = "SYSTEM_EXISTS"
 	AssertionPolicyExists         AssertionType = "POLICY_EXISTS"
-	AssertionRelationExists         AssertionType = "RELATION_EXISTS"
-	AssertionStateExists            AssertionType = "STATE_EXISTS"
-	AssertionStateTransition        AssertionType = "STATE_TRANSITION"
-	AssertionBusinessRule           AssertionType = "BUSINESS_RULE"
-	AssertionProperty               AssertionType = "PROPERTY"
+	AssertionRelationExists       AssertionType = "RELATION_EXISTS"
+	AssertionStateExists          AssertionType = "STATE_EXISTS"
+	AssertionStateTransition      AssertionType = "STATE_TRANSITION"
+	AssertionBusinessRule         AssertionType = "BUSINESS_RULE"
+	AssertionProperty             AssertionType = "PROPERTY"
 )
 
 type AssertionStatus string
@@ -109,12 +109,12 @@ const (
 type AnalysisStatus string
 
 const (
-	AnalysisNone              AnalysisStatus = "NONE"
-	AnalysisPending           AnalysisStatus = "PENDING"
-	AnalysisCompleted         AnalysisStatus = "COMPLETED"
-	AnalysisFailed            AnalysisStatus = "FAILED" // legacy; prefer EXTRACTION_FAILED
-	AnalysisExtractionFailed  AnalysisStatus = "EXTRACTION_FAILED"
-	AnalysisResponseFailed    AnalysisStatus = "RESPONSE_FAILED"
+	AnalysisNone             AnalysisStatus = "NONE"
+	AnalysisPending          AnalysisStatus = "PENDING"
+	AnalysisCompleted        AnalysisStatus = "COMPLETED"
+	AnalysisFailed           AnalysisStatus = "FAILED" // legacy; prefer EXTRACTION_FAILED
+	AnalysisExtractionFailed AnalysisStatus = "EXTRACTION_FAILED"
+	AnalysisResponseFailed   AnalysisStatus = "RESPONSE_FAILED"
 )
 
 // AnalystSession is the canonical Forma interview session (not a Coze conversation alias).
@@ -208,16 +208,16 @@ type AssertionConflict struct {
 }
 
 type AnalystGap struct {
-	GapID                string
-	TenantID             string
-	BusinessID           string
-	SessionID            string
-	GapType              string
-	Question             string
-	RelatedAssertionIDs  []string
-	Status               GapStatus
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	GapID               string
+	TenantID            string
+	BusinessID          string
+	SessionID           string
+	GapType             string
+	Question            string
+	RelatedAssertionIDs []string
+	Status              GapStatus
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // PatchOpType semantic patch operations (not raw JSON Patch).
@@ -239,13 +239,13 @@ const (
 )
 
 type PatchOperation struct {
-	Op                 PatchOpType                    `json:"op"`
-	TargetID           string                         `json:"target_id,omitempty"`
-	Node               *businessentity.SemanticNode   `json:"node,omitempty"`
-	Edge               *businessentity.SemanticEdge   `json:"edge,omitempty"`
-	State              *businessentity.BusinessState  `json:"state,omitempty"`
-	Rule               *businessentity.BusinessRule   `json:"rule,omitempty"`
-	SourceAssertionIDs []string                       `json:"source_assertion_ids"`
+	Op                 PatchOpType                   `json:"op"`
+	TargetID           string                        `json:"target_id,omitempty"`
+	Node               *businessentity.SemanticNode  `json:"node,omitempty"`
+	Edge               *businessentity.SemanticEdge  `json:"edge,omitempty"`
+	State              *businessentity.BusinessState `json:"state,omitempty"`
+	Rule               *businessentity.BusinessRule  `json:"rule,omitempty"`
+	SourceAssertionIDs []string                      `json:"source_assertion_ids"`
 }
 
 type SemanticModelPatch struct {
@@ -253,18 +253,18 @@ type SemanticModelPatch struct {
 }
 
 type BusinessModelProposal struct {
-	ProposalID     string
-	TenantID       string
-	BusinessID     string
-	SessionID      string
-	BaseRevision   int32
-	AssertionIDs   []string
-	Patch          *SemanticModelPatch
-	Status         ProposalStatus
-	ContentDigest  string
-	CreatedBy      string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ProposalID    string
+	TenantID      string
+	BusinessID    string
+	SessionID     string
+	BaseRevision  int32
+	AssertionIDs  []string
+	Patch         *SemanticModelPatch
+	Status        ProposalStatus
+	ContentDigest string
+	CreatedBy     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type RevisionProvenance struct {
@@ -293,10 +293,10 @@ type ModelCallRecord struct {
 
 // NextQuestionPlan output from interview planner.
 type NextQuestionPlan struct {
-	Question         string   `json:"question"`
-	Goal             string   `json:"goal"`
-	RelatedElements  []string `json:"related_elements"`
-	Priority         int      `json:"priority"`
+	Question        string   `json:"question"`
+	Goal            string   `json:"goal"`
+	RelatedElements []string `json:"related_elements"`
+	Priority        int      `json:"priority"`
 }
 
 // ContextManifest for debugging context budgeting.
@@ -308,13 +308,13 @@ type ContextManifest struct {
 
 // Structured extraction contract from model.
 type ExtractionAssertion struct {
-	AssertionType   AssertionType   `json:"assertion_type"`
-	SubjectRef      string          `json:"subject_ref"`
-	Predicate       string          `json:"predicate"`
-	ObjectValue     string          `json:"object_value"`
-	StructuredValue map[string]any  `json:"structured_value,omitempty"`
-	Confidence      float64         `json:"confidence"`
-	EvidenceTurnIDs []string        `json:"evidence_turn_ids"`
+	AssertionType   AssertionType  `json:"assertion_type"`
+	SubjectRef      string         `json:"subject_ref"`
+	Predicate       string         `json:"predicate"`
+	ObjectValue     string         `json:"object_value"`
+	StructuredValue map[string]any `json:"structured_value,omitempty"`
+	Confidence      float64        `json:"confidence"`
+	EvidenceTurnIDs []string       `json:"evidence_turn_ids"`
 }
 
 type ExtractionEvidenceLink struct {
@@ -323,8 +323,8 @@ type ExtractionEvidenceLink struct {
 }
 
 type ExtractionGap struct {
-	GapType    string `json:"gap_type"`
-	Question   string `json:"question"`
+	GapType  string `json:"gap_type"`
+	Question string `json:"question"`
 }
 
 type ExtractionConflict struct {
@@ -335,19 +335,19 @@ type ExtractionConflict struct {
 type ExtractionResult struct {
 	Assertions    []ExtractionAssertion    `json:"assertions"`
 	EvidenceLinks []ExtractionEvidenceLink `json:"evidence_links"`
-	Gaps          []ExtractionGap        `json:"gaps"`
-	Conflicts     []ExtractionConflict   `json:"conflicts"`
+	Gaps          []ExtractionGap          `json:"gaps"`
+	Conflicts     []ExtractionConflict     `json:"conflicts"`
 }
 
 type TurnSubmissionResult struct {
-	UserTurn       *AnalystTurn
-	AnalystTurn    *AnalystTurn
-	Evidence       *BusinessEvidence
-	Assertions     []*BusinessAssertion
-	Conflicts      []*AssertionConflict
-	Gaps           []*AnalystGap
-	NextQuestion   *NextQuestionPlan
-	ModelFailed    bool
-	ModelError     string
+	UserTurn        *AnalystTurn
+	AnalystTurn     *AnalystTurn
+	Evidence        *BusinessEvidence
+	Assertions      []*BusinessAssertion
+	Conflicts       []*AssertionConflict
+	Gaps            []*AnalystGap
+	NextQuestion    *NextQuestionPlan
+	ModelFailed     bool
+	ModelError      string
 	ContextManifest *ContextManifest
 }

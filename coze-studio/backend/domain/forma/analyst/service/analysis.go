@@ -30,6 +30,27 @@ func (s *analystServiceImpl) createUserTurnWithEvidence(
 		if session.NextTurnSequence <= 0 {
 			session.NextTurnSequence = 1
 		}
+
+		clientReq := clientRequestID
+
+		if clientRequestID != "" {
+			existing, gErr := txRepo.GetTurnByClientRequestID(ctx, tenantID, sessionID, clientRequestID)
+			if gErr != nil {
+				return gErr
+			}
+			if existing != nil {
+				userTurn = existing
+				evList, _ := txRepo.ListEvidence(ctx, tenantID, businessID)
+				for _, e := range evList {
+					if e != nil && e.TurnID == existing.TurnID {
+						evidence = e
+						break
+					}
+				}
+				return nil
+			}
+		}
+
 		now := time.Now().UTC()
 		userSeq := session.NextTurnSequence
 		analystSeq := session.NextTurnSequence + 1
@@ -40,7 +61,6 @@ func (s *analystServiceImpl) createUserTurnWithEvidence(
 		}
 
 		turnID := newID("turn")
-		clientReq := clientRequestID
 		if clientReq == "" {
 			clientReq = turnID
 		}
@@ -58,23 +78,6 @@ func (s *analystServiceImpl) createUserTurnWithEvidence(
 			CreatedAt:             now,
 		}
 		if err := txRepo.CreateTurn(ctx, ut); err != nil {
-			if isDuplicateKeyErr(err) && clientRequestID != "" {
-				existing, gErr := txRepo.GetTurnByClientRequestID(ctx, tenantID, sessionID, clientRequestID)
-				if gErr != nil {
-					return gErr
-				}
-				if existing != nil {
-					userTurn = existing
-					evList, _ := txRepo.ListEvidence(ctx, tenantID, businessID)
-					for _, e := range evList {
-						if e != nil && e.TurnID == existing.TurnID {
-							evidence = e
-							break
-						}
-					}
-					return nil
-				}
-			}
 			return err
 		}
 		ev := &entity.BusinessEvidence{
@@ -144,7 +147,9 @@ func (s *analystServiceImpl) runFullAnalysis(
 		return nil, err
 	}
 	_, contextText := BuildContext(ctxInput)
-	manifest.IncludedItems = append(manifest.IncludedItems, contextText != "")
+	if contextText != "" {
+		manifest.IncludedItems = append(manifest.IncludedItems, "rendered_context")
+	}
 
 	extractReqID := newID("mreq")
 	startExtract := time.Now()
@@ -341,18 +346,20 @@ func (s *analystServiceImpl) completeGeneration(
 	if analystSeq <= 0 {
 		analystSeq = userTurn.Sequence + 1
 	}
+	analystTurnID := newID("turn")
 	analystTurn := &entity.AnalystTurn{
-		TurnID:         newID("turn"),
-		TenantID:       tenantID,
-		SessionID:      sessionID,
-		Sequence:       analystSeq,
-		Speaker:        entity.SpeakerAnalyst,
-		Content:        analystContent,
-		ContentType:    entity.ContentText,
-		ReplyToTurnID:  userTurn.TurnID,
-		ModelRequestID: genReqID,
-		AnalysisStatus: entity.AnalysisCompleted,
-		CreatedAt:      now,
+		TurnID:          analystTurnID,
+		TenantID:        tenantID,
+		SessionID:       sessionID,
+		Sequence:        analystSeq,
+		Speaker:         entity.SpeakerAnalyst,
+		Content:         analystContent,
+		ContentType:     entity.ContentText,
+		ClientRequestID: analystTurnID,
+		ReplyToTurnID:   userTurn.TurnID,
+		ModelRequestID:  genReqID,
+		AnalysisStatus:  entity.AnalysisCompleted,
+		CreatedAt:       now,
 	}
 	if err := s.repo.CreateTurn(ctx, analystTurn); err != nil {
 		return nil, err

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
+	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 )
 
 func canonicalConflictPair(a, b string) (string, string) {

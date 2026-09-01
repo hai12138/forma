@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
+	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	"github.com/stretchr/testify/require"
 )
 

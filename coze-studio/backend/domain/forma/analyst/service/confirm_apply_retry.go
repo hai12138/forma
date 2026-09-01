@@ -7,16 +7,17 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 
+	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
+	analystrepo "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
-	analystrepo "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
 )
 
 func (s *analystServiceImpl) ConfirmAssertion(ctx context.Context, tenantID, businessID, assertionID, actorID, comment string, edit *AssertionEdit) (*entity.BusinessAssertion, error) {
@@ -181,7 +182,7 @@ func (s *analystServiceImpl) ApplyProposal(ctx context.Context, tenantID, busine
 		return nil, entity.ErrNotFound
 	}
 	if master.CurrentRevision != proposal.BaseRevision {
-		_ = s.repo.UpdateProposalStatus(ctx, tenantID, proposalID, entity.ProposalStale, time.Now().UTC())
+		_, _ = s.repo.MarkProposalStaleIfReady(ctx, tenantID, proposalID, time.Now().UTC())
 		return nil, entity.ErrProposalStale
 	}
 	if s.db == nil || s.businessRepo == nil {
@@ -199,7 +200,13 @@ func (s *analystServiceImpl) ApplyProposal(ctx context.Context, tenantID, busine
 		rev = r
 		return nil
 	})
-	return rev, err
+	if err != nil {
+		if errors.Is(err, entity.ErrProposalStale) {
+			_, _ = s.repo.MarkProposalStaleIfReady(ctx, tenantID, proposalID, time.Now().UTC())
+		}
+		return nil, err
+	}
+	return rev, nil
 }
 
 func (s *analystServiceImpl) applyProposalWithRepos(

@@ -33,8 +33,8 @@ type CreateAnalystSessionInput struct {
 }
 
 type SubmitTurnInput struct {
-	Content           string `json:"content"`
-	ClientRequestID   string `json:"client_request_id"`
+	Content         string `json:"content"`
+	ClientRequestID string `json:"client_request_id"`
 }
 
 type TurnDTO struct {
@@ -59,19 +59,19 @@ type EvidenceDTO struct {
 }
 
 type AssertionDTO struct {
-	AssertionID   string         `json:"assertion_id"`
-	SessionID     string         `json:"session_id"`
-	AssertionType string         `json:"assertion_type"`
-	SubjectRef    string         `json:"subject_ref"`
-	Predicate     string         `json:"predicate"`
-	ObjectValue   string         `json:"object_value"`
-	Confidence    float64        `json:"confidence"`
-	Status        string         `json:"status"`
-	SourceMarker  string         `json:"source_marker"`
-	EvidenceIDs   []string       `json:"evidence_ids"`
+	AssertionID     string         `json:"assertion_id"`
+	SessionID       string         `json:"session_id"`
+	AssertionType   string         `json:"assertion_type"`
+	SubjectRef      string         `json:"subject_ref"`
+	Predicate       string         `json:"predicate"`
+	ObjectValue     string         `json:"object_value"`
+	Confidence      float64        `json:"confidence"`
+	Status          string         `json:"status"`
+	SourceMarker    string         `json:"source_marker"`
+	EvidenceIDs     []string       `json:"evidence_ids"`
 	StructuredValue map[string]any `json:"structured_value,omitempty"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
 }
 
 type ConflictDTO struct {
@@ -85,40 +85,40 @@ type ConflictDTO struct {
 }
 
 type GapDTO struct {
-	GapID     string   `json:"gap_id"`
-	SessionID string   `json:"session_id"`
-	GapType   string   `json:"gap_type"`
-	Question  string   `json:"question"`
-	Status    string   `json:"status"`
+	GapID               string   `json:"gap_id"`
+	SessionID           string   `json:"session_id"`
+	GapType             string   `json:"gap_type"`
+	Question            string   `json:"question"`
+	Status              string   `json:"status"`
 	RelatedAssertionIDs []string `json:"related_assertion_ids,omitempty"`
 }
 
 type ProposalDTO struct {
-	ProposalID    string                        `json:"proposal_id"`
-	BusinessID    string                        `json:"business_id"`
-	SessionID     string                        `json:"session_id"`
-	BaseRevision  int32                         `json:"base_revision"`
-	AssertionIDs  []string                      `json:"assertion_ids"`
+	ProposalID    string                            `json:"proposal_id"`
+	BusinessID    string                            `json:"business_id"`
+	SessionID     string                            `json:"session_id"`
+	BaseRevision  int32                             `json:"base_revision"`
+	AssertionIDs  []string                          `json:"assertion_ids"`
 	Patch         *analystentity.SemanticModelPatch `json:"patch"`
-	Status        string                        `json:"status"`
-	ContentDigest string                        `json:"content_digest"`
-	CreatedAt     string                        `json:"created_at"`
+	Status        string                            `json:"status"`
+	ContentDigest string                            `json:"content_digest"`
+	CreatedAt     string                            `json:"created_at"`
 }
 
 type TurnSubmissionResponse struct {
-	UserTurn       *TurnDTO       `json:"user_turn"`
-	AnalystTurn    *TurnDTO       `json:"analyst_turn,omitempty"`
-	Evidence       *EvidenceDTO   `json:"evidence,omitempty"`
-	Assertions     []*AssertionDTO `json:"assertions,omitempty"`
-	Conflicts      []*ConflictDTO `json:"conflicts,omitempty"`
-	Gaps           []*GapDTO      `json:"gaps,omitempty"`
-	ModelFailed    bool           `json:"model_failed,omitempty"`
-	ModelError     string         `json:"model_error,omitempty"`
-	NextQuestion   *analystentity.NextQuestionPlan `json:"next_question,omitempty"`
+	UserTurn     *TurnDTO                        `json:"user_turn"`
+	AnalystTurn  *TurnDTO                        `json:"analyst_turn,omitempty"`
+	Evidence     *EvidenceDTO                    `json:"evidence,omitempty"`
+	Assertions   []*AssertionDTO                 `json:"assertions,omitempty"`
+	Conflicts    []*ConflictDTO                  `json:"conflicts,omitempty"`
+	Gaps         []*GapDTO                       `json:"gaps,omitempty"`
+	ModelFailed  bool                            `json:"model_failed,omitempty"`
+	ModelError   string                          `json:"model_error,omitempty"`
+	NextQuestion *analystentity.NextQuestionPlan `json:"next_question,omitempty"`
 }
 
 type ConfirmAssertionInput struct {
-	Comment string `json:"comment"`
+	Comment string              `json:"comment"`
 	Edit    *AssertionEditInput `json:"edit,omitempty"`
 }
 
@@ -140,14 +140,14 @@ type ApplyProposalResponse struct {
 }
 
 type ProposalPreviewResponse struct {
-	Proposal          *ProposalDTO                    `json:"proposal"`
-	CurrentRevision   int32                           `json:"current_revision"`
-	ValidationValid   bool                            `json:"validation_valid"`
-	ValidationError   string                          `json:"validation_error,omitempty"`
-	AssertionCount    int                             `json:"assertion_count"`
-	ProposedModel     *businessentity.SemanticModel   `json:"proposed_model,omitempty"`
-	Diff              *businessentity.BusinessModelDiff   `json:"diff,omitempty"`
-	Impact            *businessentity.BusinessImpactSummary `json:"impact,omitempty"`
+	Proposal        *ProposalDTO                          `json:"proposal"`
+	CurrentRevision int32                                 `json:"current_revision"`
+	ValidationValid bool                                  `json:"validation_valid"`
+	ValidationError string                                `json:"validation_error,omitempty"`
+	AssertionCount  int                                   `json:"assertion_count"`
+	ProposedModel   *businessentity.SemanticModel         `json:"proposed_model,omitempty"`
+	Diff            *businessentity.BusinessModelDiff     `json:"diff,omitempty"`
+	Impact          *businessentity.BusinessImpactSummary `json:"impact,omitempty"`
 }
 
 func (s *ApplicationService) CreateAnalystSession(ctx context.Context, businessID string, in *CreateAnalystSessionInput) (*AnalystSessionDTO, error) {

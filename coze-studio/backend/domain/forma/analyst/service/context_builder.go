@@ -9,25 +9,25 @@ import (
 	"fmt"
 	"strings"
 
-	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
+	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 )
 
 const (
-	maxRecentTurns       = 8
-	maxEvidenceExcerpts  = 6
-	maxConfirmedAssert   = 12
-	contextBudgetTokens  = 4000
+	maxRecentTurns      = 8
+	maxEvidenceExcerpts = 6
+	maxConfirmedAssert  = 12
+	contextBudgetTokens = 4000
 )
 
 type ContextInput struct {
-	CurrentModel      *businessentity.SemanticModel
-	Confirmed         []*entity.BusinessAssertion
-	Proposed          []*entity.BusinessAssertion
-	OpenConflicts     []*entity.AssertionConflict
-	OpenGaps          []*entity.AnalystGap
-	RecentTurns       []*entity.AnalystTurn
-	EvidenceByTurn    map[string]*entity.BusinessEvidence
+	CurrentModel   *businessentity.SemanticModel
+	Confirmed      []*entity.BusinessAssertion
+	Proposed       []*entity.BusinessAssertion
+	OpenConflicts  []*entity.AssertionConflict
+	OpenGaps       []*entity.AnalystGap
+	RecentTurns    []*entity.AnalystTurn
+	EvidenceByTurn map[string]*entity.BusinessEvidence
 }
 
 func BuildContext(input *ContextInput) (*entity.ContextManifest, string) {
