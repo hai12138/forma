@@ -11,6 +11,8 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.*.example
+forma/cursor-results/.forma-live-harness.env
+forma/cursor-results/forma-live.env
 
 # Node / frontend
 node_modules/
