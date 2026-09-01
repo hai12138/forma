@@ -12,6 +12,8 @@ import (
 
 	"github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/repository"
 	assetsvc "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/service"
+	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
+	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/meta"
 	tenancyrepo "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/repository"
 	tenancysvc "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/service"
@@ -24,13 +26,18 @@ type ServiceComponents struct {
 }
 
 type ApplicationService struct {
-	DomainSVC  assetsvc.AssetRegistry
-	TenancySVC tenancysvc.TenancyService
+	DB          *gorm.DB
+	IDGen       idgen.IDGenerator
+	DomainSVC   assetsvc.AssetRegistry
+	TenancySVC  tenancysvc.TenancyService
+	BusinessSVC businesssvc.BusinessService
 }
 
 var ApplicationSVC = &ApplicationService{}
 
 func InitService(_ context.Context, components *ServiceComponents) *ApplicationService {
+	ApplicationSVC.DB = components.DB
+	ApplicationSVC.IDGen = components.IDGen
 	ApplicationSVC.DomainSVC = assetsvc.NewAssetRegistry(&assetsvc.Components{
 		AssetRepo: repository.NewAssetRefRepository(components.DB),
 		CozeRepo:  repository.NewCozeResourceRefRepository(components.DB),
@@ -42,6 +49,9 @@ func InitService(_ context.Context, components *ServiceComponents) *ApplicationS
 		MembershipRepo: tenancyrepo.NewMembershipRepository(components.DB),
 		SpaceRefRepo:   tenancyrepo.NewSpaceRefRepository(components.DB),
 		AuditRepo:      tenancyrepo.NewAuditRepository(components.DB),
+	})
+	ApplicationSVC.BusinessSVC = businesssvc.NewBusinessService(&businesssvc.Components{
+		Repo: businessrepo.NewBusinessRepository(components.DB),
 	})
 	return ApplicationSVC
 }

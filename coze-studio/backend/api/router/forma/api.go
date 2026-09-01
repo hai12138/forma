@@ -32,5 +32,18 @@ func Register(r *server.Hertz) {
 		v1.POST("/tenants/:id/spaces", formahandler.BindSpace)
 		v1.POST("/bootstrap", formahandler.Bootstrap)
 		v1.GET("/assets/counts", formahandler.AssetCounts)
+
+		v1.POST("/businesses", formahandler.CreateBusiness)
+		v1.GET("/businesses", formahandler.ListBusinesses)
+		v1.GET("/businesses/:id", formahandler.GetBusiness)
+		v1.PATCH("/businesses/:id", formahandler.PatchBusiness)
+		v1.POST("/businesses/:id/archive", formahandler.ArchiveBusiness)
+		v1.GET("/businesses/:id/model", formahandler.GetBusinessModel)
+		v1.PUT("/businesses/:id/model", formahandler.PutBusinessModel)
+		v1.GET("/businesses/:id/revisions", formahandler.ListBusinessRevisions)
+		v1.GET("/businesses/:id/revisions/:revision", formahandler.GetBusinessRevision)
+		v1.GET("/businesses/:id/diff", formahandler.DiffBusiness)
+		v1.GET("/businesses/:id/layout", formahandler.GetBusinessLayout)
+		v1.PUT("/businesses/:id/layout", formahandler.PutBusinessLayout)
 	}
 }

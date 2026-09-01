@@ -1,36 +1,30 @@
 {
-  "name": "@forma/app",
-  "version": "0.1.0-s0b",
+  "name": "@forma/business",
+  "version": "0.1.0-s2",
   "private": true,
-  "description": "Forma Business-to-Agent product shell",
+  "description": "Forma Business Asset list + Visual Business Model Editor (S2)",
   "license": "UNLICENSED",
-  "sideEffects": ["*.css", "*.less"],
+  "sideEffects": ["*.css"],
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
-    "build": "rsbuild build",
-    "dev": "rsbuild dev",
+    "build": "exit 0",
     "lint": "eslint ./ --cache --quiet",
-    "preview": "rsbuild preview",
     "test": "vitest --run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@forma/api-client": "workspace:*",
-    "@forma/business": "workspace:*",
     "react": "~18.2.0",
     "react-dom": "~18.2.0",
     "react-router-dom": "^6.11.1"
   },
   "devDependencies": {
     "@coze-arch/eslint-config": "workspace:*",
-    "@coze-arch/postcss-config": "workspace:*",
-    "@coze-arch/rsbuild-config": "workspace:*",
-    "@coze-arch/tailwind-config": "workspace:*",
     "@coze-arch/ts-config": "workspace:*",
     "@coze-arch/vitest-config": "workspace:*",
-    "@rsbuild/core": "~1.1.0",
     "@types/react": "18.2.37",
     "@types/react-dom": "18.2.15",
-    "tailwindcss": "~3.3.3",
     "typescript": "~5.8.2",
     "vitest": "~3.0.5"
   }

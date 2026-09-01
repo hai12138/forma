@@ -10,7 +10,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
+	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
+	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 )
 
 const (
@@ -27,6 +28,15 @@ const (
 	CodeSpaceForbidden      int32 = 40305 // HTTP 403
 	CodeVersionConflict     int32 = 40901 // HTTP 409
 	CodeInternal            int32 = 50001 // HTTP 500
+
+	CodeBusinessNotFound        int32 = 40410
+	CodeBusinessForbidden       int32 = 40310
+	CodeBusinessInvalidModel    int32 = 40010
+	CodeBusinessRevisionMissing int32 = 40411
+	CodeBusinessNoChange        int32 = 20010 // mapped as 200 with key, or 409-ish — use 200 OK with key in app; code for envelope
+	CodeBusinessLayoutConflict  int32 = 40911
+	CodeBusinessModelConflict   int32 = 40912
+	CodeBusinessInvalidRelation int32 = 40011
 )
 
 const (
@@ -41,6 +51,15 @@ const (
 	KeySpaceForbidden      = "FORMA_SPACE_FORBIDDEN"
 	KeyVersionConflict     = "FORMA_VERSION_CONFLICT"
 	KeyInternal            = "FORMA_INTERNAL"
+
+	KeyBusinessNotFound        = "FORMA_BUSINESS_NOT_FOUND"
+	KeyBusinessForbidden       = "FORMA_BUSINESS_FORBIDDEN"
+	KeyBusinessInvalidModel    = "FORMA_BUSINESS_INVALID_MODEL"
+	KeyBusinessRevisionMissing = "FORMA_BUSINESS_REVISION_NOT_FOUND"
+	KeyBusinessNoChange        = "FORMA_BUSINESS_NO_CHANGE"
+	KeyBusinessLayoutConflict  = "FORMA_BUSINESS_LAYOUT_CONFLICT"
+	KeyBusinessModelConflict   = "FORMA_BUSINESS_MODEL_CONFLICT"
+	KeyBusinessInvalidRelation = "FORMA_BUSINESS_INVALID_RELATION"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -142,6 +161,62 @@ func Internal(msg string) *FormaError {
 	return New(CodeInternal, http.StatusInternalServerError, KeyInternal, msg)
 }
 
+func BusinessNotFound(msg string) *FormaError {
+	if msg == "" {
+		msg = "business not found"
+	}
+	return New(CodeBusinessNotFound, http.StatusNotFound, KeyBusinessNotFound, msg)
+}
+
+func BusinessForbidden(msg string) *FormaError {
+	if msg == "" {
+		msg = "business access forbidden"
+	}
+	return New(CodeBusinessForbidden, http.StatusForbidden, KeyBusinessForbidden, msg)
+}
+
+func BusinessInvalidModel(msg string) *FormaError {
+	if msg == "" {
+		msg = "invalid business model"
+	}
+	return New(CodeBusinessInvalidModel, http.StatusBadRequest, KeyBusinessInvalidModel, msg)
+}
+
+func BusinessRevisionNotFound(msg string) *FormaError {
+	if msg == "" {
+		msg = "business revision not found"
+	}
+	return New(CodeBusinessRevisionMissing, http.StatusNotFound, KeyBusinessRevisionMissing, msg)
+}
+
+func BusinessNoChange(msg string) *FormaError {
+	if msg == "" {
+		msg = "no semantic change"
+	}
+	return New(CodeBusinessNoChange, http.StatusOK, KeyBusinessNoChange, msg)
+}
+
+func BusinessLayoutConflict(msg string) *FormaError {
+	if msg == "" {
+		msg = "layout revision conflict"
+	}
+	return New(CodeBusinessLayoutConflict, http.StatusConflict, KeyBusinessLayoutConflict, msg)
+}
+
+func BusinessModelConflict(msg string) *FormaError {
+	if msg == "" {
+		msg = "business model revision conflict"
+	}
+	return New(CodeBusinessModelConflict, http.StatusConflict, KeyBusinessModelConflict, msg)
+}
+
+func BusinessInvalidRelation(msg string) *FormaError {
+	if msg == "" {
+		msg = "invalid business relation"
+	}
+	return New(CodeBusinessInvalidRelation, http.StatusBadRequest, KeyBusinessInvalidRelation, msg)
+}
+
 // AsFormaError extracts a FormaError from err.
 func AsFormaError(err error) (*FormaError, bool) {
 	var fe *FormaError
@@ -159,19 +234,40 @@ func MapDomainError(err error) *FormaError {
 	if fe, ok := AsFormaError(err); ok {
 		return fe
 	}
-	if errors.Is(err, entity.ErrRevisionConflict) {
+	if errors.Is(err, tenancyentity.ErrRevisionConflict) {
 		return VersionConflict(err.Error())
 	}
-	if errors.Is(err, entity.ErrNotFound) {
+	if errors.Is(err, tenancyentity.ErrNotFound) {
 		return TenantNotFound(err.Error())
 	}
-	if errors.Is(err, entity.ErrLastOwner) ||
-		errors.Is(err, entity.ErrPrimaryOwnerImmutable) ||
-		errors.Is(err, entity.ErrInvalidRole) {
+	if errors.Is(err, tenancyentity.ErrLastOwner) ||
+		errors.Is(err, tenancyentity.ErrPrimaryOwnerImmutable) ||
+		errors.Is(err, tenancyentity.ErrInvalidRole) {
 		return MembershipForbidden(err.Error())
 	}
-	if errors.Is(err, entity.ErrSpaceOwned) {
+	if errors.Is(err, tenancyentity.ErrSpaceOwned) {
 		return SpaceForbidden(err.Error())
+	}
+	if errors.Is(err, businessentity.ErrNotFound) {
+		return BusinessNotFound(err.Error())
+	}
+	if errors.Is(err, businessentity.ErrRevisionNotFound) {
+		return BusinessRevisionNotFound(err.Error())
+	}
+	if errors.Is(err, businessentity.ErrRevisionConflict) {
+		return BusinessModelConflict(err.Error())
+	}
+	if errors.Is(err, businessentity.ErrLayoutConflict) {
+		return BusinessLayoutConflict(err.Error())
+	}
+	if errors.Is(err, businessentity.ErrNoChange) {
+		return BusinessNoChange(err.Error())
+	}
+	if errors.Is(err, businessentity.ErrInvalidModel) {
+		return BusinessInvalidModel(err.Error())
+	}
+	if errors.Is(err, businessentity.ErrInvalidRelation) {
+		return BusinessInvalidRelation(err.Error())
 	}
 	return Internal(err.Error())
 }

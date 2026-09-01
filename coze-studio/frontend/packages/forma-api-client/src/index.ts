@@ -103,6 +103,136 @@ export interface FormaAssetCounts {
   application: number;
 }
 
+export type FormaSourceMarker = 'AI_GENERATED' | 'MANUAL_MODIFIED';
+
+export interface FormaSemanticNode {
+  id: string;
+  type: string;
+  name: string;
+  description?: string;
+  properties?: Record<string, unknown>;
+  source_marker: FormaSourceMarker;
+}
+
+export interface FormaSemanticEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  label?: string;
+  description?: string;
+  properties?: Record<string, unknown>;
+  source_marker: FormaSourceMarker;
+}
+
+export interface FormaBusinessRule {
+  id: string;
+  name: string;
+  description?: string;
+  expression?: string;
+  applies_to?: string[];
+  severity?: string;
+  source_marker: FormaSourceMarker;
+  properties?: Record<string, unknown>;
+}
+
+export interface FormaBusinessState {
+  id: string;
+  object_ref: string;
+  name: string;
+  description?: string;
+  initial?: boolean;
+  terminal?: boolean;
+  source_marker: FormaSourceMarker;
+  properties?: Record<string, unknown>;
+}
+
+export interface FormaSemanticModel {
+  schema_version: string;
+  nodes: FormaSemanticNode[];
+  edges: FormaSemanticEdge[];
+  rules: FormaBusinessRule[];
+  states: FormaBusinessState[];
+  evidence_refs?: string[];
+  assertion_refs?: string[];
+}
+
+export interface FormaViewLayout {
+  node_positions: Record<string, { x: number; y: number }>;
+  zoom: number;
+  viewport: { x: number; y: number };
+  mode?: string;
+  groups?: string[][];
+  collapsed?: Record<string, boolean>;
+  canvas?: Record<string, unknown>;
+}
+
+export interface FormaBusiness {
+  business_id: string;
+  asset_id: string;
+  name: string;
+  status: string;
+  current_revision: number;
+  schema_version: string;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface FormaModelResponse {
+  business_id: string;
+  current_revision: number;
+  content_digest: string;
+  change_summary: string;
+  no_change?: boolean;
+  semantic_model: FormaSemanticModel;
+}
+
+export interface FormaBusinessRevision {
+  revision_no: number;
+  base_revision_no: number;
+  schema_version: string;
+  content_digest: string;
+  change_summary: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface FormaRevisionDetail {
+  revision: FormaBusinessRevision;
+  semantic_model: FormaSemanticModel;
+  read_only: boolean;
+}
+
+export interface FormaElementDiff {
+  added: string[];
+  removed: string[];
+  modified: string[];
+}
+
+export interface FormaDiffResponse {
+  diff: {
+    from_revision: number;
+    to_revision: number;
+    nodes: FormaElementDiff;
+    edges: FormaElementDiff;
+    rules: FormaElementDiff;
+    states: FormaElementDiff;
+  };
+  impact: {
+    semantic_changed: boolean;
+    affected_node_ids: string[];
+    affected_rule_ids: string[];
+    affected_state_ids: string[];
+  };
+}
+
+export interface FormaLayoutResponse {
+  business_id: string;
+  layout_revision: number;
+  based_on_model_revision: number;
+  layout: FormaViewLayout;
+}
+
 export interface FormaBootstrapData {
   principal: FormaPrincipal;
   tenant: FormaTenant;
@@ -173,6 +303,93 @@ export class FormaApiClient {
 
   async assetCounts(): Promise<FormaApiEnvelope<FormaAssetCounts>> {
     return this.request<FormaAssetCounts>('GET', '/api/forma/v1/assets/counts');
+  }
+
+  async listBusinesses(): Promise<FormaApiEnvelope<FormaBusiness[]>> {
+    return this.request<FormaBusiness[]>('GET', '/api/forma/v1/businesses');
+  }
+
+  async createBusiness(body: {
+    name: string;
+    semantic_model?: FormaSemanticModel;
+    change_summary?: string;
+  }): Promise<FormaApiEnvelope<FormaBusiness>> {
+    return this.request<FormaBusiness>('POST', '/api/forma/v1/businesses', body);
+  }
+
+  async getBusiness(id: string): Promise<FormaApiEnvelope<FormaBusiness>> {
+    return this.request<FormaBusiness>('GET', `/api/forma/v1/businesses/${id}`);
+  }
+
+  async patchBusiness(
+    id: string,
+    body: { name: string },
+  ): Promise<FormaApiEnvelope<FormaBusiness>> {
+    return this.request<FormaBusiness>('PATCH', `/api/forma/v1/businesses/${id}`, body);
+  }
+
+  async archiveBusiness(id: string): Promise<FormaApiEnvelope<FormaBusiness>> {
+    return this.request<FormaBusiness>('POST', `/api/forma/v1/businesses/${id}/archive`);
+  }
+
+  async getBusinessModel(id: string): Promise<FormaApiEnvelope<FormaModelResponse>> {
+    return this.request<FormaModelResponse>('GET', `/api/forma/v1/businesses/${id}/model`);
+  }
+
+  async putBusinessModel(
+    id: string,
+    body: {
+      expected_revision: number;
+      semantic_model: FormaSemanticModel;
+      change_summary?: string;
+    },
+  ): Promise<FormaApiEnvelope<FormaModelResponse>> {
+    return this.request<FormaModelResponse>('PUT', `/api/forma/v1/businesses/${id}/model`, body);
+  }
+
+  async listBusinessRevisions(
+    id: string,
+  ): Promise<FormaApiEnvelope<FormaBusinessRevision[]>> {
+    return this.request<FormaBusinessRevision[]>(
+      'GET',
+      `/api/forma/v1/businesses/${id}/revisions`,
+    );
+  }
+
+  async getBusinessRevision(
+    id: string,
+    revision: number,
+  ): Promise<FormaApiEnvelope<FormaRevisionDetail>> {
+    return this.request<FormaRevisionDetail>(
+      'GET',
+      `/api/forma/v1/businesses/${id}/revisions/${revision}`,
+    );
+  }
+
+  async diffBusiness(
+    id: string,
+    from: number,
+    to: number,
+  ): Promise<FormaApiEnvelope<FormaDiffResponse>> {
+    return this.request<FormaDiffResponse>(
+      'GET',
+      `/api/forma/v1/businesses/${id}/diff?from=${from}&to=${to}`,
+    );
+  }
+
+  async getBusinessLayout(id: string): Promise<FormaApiEnvelope<FormaLayoutResponse>> {
+    return this.request<FormaLayoutResponse>('GET', `/api/forma/v1/businesses/${id}/layout`);
+  }
+
+  async putBusinessLayout(
+    id: string,
+    body: {
+      expected_layout_revision: number;
+      based_on_model_revision: number;
+      layout: FormaViewLayout;
+    },
+  ): Promise<FormaApiEnvelope<FormaLayoutResponse>> {
+    return this.request<FormaLayoutResponse>('PUT', `/api/forma/v1/businesses/${id}/layout`, body);
   }
 
   private async request<T>(

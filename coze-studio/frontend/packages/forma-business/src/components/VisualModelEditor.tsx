@@ -1,0 +1,944 @@
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+
+import type {
+  FormaBusinessRule,
+  FormaBusinessState,
+  FormaSemanticEdge,
+  FormaSemanticModel,
+  FormaSemanticNode,
+  FormaViewLayout,
+} from '@forma/api-client';
+
+import {
+  applyLayoutChange,
+  applySemanticChange,
+  collectCanvasItems,
+  isLayoutDirty,
+  isSemanticDirty,
+  redo,
+  undo,
+  type EditBuffer,
+} from '../edit-buffer';
+import { ADDABLE_NODE_TYPES, styleFor } from '../node-style';
+
+const NODE_W = 190;
+const NODE_H = 88;
+
+type Props = {
+  buffer: EditBuffer;
+  onBufferChange: (next: EditBuffer) => void;
+  businessName: string;
+  onSaveModel: () => void;
+  onSaveLayout: () => void;
+  savingModel?: boolean;
+  savingLayout?: boolean;
+  onOpenRevisions: () => void;
+  onOpenDiff: () => void;
+  message?: string;
+};
+
+export function VisualModelEditor({
+  buffer,
+  onBufferChange,
+  businessName,
+  onSaveModel,
+  onSaveLayout,
+  savingModel,
+  savingLayout,
+  onOpenRevisions,
+  onOpenDiff,
+  message,
+}: Props) {
+  const root = useRef<HTMLElement>(null);
+  const surface = useRef<HTMLDivElement>(null);
+  const marker = useId().replace(/:/g, '');
+  const [selected, setSelected] = useState<string | null>(null);
+  const [tool, setTool] = useState<'select' | 'pan'>('select');
+  const [connection, setConnection] = useState<string | null>(null);
+  const [preview, setPreview] = useState<FormaViewLayout | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [hint, setHint] = useState(
+    message ?? '拖拽调整布局；编辑属性保存语义；布局与语义分别保存。',
+  );
+  const drag = useRef<{
+    kind: 'node' | 'pan' | 'edge';
+    id?: string;
+    x: number;
+    y: number;
+    layout: FormaViewLayout;
+    moved: boolean;
+  } | null>(null);
+
+  const model = buffer.current.semantic_model;
+  const layout = preview ?? buffer.current.layout;
+  const items = collectCanvasItems(model);
+  const semanticDirty = isSemanticDirty(buffer);
+  const layoutDirty = isLayoutDirty(buffer);
+
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === root.current);
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+
+  useEffect(() => {
+    if (message) setHint(message);
+  }, [message]);
+
+  const setLayout = (next: FormaViewLayout, note: string) => {
+    onBufferChange(applyLayoutChange(buffer, next));
+    setHint(note);
+  };
+
+  const setSemantic = (next: FormaSemanticModel, note: string, lay?: FormaViewLayout) => {
+    onBufferChange(applySemanticChange(buffer, next, lay));
+    setHint(note);
+  };
+
+  const fit = () => {
+    const points = Object.values(buffer.current.layout.node_positions);
+    if (!points.length) return;
+    const left = Math.min(...points.map(p => p.x));
+    const top = Math.min(...points.map(p => p.y));
+    const right = Math.max(...points.map(p => p.x + NODE_W));
+    const bottom = Math.max(...points.map(p => p.y + NODE_H));
+    const width = surface.current?.clientWidth ?? 900;
+    const height = surface.current?.clientHeight ?? 560;
+    const zoom = Math.max(
+      0.05,
+      Math.min(1.5, (width - 80) / (right - left), (height - 80) / (bottom - top)),
+    );
+    setLayout(
+      {
+        ...buffer.current.layout,
+        zoom,
+        viewport: {
+          x: (width - (right + left) * zoom) / 2,
+          y: (height - (bottom + top) * zoom) / 2,
+        },
+      },
+      '适配视图',
+    );
+  };
+
+  const connect = (from: string, target: string) => {
+    if (from === target) {
+      setHint('请选择另一个节点作为关系终点。');
+      return;
+    }
+    const id = `e_${Date.now().toString(36)}`;
+    setSemantic(
+      {
+        ...model,
+        edges: [
+          ...model.edges,
+          {
+            id,
+            source: from,
+            target,
+            type: 'RELATES_TO',
+            label: '关联',
+            source_marker: 'MANUAL_MODIFIED',
+          },
+        ],
+      },
+      '创建关系 · 未保存语义变更',
+    );
+    setSelected(id);
+    setConnection(null);
+  };
+
+  const removeSelected = () => {
+    if (!selected) return;
+    if (model.nodes.some(n => n.id === selected)) {
+      setSemantic(
+        {
+          ...model,
+          nodes: model.nodes.filter(n => n.id !== selected),
+          edges: model.edges.filter(e => e.source !== selected && e.target !== selected),
+        },
+        '删除节点',
+      );
+    } else if (model.edges.some(e => e.id === selected)) {
+      setSemantic(
+        { ...model, edges: model.edges.filter(e => e.id !== selected) },
+        '删除关系',
+      );
+    } else if (model.states.some(s => s.id === selected)) {
+      setSemantic(
+        {
+          ...model,
+          states: model.states.filter(s => s.id !== selected),
+          edges: model.edges.filter(e => e.source !== selected && e.target !== selected),
+        },
+        '删除状态',
+      );
+    } else if (model.rules.some(r => r.id === selected)) {
+      setSemantic(
+        { ...model, rules: model.rules.filter(r => r.id !== selected) },
+        '删除规则',
+      );
+    }
+    setSelected(null);
+  };
+
+  const addNode = (type: string) => {
+    const id = `n_${Date.now().toString(36)}`;
+    const st = styleFor(type);
+    const pos = {
+      x: 80 + items.length * 24,
+      y: 80 + items.length * 16,
+    };
+    setSemantic(
+      {
+        ...model,
+        nodes: [
+          ...model.nodes,
+          {
+            id,
+            type,
+            name: `新${st.label}`,
+            source_marker: 'MANUAL_MODIFIED',
+          },
+        ],
+      },
+      '新增节点 · 未保存语义变更',
+      {
+        ...buffer.current.layout,
+        node_positions: { ...buffer.current.layout.node_positions, [id]: pos },
+      },
+    );
+    setSelected(id);
+  };
+
+  const selectedNode = model.nodes.find(n => n.id === selected);
+  const selectedEdge = model.edges.find(e => e.id === selected);
+  const selectedState = model.states.find(s => s.id === selected);
+  const selectedRule = model.rules.find(r => r.id === selected);
+
+  return (
+    <section
+      className="forma-vme"
+      ref={root}
+      aria-label="Visual Business Model Editor"
+      onKeyDown={e => {
+        if ((e.target as HTMLElement).closest('input,textarea,select')) return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          onBufferChange(e.shiftKey ? redo(buffer) : undo(buffer));
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+          e.preventDefault();
+          onBufferChange(redo(buffer));
+        }
+        if (e.key === 'Escape') {
+          setConnection(null);
+          setSelected(null);
+          setPreview(null);
+          drag.current = null;
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          removeSelected();
+        }
+      }}
+    >
+      <header className="forma-vme-header">
+        <div className="forma-vme-header-title">
+          <span className="forma-vme-dot" />
+          <b>{businessName}</b>
+          <small>
+            r{buffer.modelRevision} · {items.length} 节点 / {model.edges.length} 关系
+          </small>
+          {semanticDirty && <span className="forma-vme-dirty">未保存语义变更</span>}
+          {!semanticDirty && layoutDirty && (
+            <span className="forma-vme-dirty">布局未保存</span>
+          )}
+        </div>
+        <div className="forma-vme-actions">
+          <button
+            type="button"
+            className="forma-vme-btn primary"
+            disabled={!semanticDirty || savingModel}
+            onClick={onSaveModel}
+          >
+            {savingModel ? '保存中…' : 'Save Model'}
+          </button>
+          <button
+            type="button"
+            className="forma-vme-btn"
+            disabled={!layoutDirty || savingLayout}
+            onClick={onSaveLayout}
+          >
+            {savingLayout ? '保存中…' : 'Save Layout'}
+          </button>
+          <button
+            type="button"
+            className="forma-vme-btn"
+            disabled={!buffer.past.length}
+            onClick={() => onBufferChange(undo(buffer))}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className="forma-vme-btn"
+            disabled={!buffer.future.length}
+            onClick={() => onBufferChange(redo(buffer))}
+          >
+            Redo
+          </button>
+          <button
+            type="button"
+            className="forma-vme-btn"
+            onClick={() =>
+              setLayout(
+                {
+                  ...layout,
+                  zoom: Math.min(2, layout.zoom * 1.15),
+                },
+                '放大',
+              )
+            }
+          >
+            Zoom +
+          </button>
+          <button
+            type="button"
+            className="forma-vme-btn"
+            onClick={() =>
+              setLayout(
+                {
+                  ...layout,
+                  zoom: Math.max(0.2, layout.zoom / 1.15),
+                },
+                '缩小',
+              )
+            }
+          >
+            Zoom −
+          </button>
+          <button type="button" className="forma-vme-btn" onClick={fit}>
+            Fit View
+          </button>
+          <button
+            type="button"
+            className="forma-vme-btn"
+            onClick={async () => {
+              try {
+                if (document.fullscreenElement) await document.exitFullscreen();
+                else await root.current?.requestFullscreen();
+              } catch {
+                setHint('当前环境不支持全屏');
+              }
+            }}
+          >
+            {fullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          </button>
+          <button type="button" className="forma-vme-btn" onClick={onOpenRevisions}>
+            Revisions
+          </button>
+          <button type="button" className="forma-vme-btn" onClick={onOpenDiff}>
+            Diff
+          </button>
+        </div>
+      </header>
+
+      <div className="forma-vme-toolbar" role="toolbar" aria-label="模型编辑工具">
+        {ADDABLE_NODE_TYPES.map(type => (
+          <button
+            key={type}
+            type="button"
+            className="forma-vme-btn"
+            onClick={() => addNode(type)}
+          >
+            ＋{styleFor(type).label}
+          </button>
+        ))}
+        <span className="forma-vme-sep" />
+        <button
+          type="button"
+          className="forma-vme-btn"
+          onClick={() => {
+            const id = `st_${Date.now().toString(36)}`;
+            setSemantic(
+              {
+                ...model,
+                states: [
+                  ...model.states,
+                  {
+                    id,
+                    object_ref: model.nodes[0]?.id ?? '',
+                    name: '新状态',
+                    source_marker: 'MANUAL_MODIFIED',
+                  },
+                ],
+              },
+              '新增状态',
+              {
+                ...buffer.current.layout,
+                node_positions: {
+                  ...buffer.current.layout.node_positions,
+                  [id]: { x: 100, y: 400 },
+                },
+              },
+            );
+            setSelected(id);
+          }}
+        >
+          ＋状态
+        </button>
+        <button
+          type="button"
+          className="forma-vme-btn"
+          onClick={() => {
+            const id = `rule_${Date.now().toString(36)}`;
+            setSemantic(
+              {
+                ...model,
+                rules: [
+                  ...model.rules,
+                  {
+                    id,
+                    name: '新规则',
+                    source_marker: 'MANUAL_MODIFIED',
+                  },
+                ],
+              },
+              '新增规则',
+              {
+                ...buffer.current.layout,
+                node_positions: {
+                  ...buffer.current.layout.node_positions,
+                  [id]: { x: 100, y: 520 },
+                },
+              },
+            );
+            setSelected(id);
+          }}
+        >
+          ＋规则
+        </button>
+      </div>
+
+      <div className="forma-vme-body">
+        <div
+          className={`forma-vme-surface${tool === 'pan' ? ' forma-vme-panning' : ''}`}
+          ref={surface}
+        >
+          <div className="forma-vme-tools">
+            <button
+              type="button"
+              className="forma-vme-btn"
+              aria-pressed={tool === 'select'}
+              onClick={() => setTool('select')}
+            >
+              选择
+            </button>
+            <button
+              type="button"
+              className="forma-vme-btn"
+              aria-pressed={tool === 'pan'}
+              onClick={() => setTool('pan')}
+            >
+              平移
+            </button>
+            <button type="button" className="forma-vme-btn" onClick={fit}>
+              适配
+            </button>
+          </div>
+
+          <svg
+            role="application"
+            aria-label="可编辑业务模型画布"
+            tabIndex={0}
+            onPointerDown={e => {
+              if (e.button !== 0) return;
+              const target = (e.target as Element).closest('[data-node]');
+              const id = target?.getAttribute('data-node') ?? undefined;
+              if ((e.target as Element).closest('[data-edge]')) return;
+              const kind = (e.target as Element).closest('[data-handle]')
+                ? 'edge'
+                : tool === 'pan' || !id
+                  ? 'pan'
+                  : 'node';
+              drag.current = {
+                kind,
+                id,
+                x: e.clientX,
+                y: e.clientY,
+                layout: structuredClone(buffer.current.layout),
+                moved: false,
+              };
+              if (kind === 'edge' && id) {
+                setConnection(id);
+                setHint('松开到目标节点，或点击目标节点建立关系。');
+              }
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={e => {
+              const d = drag.current;
+              if (!d) return;
+              const dx = e.clientX - d.x;
+              const dy = e.clientY - d.y;
+              if (Math.abs(dx) + Math.abs(dy) < 3) return;
+              d.moved = true;
+              if (d.kind === 'pan') {
+                setPreview({
+                  ...d.layout,
+                  viewport: {
+                    x: d.layout.viewport.x + dx,
+                    y: d.layout.viewport.y + dy,
+                  },
+                });
+              }
+              if (d.kind === 'node' && d.id) {
+                const p = d.layout.node_positions[d.id] ?? { x: 0, y: 0 };
+                setPreview({
+                  ...d.layout,
+                  mode: 'manual',
+                  node_positions: {
+                    ...d.layout.node_positions,
+                    [d.id]: {
+                      x: p.x + dx / d.layout.zoom,
+                      y: p.y + dy / d.layout.zoom,
+                    },
+                  },
+                });
+              }
+            }}
+            onPointerUp={e => {
+              const d = drag.current;
+              if (!d) return;
+              const target = document
+                .elementFromPoint(e.clientX, e.clientY)
+                ?.closest('[data-node]')
+                ?.getAttribute('data-node');
+              if (d.kind === 'edge' && d.id && target && target !== d.id) {
+                connect(d.id, target);
+              } else if (d.moved && preview) {
+                setLayout(
+                  preview,
+                  d.kind === 'node' ? '移动节点 · 仅更新布局' : '平移画布',
+                );
+              } else if (!d.moved && d.kind === 'node' && d.id) {
+                if (connection) connect(connection, d.id);
+                else setSelected(d.id);
+              }
+              drag.current = null;
+              setPreview(null);
+            }}
+            onPointerCancel={() => {
+              drag.current = null;
+              setPreview(null);
+              setConnection(null);
+            }}
+          >
+            <defs>
+              <marker
+                id={marker}
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M1 1 L9 5 L1 9" fill="none" stroke="#8d99ad" />
+              </marker>
+            </defs>
+            <g
+              transform={`translate(${layout.viewport.x},${layout.viewport.y}) scale(${layout.zoom})`}
+            >
+              {model.edges.map(edge => {
+                const a = layout.node_positions[edge.source];
+                const b = layout.node_positions[edge.target];
+                if (!a || !b) return null;
+                const x1 = a.x + NODE_W;
+                const y1 = a.y + NODE_H / 2;
+                const x2 = b.x;
+                const y2 = b.y + NODE_H / 2;
+                const mx = (x1 + x2) / 2;
+                const path = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+                return (
+                  <g
+                    key={edge.id}
+                    data-edge={edge.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`关系 ${edge.label || edge.type}`}
+                    onClick={() => setSelected(edge.id)}
+                    onKeyDown={ev => {
+                      if (ev.key === 'Enter') setSelected(edge.id);
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke={selected === edge.id ? '#2860dd' : '#8d99ad'}
+                      strokeWidth={selected === edge.id ? 2.5 : 1.5}
+                      markerEnd={`url(#${marker})`}
+                    />
+                    <text x={mx} y={(y1 + y2) / 2 - 6} textAnchor="middle">
+                      {edge.label || edge.type}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {items.map(item => {
+                const pos = layout.node_positions[item.id] ?? { x: 0, y: 0 };
+                const st = styleFor(item.type);
+                return (
+                  <foreignObject
+                    key={item.id}
+                    x={pos.x}
+                    y={pos.y}
+                    width={NODE_W}
+                    height={NODE_H}
+                  >
+                    <div
+                      data-node={item.id}
+                      className={`forma-vme-node${selected === item.id ? ' selected' : ''}`}
+                      style={
+                        {
+                          '--vme-color': st.color,
+                          '--vme-bg': st.background,
+                        } as CSSProperties
+                      }
+                    >
+                      <span>
+                        <small>{st.label}</small>
+                        <b>{item.name}</b>
+                        <em>{item.description || item.id}</em>
+                      </span>
+                      <div
+                        data-handle={item.id}
+                        style={{
+                          marginLeft: 'auto',
+                          width: 10,
+                          height: 10,
+                          borderRadius: '50%',
+                          background: st.color,
+                          flexShrink: 0,
+                        }}
+                        title="拖出以建立关系"
+                      />
+                    </div>
+                  </foreignObject>
+                );
+              })}
+            </g>
+          </svg>
+
+          {!items.length && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: '40% 10%',
+                textAlign: 'center',
+                color: '#8b93a3',
+              }}
+            >
+              空模型 — 从工具栏添加节点
+            </div>
+          )}
+        </div>
+
+        <aside className="forma-vme-props">
+          <PropertyPanel
+            selectedNode={selectedNode}
+            selectedEdge={selectedEdge}
+            selectedState={selectedState}
+            selectedRule={selectedRule}
+            onUpdateNode={node => {
+              setSemantic(
+                {
+                  ...model,
+                  nodes: model.nodes.map(n => (n.id === node.id ? node : n)),
+                },
+                '更新节点属性',
+              );
+            }}
+            onUpdateEdge={edge => {
+              setSemantic(
+                {
+                  ...model,
+                  edges: model.edges.map(e => (e.id === edge.id ? edge : e)),
+                },
+                '更新关系属性',
+              );
+            }}
+            onUpdateState={state => {
+              setSemantic(
+                {
+                  ...model,
+                  states: model.states.map(s => (s.id === state.id ? state : s)),
+                },
+                '更新状态属性',
+              );
+            }}
+            onUpdateRule={rule => {
+              setSemantic(
+                {
+                  ...model,
+                  rules: model.rules.map(r => (r.id === rule.id ? rule : r)),
+                },
+                '更新规则属性',
+              );
+            }}
+            onDelete={removeSelected}
+          />
+        </aside>
+      </div>
+
+      <div className="forma-vme-hint">
+        <span>{hint}</span>
+        <span>{Math.round(layout.zoom * 100)}%</span>
+      </div>
+
+      <footer className="forma-vme-footer">
+        <div className="forma-vme-legend">
+          {(['ACTOR', 'BUSINESS_OBJECT', 'PROCESS', 'EVENT', 'STATE', 'RULE'] as const).map(
+            t => {
+              const st = styleFor(t);
+              return (
+                <span key={t}>
+                  <i style={{ background: st.color }} />
+                  {st.label}
+                </span>
+              );
+            },
+          )}
+        </div>
+      </footer>
+    </section>
+  );
+}
+
+function SourceMarkerBadge({ marker }: { marker?: string }) {
+  const ai = marker === 'AI_GENERATED';
+  return (
+    <div className={`forma-vme-source ${ai ? 'ai' : 'manual'}`}>
+      Source: {marker || 'MANUAL_MODIFIED'}
+    </div>
+  );
+}
+
+function PropertyPanel({
+  selectedNode,
+  selectedEdge,
+  selectedState,
+  selectedRule,
+  onUpdateNode,
+  onUpdateEdge,
+  onUpdateState,
+  onUpdateRule,
+  onDelete,
+}: {
+  selectedNode?: FormaSemanticNode;
+  selectedEdge?: FormaSemanticEdge;
+  selectedState?: FormaBusinessState;
+  selectedRule?: FormaBusinessRule;
+  onUpdateNode: (n: FormaSemanticNode) => void;
+  onUpdateEdge: (e: FormaSemanticEdge) => void;
+  onUpdateState: (s: FormaBusinessState) => void;
+  onUpdateRule: (r: FormaBusinessRule) => void;
+  onDelete: () => void;
+}) {
+  if (selectedNode) {
+    return (
+      <form
+        onSubmit={e => e.preventDefault()}
+        onBlur={e => {
+          const form = e.currentTarget;
+          const name = (form.elements.namedItem('name') as HTMLInputElement).value;
+          const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
+          const description = (form.elements.namedItem('description') as HTMLTextAreaElement)
+            .value;
+          if (
+            name !== selectedNode.name ||
+            type !== selectedNode.type ||
+            description !== (selectedNode.description || '')
+          ) {
+            onUpdateNode({ ...selectedNode, name, type, description });
+          }
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <strong>节点属性</strong>
+          <small>{selectedNode.id}</small>
+        </div>
+        <SourceMarkerBadge marker={selectedNode.source_marker} />
+        <label>
+          名称
+          <input name="name" defaultValue={selectedNode.name} key={selectedNode.id + '-n'} />
+        </label>
+        <label>
+          类型
+          <select name="type" defaultValue={selectedNode.type} key={selectedNode.id + '-t'}>
+            {ADDABLE_NODE_TYPES.map(t => (
+              <option key={t} value={t}>
+                {styleFor(t).label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          描述
+          <textarea
+            name="description"
+            rows={3}
+            defaultValue={selectedNode.description || ''}
+            key={selectedNode.id + '-d'}
+          />
+        </label>
+        <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
+          删除
+        </button>
+      </form>
+    );
+  }
+
+  if (selectedEdge) {
+    return (
+      <form
+        onSubmit={e => e.preventDefault()}
+        onBlur={e => {
+          const form = e.currentTarget;
+          const label = (form.elements.namedItem('label') as HTMLInputElement).value;
+          const type = (form.elements.namedItem('type') as HTMLInputElement).value;
+          if (label !== (selectedEdge.label || '') || type !== selectedEdge.type) {
+            onUpdateEdge({ ...selectedEdge, label, type });
+          }
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <strong>关系属性</strong>
+          <small>{selectedEdge.id}</small>
+        </div>
+        <SourceMarkerBadge marker={selectedEdge.source_marker} />
+        <label>
+          标签
+          <input
+            name="label"
+            defaultValue={selectedEdge.label || ''}
+            key={selectedEdge.id + '-l'}
+          />
+        </label>
+        <label>
+          类型
+          <input name="type" defaultValue={selectedEdge.type} key={selectedEdge.id + '-t'} />
+        </label>
+        <p style={{ color: '#758196' }}>
+          {selectedEdge.source} → {selectedEdge.target}
+        </p>
+        <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
+          删除
+        </button>
+      </form>
+    );
+  }
+
+  if (selectedState) {
+    return (
+      <form
+        onSubmit={e => e.preventDefault()}
+        onBlur={e => {
+          const form = e.currentTarget;
+          const name = (form.elements.namedItem('name') as HTMLInputElement).value;
+          const object_ref = (form.elements.namedItem('object_ref') as HTMLInputElement).value;
+          if (name !== selectedState.name || object_ref !== selectedState.object_ref) {
+            onUpdateState({ ...selectedState, name, object_ref });
+          }
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <strong>状态属性</strong>
+          <small>{selectedState.id}</small>
+        </div>
+        <SourceMarkerBadge marker={selectedState.source_marker} />
+        <label>
+          名称
+          <input name="name" defaultValue={selectedState.name} key={selectedState.id + '-n'} />
+        </label>
+        <label>
+          对象引用
+          <input
+            name="object_ref"
+            defaultValue={selectedState.object_ref}
+            key={selectedState.id + '-o'}
+          />
+        </label>
+        <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
+          删除
+        </button>
+      </form>
+    );
+  }
+
+  if (selectedRule) {
+    return (
+      <form
+        onSubmit={e => e.preventDefault()}
+        onBlur={e => {
+          const form = e.currentTarget;
+          const name = (form.elements.namedItem('name') as HTMLInputElement).value;
+          const expression = (form.elements.namedItem('expression') as HTMLTextAreaElement)
+            .value;
+          const description = (form.elements.namedItem('description') as HTMLTextAreaElement)
+            .value;
+          if (
+            name !== selectedRule.name ||
+            expression !== (selectedRule.expression || '') ||
+            description !== (selectedRule.description || '')
+          ) {
+            onUpdateRule({ ...selectedRule, name, expression, description });
+          }
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <strong>规则属性</strong>
+          <small>{selectedRule.id}</small>
+        </div>
+        <SourceMarkerBadge marker={selectedRule.source_marker} />
+        <label>
+          名称
+          <input name="name" defaultValue={selectedRule.name} key={selectedRule.id + '-n'} />
+        </label>
+        <label>
+          表达式
+          <textarea
+            name="expression"
+            rows={3}
+            defaultValue={selectedRule.expression || ''}
+            key={selectedRule.id + '-e'}
+          />
+        </label>
+        <label>
+          描述
+          <textarea
+            name="description"
+            rows={2}
+            defaultValue={selectedRule.description || ''}
+            key={selectedRule.id + '-d'}
+          />
+        </label>
+        <button type="button" className="forma-vme-btn danger" onClick={onDelete}>
+          删除
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <div>
+      <strong>属性面板</strong>
+      <p style={{ color: '#758196', lineHeight: 1.7 }}>
+        选中节点、关系、状态或规则以编辑。Source Marker（AI_GENERATED /
+        MANUAL_MODIFIED）会显示在此处。
+      </p>
+    </div>
+  );
+}

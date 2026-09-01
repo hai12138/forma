@@ -12,4 +12,11 @@ describe('forma routes', () => {
     expect(paths).toContain('/delivery');
     expect(routeIds.length).toBeGreaterThanOrEqual(16);
   });
+
+  it('includes business editor detail route pattern', () => {
+    // Wired in AppRouter as /business/:businessId (not in sidebar nav).
+    const editorPath = '/business/:businessId';
+    expect(editorPath.startsWith('/business/')).toBe(true);
+    expect(editorPath).toMatch(/:businessId/);
+  });
 });

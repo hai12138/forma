@@ -45,8 +45,8 @@ export function OverviewPage() {
         <div className="forma-panel" style={{ marginTop: 16 }}>
           <strong>Empty State</strong>
           <p className="forma-placeholder">
-            当前 Tenant 尚无资产。Business / Capability / Agent / Application
-            将在后续阶段接入；此处为真实 Asset Registry 计数，非 Mock KPI。
+            当前 Tenant 尚无资产。可在「业务资产」创建 Business Model（S2）。
+            此处为真实 Asset Registry 计数，非 Mock KPI。
           </p>
         </div>
       )}

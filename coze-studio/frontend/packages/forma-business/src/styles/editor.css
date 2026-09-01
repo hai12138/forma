@@ -1,0 +1,481 @@
+.forma-vme {
+  border: 1px solid var(--forma-border, #e6e9ef);
+  border-radius: var(--forma-radius-panel, 12px);
+  background: var(--forma-surface, #fff);
+  overflow: hidden;
+  min-width: 0;
+  color: var(--forma-foreground, #242d3d);
+}
+
+.forma-vme-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--forma-border, #e6e9ef);
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.forma-vme-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.forma-vme-header-title b {
+  font-size: 14px;
+}
+
+.forma-vme-header-title small {
+  font-size: 11px;
+  color: #667085;
+}
+
+.forma-vme-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--forma-primary, #2860dd);
+}
+
+.forma-vme-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.forma-vme-btn {
+  border: 1px solid var(--forma-border, #e6e9ef);
+  border-radius: var(--forma-radius-control, 8px);
+  background: #fff;
+  padding: 6px 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+}
+
+.forma-vme-btn:hover:not(:disabled) {
+  background: #eef3ff;
+  color: var(--forma-primary, #2860dd);
+}
+
+.forma-vme-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.forma-vme-btn.primary {
+  background: var(--forma-primary, #2860dd);
+  color: #fff;
+  border-color: var(--forma-primary, #2860dd);
+}
+
+.forma-vme-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+  color: #fff;
+}
+
+.forma-vme-btn.danger {
+  color: var(--forma-danger, #c35454);
+}
+
+.forma-vme-btn[aria-pressed='true'] {
+  background: #eef3ff;
+  color: var(--forma-primary, #2860dd);
+}
+
+.forma-vme-dirty {
+  font-size: 11px;
+  color: var(--forma-warning, #bc8a38);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fff8eb;
+}
+
+.forma-vme-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #edf0f5;
+  background: #fafbfd;
+}
+
+.forma-vme-sep {
+  height: 20px;
+  width: 1px;
+  background: #e5e8ee;
+  margin: 0 4px;
+}
+
+.forma-vme-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  min-height: 520px;
+}
+
+.forma-vme-surface {
+  height: 560px;
+  position: relative;
+  background-color: #fff;
+  background-image: radial-gradient(#dbe0e9 0.8px, transparent 0.8px);
+  background-size: 20px 20px;
+  overflow: hidden;
+}
+
+.forma-vme-tools {
+  position: absolute;
+  left: 14px;
+  top: 18px;
+  z-index: 2;
+  background: #fff;
+  border: 1px solid #e8ebf0;
+  border-radius: 10px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 3px 9px #1b294a08;
+}
+
+.forma-vme-surface > svg {
+  display: block;
+  touch-action: none;
+  width: 100%;
+  height: 100%;
+}
+
+.forma-vme-panning {
+  cursor: grab;
+}
+
+.forma-vme-panning:active {
+  cursor: grabbing;
+}
+
+.forma-vme-node {
+  width: 188px;
+  height: 86px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--vme-color) 28%, white);
+  border-radius: 12px;
+  background: var(--vme-bg);
+  color: var(--vme-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.forma-vme-node > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.forma-vme-node small {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+
+.forma-vme-node b {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forma-vme-node em {
+  font-size: 10px;
+  color: #717b8c;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forma-vme-node.selected,
+.forma-vme-node:hover {
+  border: 2px solid var(--vme-color);
+  box-shadow: inset 0 0 0 2px white;
+}
+
+.forma-vme-edge text {
+  font: 11px var(--forma-font-family, system-ui, sans-serif);
+  fill: #657084;
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+
+.forma-vme-props {
+  background: #fcfdff;
+  border-left: 1px solid #e8ecf2;
+  padding: 16px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.forma-vme-props form,
+.forma-vme-props label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.forma-vme-props form {
+  gap: 12px;
+}
+
+.forma-vme-props input,
+.forma-vme-props textarea,
+.forma-vme-props select {
+  border: 1px solid #dfe4eb;
+  border-radius: 8px;
+  padding: 8px;
+  background: white;
+  font: inherit;
+}
+
+.forma-vme-source {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f3f5f8;
+  color: #596579;
+  word-break: break-all;
+}
+
+.forma-vme-source.ai {
+  background: #edf4ff;
+  color: #2860dd;
+}
+
+.forma-vme-source.manual {
+  background: #fff8eb;
+  color: #bc8a38;
+}
+
+.forma-vme-footer {
+  min-height: 48px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid #f0f2f6;
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.forma-vme-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.forma-vme-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: #737e90;
+}
+
+.forma-vme-legend i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.forma-vme-hint {
+  padding: 8px 16px;
+  font-size: 12px;
+  background: #f1f6ff;
+  color: #445;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.forma-vme:fullscreen {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+  background: #fff;
+}
+
+.forma-vme:fullscreen .forma-vme-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.forma-vme:fullscreen .forma-vme-surface {
+  height: 100%;
+}
+
+.forma-biz-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.forma-biz-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.forma-biz-table th,
+.forma-biz-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--forma-border, #e6e9ef);
+}
+
+.forma-biz-table th {
+  font-size: 11px;
+  color: #667085;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.forma-biz-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: #667085;
+}
+
+.forma-biz-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: #eef3ff;
+  color: var(--forma-primary, #2860dd);
+}
+
+.forma-biz-status.archived {
+  background: #f3f5f8;
+  color: #667085;
+}
+
+.forma-biz-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(36, 45, 61, 0.35);
+  display: grid;
+  place-items: center;
+  z-index: 40;
+}
+
+.forma-biz-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: min(420px, 92vw);
+  border: 1px solid var(--forma-border, #e6e9ef);
+  box-shadow: 0 12px 40px rgba(24, 35, 61, 0.12);
+}
+
+.forma-biz-modal h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.forma-biz-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.forma-biz-modal input[type='text'] {
+  border: 1px solid var(--forma-border, #e6e9ef);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.forma-biz-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.forma-biz-side-panel {
+  border: 1px solid var(--forma-border, #e6e9ef);
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.forma-biz-side-panel h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.forma-biz-diff-block {
+  margin-bottom: 12px;
+}
+
+.forma-biz-diff-block b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.forma-biz-diff-block ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #445;
+}
+
+.forma-biz-diff-added {
+  color: var(--forma-success, #4c9773);
+}
+
+.forma-biz-diff-removed {
+  color: var(--forma-danger, #c35454);
+}
+
+.forma-biz-diff-modified {
+  color: var(--forma-warning, #bc8a38);
+}
+
+@media (max-width: 900px) {
+  .forma-vme-body {
+    grid-template-columns: 1fr;
+  }
+
+  .forma-vme-props {
+    border-left: 0;
+    border-top: 1px solid #e8ecf2;
+    max-height: 320px;
+  }
+
+  .forma-vme-surface {
+    height: 420px;
+  }
+}

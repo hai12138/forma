@@ -3,6 +3,7 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
+    "jsx": "react-jsx",
     "lib": ["DOM", "ESNext"],
     "module": "ESNext",
     "target": "ES2020",

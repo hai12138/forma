@@ -6,8 +6,8 @@
 package meta
 
 const (
-	FormaVersion       = "0.2.0-s1"
-	FormaSchemaVersion = "1.1"
+	FormaVersion       = "0.3.0-s2"
+	FormaSchemaVersion = "2.0"
 	FormaBaselineTag  = "forma-baseline-0"
 	RuntimeFoundation = "eino"
 )
