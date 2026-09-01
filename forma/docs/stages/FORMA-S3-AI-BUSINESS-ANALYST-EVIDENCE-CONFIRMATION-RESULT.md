@@ -66,7 +66,7 @@ Do **not** mark FROZEN. Do **not** start S4.
 | Gap Ask semantics | **PASS** (unit/integration + API) |
 | Context budget | **PASS** (tests) |
 | S3-G1 engineering gates | **PASS** (preserved) |
-| Forma CI | **PENDING** (post G2 push) |
+| Forma CI | **PASS** (`33480332921` on `7ff6e583`) |
 | Live Model E2E | **PENDING** |
 | Browser E2E + UI evidence | **PENDING** |
 | PASS_WITH_REVIEW_GATE | **NOT YET** |
