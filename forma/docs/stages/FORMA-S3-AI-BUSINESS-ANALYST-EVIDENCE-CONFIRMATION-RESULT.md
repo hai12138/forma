@@ -24,7 +24,8 @@ Do **not** mark FROZEN. Do **not** start S4.
 | `33469903703` | **FAIL** | backend compile, atlas checksum, rush shrinkwrap, hook mode |
 | `33471829970` | **FAIL** | `proposal.go` syntax `]}`; MySQL `CREATE UNIQUE INDEX IF NOT EXISTS`; backend tests blocked |
 | `33474851052` | **FAIL** | **migration PASS, frontend PASS, backend FAIL** — see root cause below |
-| *(pending)* | — | Post-`f52e355c` push — awaiting Forma CI |
+| `33475985604` | **PASS** | `f52e355c` — **migration PASS, frontend PASS, backend PASS** |
+| `33476030584` | **PASS** | `6a11fa89` — docs-only RESULT update |
 
 ### Run `33474851052` — Backend root cause
 
@@ -91,7 +92,7 @@ go test ./domain/forma/analyst/... -count=1                                     
 | Stale race + CAS | **PASS** (tests) |
 | Transaction concurrency | **PASS** (tests) |
 | Retry state machine | **PASS** (tests) |
-| Forma CI all green | **PENDING** (post `f52e355c`) |
+| Forma CI all green | **PASS** (`33475985604` on `f52e355c`) |
 | G16 Live Model E2E | **BLOCKED** — requires real Coze/Eino model |
 | G17 Browser E2E + `forma/cursor-results/s3-ui/` | **PENDING** |
 | No silent mutation | **PENDING** (browser) |
