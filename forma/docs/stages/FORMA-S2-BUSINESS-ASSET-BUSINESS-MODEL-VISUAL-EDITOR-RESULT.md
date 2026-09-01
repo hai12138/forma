@@ -2,12 +2,32 @@
 
 ## Status
 
-**PASS_WITH_FREEZE_GATE**
+**PASS — S2 FROZEN**
 
-S2 + S2-G1 + S2-G2 complete. Human final review **PASS**. Main CI for S2-G2 **ALL GREEN**.
-Freeze candidate documentation prepared; await Freeze Candidate Main CI, then create `forma-s2-frozen`, then Tag CI.
+`forma-s2-frozen` created and Tag CI ALL GREEN.
+**DO NOT START S3** until human confirmation to begin the next stage.
 
-**DO NOT START S3.**
+## Final Frozen Record
+
+| Item | Value |
+|------|-------|
+| S2 Frozen Tag | `forma-s2-frozen` |
+| S2 Frozen Commit | `413c3bcc148dfe518b31d6267e1a0c72fc2f0645` |
+| S2-G2 Implementation Commit | `03b8e9813b2e7a95af23eb4146988d6987a5ebda` |
+| S2-G2 Main CI | [33463344339](https://github.com/hai12138/forma/actions/runs/33463344339) |
+| Freeze Candidate Main CI | [33464020281](https://github.com/hai12138/forma/actions/runs/33464020281) |
+| S2 Tag CI | [33464249816](https://github.com/hai12138/forma/actions/runs/33464249816) |
+| S1 Frozen Commit | `601857c49a167c40c97849f4af543b95cc76fdcb` |
+| Coze Upstream | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
+| Runtime | Coze / Eino |
+
+Tag CI jobs (detached HEAD / tag push):
+
+- forma-backend = PASS
+- forma-migration-apply = PASS
+- forma-frontend = PASS (BUILD_BRANCH resolve + Rush build)
+
+**`forma-s2-frozen` must not be moved, force-pushed, or deleted/recreated** without explicit human incident recovery.
 
 ## Final Human Review
 
@@ -16,26 +36,8 @@ Freeze candidate documentation prepared; await Freeze Candidate Main CI, then cr
 | Review Result | **PASS** |
 | Accepted Commit (S2-G2) | `03b8e9813b2e7a95af23eb4146988d6987a5ebda` |
 | Main CI (S2-G2) | [33463344339](https://github.com/hai12138/forma/actions/runs/33463344339) |
-| forma-backend | PASS |
-| forma-migration-apply | PASS |
-| forma-frontend | PASS |
 
 **No further S2 functional gate remains.**
-
-Accepted scope:
-
-- S2 Business Model Architecture
-- S2 Business Model Source of Truth
-- Immutable Semantic Revision
-- Semantic / Layout Separation
-- Canonical Node Model
-- Diff / Digest
-- Tenant Isolation
-- Visual Model Editor
-- Auto / Manual Layout
-- Historical Revision
-- Editor Validity Contract
-- Real Browser Gates
 
 ## Frozen Baseline
 
@@ -50,9 +52,12 @@ Accepted scope:
 | S2-G1 Forma CI | [33460385171](https://github.com/hai12138/forma/actions/runs/33460385171) ALL GREEN |
 | S2-G2 tip | `03b8e9813b2e7a95af23eb4146988d6987a5ebda` |
 | S2-G2 Forma CI | [33463344339](https://github.com/hai12138/forma/actions/runs/33463344339) ALL GREEN |
+| Freeze Candidate | `413c3bcc148dfe518b31d6267e1a0c72fc2f0645` |
+| Freeze Candidate Main CI | [33464020281](https://github.com/hai12138/forma/actions/runs/33464020281) ALL GREEN |
+| S2 Frozen Tag | `forma-s2-frozen` → `413c3bcc148dfe518b31d6267e1a0c72fc2f0645` |
+| S2 Tag CI | [33464249816](https://github.com/hai12138/forma/actions/runs/33464249816) ALL GREEN |
 | Coze upstream | `fefb05ff27be1da939612fbf9faf5db62583b8ae` |
 | Runtime | Coze / Eino |
-| STEP 0 | PASS — `forma-s1-frozen` present; main contains S1 |
 
 ## Files Changed
 
@@ -188,31 +193,29 @@ Golden Reference: `forma-reference/v1.2/Forma-Business-to-Agent-Platform-v1.2-Vi
 
 | Item | Result |
 |------|--------|
-| Canonical Node Model | PASS — only 7 formal types persisted |
-| Source Marker Contract | PASS — enum only; empty→MANUAL_MODIFIED |
-| Editor/Backend Contract | PASS — Rule no handle; edge dropdown; label required |
-| Dependency Delete | PASS — cascade states; strip rule applies_to |
-| Auto/Manual Layout | PASS — deterministic; layout dirty only |
-| Layout Referential Integrity | PASS — `FORMA_BUSINESS_LAYOUT_MODEL_REVISION_NOT_FOUND` |
-| Deterministic Diff | PASS — sorted Added/Removed/Modified + Impact |
-| Historical Read-only View | PASS — GET revision; Back to Current |
-| Real Browser Drag Gate | PASS — Playwright mouse drag |
-| Real Browser Semantic Gate | PASS — dblclick → Save Model +1 |
-| Real Browser Auto Layout Gate | PASS |
-| Tenant Isolation Expansion | PASS — all business handlers |
+| Canonical Node Model | PASS |
+| Source Marker Contract | PASS |
+| Editor/Backend Contract | PASS |
+| Dependency Delete | PASS |
+| Auto/Manual Layout | PASS |
+| Layout Referential Integrity | PASS |
+| Deterministic Diff | PASS |
+| Historical Read-only View | PASS |
+| Real Browser Drag / Semantic / Auto Layout Gates | PASS |
+| Tenant Isolation Expansion | PASS |
 | CI | PASS — [33460385171](https://github.com/hai12138/forma/actions/runs/33460385171) |
 
 ## S2-G2 Editor Validity Closure
 
 | Item | Result |
 |------|--------|
-| State creation validity | PASS — empty model disables ＋状态 |
-| State object_ref selector | PASS — select from model.nodes only |
-| Rule applies_to selector | PASS — checkbox Node/State candidates |
-| Required name validation | PASS — blank Node/State/Rule names blocked in UI |
-| Frontend preflight | PASS — `validateEditorSemanticModel` before Save Model API |
-| Semantic ID uniqueness | PASS — Nodes/States/Rules/Edges global unique (BE+FE) |
-| Browser validity gate | PASS — `s2-g2-browser-validity-gates.mjs` CASE A–E |
+| State creation validity | PASS |
+| State object_ref selector | PASS |
+| Rule applies_to selector | PASS |
+| Required name validation | PASS |
+| Frontend preflight | PASS |
+| Semantic ID uniqueness | PASS |
+| Browser validity gate | PASS |
 | CI | PASS — [33463344339](https://github.com/hai12138/forma/actions/runs/33463344339) |
 
 ## CI
@@ -222,26 +225,14 @@ Golden Reference: `forma-reference/v1.2/Forma-Business-to-Agent-Platform-v1.2-Vi
 | S2 pre-G1 | [33453550169](https://github.com/hai12138/forma/actions/runs/33453550169) | ALL GREEN |
 | S2-G1 | [33460385171](https://github.com/hai12138/forma/actions/runs/33460385171) | ALL GREEN |
 | S2-G2 | [33463344339](https://github.com/hai12138/forma/actions/runs/33463344339) | ALL GREEN |
+| Freeze Candidate | [33464020281](https://github.com/hai12138/forma/actions/runs/33464020281) | ALL GREEN |
+| `forma-s2-frozen` Tag | [33464249816](https://github.com/hai12138/forma/actions/runs/33464249816) | ALL GREEN |
 
-S2-G2 jobs:
-
-- forma-backend = PASS
-- forma-migration-apply = PASS
-- forma-frontend = PASS
-
-→ **GATE-18 = PASS** (latest complete baseline = S2-G2 `33463344339`)
-
-Local verification (S2-G2):
-
-- `go test ./domain/forma/business/...` PASS
-- `@forma/business` vitest 18/18 PASS
-- Live business E2E PASS
-- S2-G1 MANUAL_LIVE_BROWSER_GATE PASS (6/6)
-- S2-G2 MANUAL_LIVE_BROWSER_VALIDITY_GATE PASS (6/6)
+→ **GATE-18 = PASS** (latest complete baseline = Tag CI `33464249816`)
 
 ## Coze Core Files Modified
 
-**None** (Forma packages / atlas / Forma CI only). Harness binary rebuild mounts Forma code; no Coze Studio shell swap.
+**None.**
 
 ## Remaining Mock
 
@@ -263,25 +254,19 @@ Local verification (S2-G2):
 | GATE-03 Semantic edit → new revision | PASS | live E2E + service_test + browser gate |
 | GATE-04 Layout ≠ semantic revision | PASS | live E2E + browser drag/save layout |
 | GATE-05 Deterministic digest | PASS | digest tests |
-| GATE-06 Invalid graph rejected | PASS | validator tests (canonical + source_marker + label + ID uniqueness) |
+| GATE-06 Invalid graph rejected | PASS | validator tests |
 | GATE-07 Version conflict | PASS | service_test + error key |
 | GATE-08 Layout conflict independent | PASS | service_test |
 | GATE-09 Semantic Diff | PASS | diff sorted tests + live E2E |
 | GATE-10 Tenant isolation | PASS | expanded live E2E |
 | GATE-11 维修工单 reference | PASS | fixture + seed + UI |
 | GATE-12 v1.2 editor in Forma app | PASS | `@forma/business` + Auto Layout |
-| GATE-13 Browser drag ≠ semantic | PASS | **real Playwright drag** + revision asserts |
-| GATE-14 Browser Save Model +1 | PASS | **real Playwright** semantic save |
+| GATE-13 Browser drag ≠ semantic | PASS | real Playwright drag |
+| GATE-14 Browser Save Model +1 | PASS | real Playwright semantic save |
 | GATE-15 Revision + Diff | PASS | history read-only + Diff panel |
 | GATE-16 S1→S2 migration | PASS | atlas apply live + CASE A/B/C |
 | GATE-17 S0/S1 CI preserved | PASS | workflow keeps prior jobs/paths |
-| GATE-18 S2 Forma CI ALL GREEN | **PASS** | Latest: [33463344339](https://github.com/hai12138/forma/actions/runs/33463344339) S2-G2 ALL GREEN; history: [33453550169](https://github.com/hai12138/forma/actions/runs/33453550169) pre-G1, [33460385171](https://github.com/hai12138/forma/actions/runs/33460385171) G1 |
-
-## Risks
-
-- Empty JSON slices historically marshaled as `null` — mitigated by normalize on read + FE guards
-- Live harness is manually rebuilt binary mount — rebuild before browser gates
-- Editor undo buffers client-only (by design)
+| GATE-18 S2 Forma CI ALL GREEN | **PASS** | Latest Tag CI [33464249816](https://github.com/hai12138/forma/actions/runs/33464249816); history: pre-G1 [33453550169](https://github.com/hai12138/forma/actions/runs/33453550169), G1 [33460385171](https://github.com/hai12138/forma/actions/runs/33460385171), G2 [33463344339](https://github.com/hai12138/forma/actions/runs/33463344339), Freeze Candidate [33464020281](https://github.com/hai12138/forma/actions/runs/33464020281) |
 
 ## Final Frozen Architecture
 
@@ -311,15 +296,15 @@ Knowledge Graph = future projection. Capability / Agent / Application = future d
 
 1. S2 + S2-G1 + S2-G2 human review = **PASS**
 2. S2-G2 main CI = **ALL GREEN** ([33463344339](https://github.com/hai12138/forma/actions/runs/33463344339))
-3. `forma-s2-frozen` Tag CI = **ALL GREEN**
-4. only then S3 may start
+3. `forma-s2-frozen` Tag CI = **ALL GREEN** ([33464249816](https://github.com/hai12138/forma/actions/runs/33464249816))
+4. only then S3 may start — **await human confirmation**
 
 Capability / Data Contract stages remain blocked until Business Model SoT freeze is accepted.
 
 ---
 
-**Status = PASS_WITH_FREEZE_GATE**
+**Status = PASS — S2 FROZEN**
 
 **DO NOT START S3.**
 
-等待 Freeze Candidate Main CI → create `forma-s2-frozen` → Tag CI ALL GREEN → post-freeze result.
+等待人工确认。
