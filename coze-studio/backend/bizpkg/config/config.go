@@ -75,21 +75,6 @@ func Init(ctx context.Context, db *gorm.DB, oss storage.Storage) error {
 }
 
 // FORMA-BEGIN
-// InitLiveHarness initializes Base/Knowledge + ModelConf for live E2E harness.
-// Uses Coze Model Manager (BUILTIN_CM_* env or model_instance table) — not Forma-specific keys.
-func InitLiveHarness(ctx context.Context, db *gorm.DB, oss storage.Storage) error {
-	shardConfig = &Config{
-		base:      base.NewBaseConfig(db),
-		knowledge: knowledge.NewKnowledgeConfig(db),
-	}
-	m, err := modelmgr.Init(ctx, db, oss)
-	if err != nil {
-		return err
-	}
-	shardConfig.model = m
-	return nil
-}
-
 // InitBaseForLiveHarness initializes only Base/Knowledge config so passport
 // registration works without full model catalog bootstrap (live E2E harness).
 func InitBaseForLiveHarness(db *gorm.DB) {

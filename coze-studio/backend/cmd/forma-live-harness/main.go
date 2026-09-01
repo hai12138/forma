@@ -77,7 +77,9 @@ func main() {
 	}
 
 	oss := &memStorage{}
-	bizconfig.InitLiveHarness(ctx, db, oss)
+	if err := bizconfig.Init(ctx, db, oss); err != nil {
+		logs.Fatalf("bizconfig init: %v", err)
+	}
 	userSVC := userApp.InitService(ctx, db, oss, idGen)
 	crossuser.SetDefaultSVC(userImpl.InitDomainService(userSVC.DomainSVC))
 
