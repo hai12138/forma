@@ -45,5 +45,20 @@ func Register(r *server.Hertz) {
 		v1.GET("/businesses/:id/diff", formahandler.DiffBusiness)
 		v1.GET("/businesses/:id/layout", formahandler.GetBusinessLayout)
 		v1.PUT("/businesses/:id/layout", formahandler.PutBusinessLayout)
+
+		v1.POST("/businesses/:id/analyst/sessions", formahandler.CreateAnalystSession)
+		v1.GET("/businesses/:id/analyst/sessions", formahandler.ListAnalystSessions)
+		v1.GET("/businesses/:id/analyst/sessions/:sessionId", formahandler.GetAnalystSession)
+		v1.POST("/businesses/:id/analyst/sessions/:sessionId/turns", formahandler.SubmitAnalystTurn)
+		v1.GET("/businesses/:id/analyst/sessions/:sessionId/turns", formahandler.ListAnalystTurns)
+		v1.GET("/businesses/:id/assertions", formahandler.ListAssertions)
+		v1.GET("/businesses/:id/evidence", formahandler.ListBusinessEvidence)
+		v1.POST("/businesses/:id/assertions/:assertionId/confirm", formahandler.ConfirmAssertion)
+		v1.POST("/businesses/:id/assertions/:assertionId/reject", formahandler.RejectAssertion)
+		v1.GET("/businesses/:id/conflicts", formahandler.ListConflicts)
+		v1.GET("/businesses/:id/gaps", formahandler.ListGaps)
+		v1.POST("/businesses/:id/proposals", formahandler.CreateProposal)
+		v1.GET("/businesses/:id/proposals/:proposalId", formahandler.GetProposal)
+		v1.POST("/businesses/:id/proposals/:proposalId/apply", formahandler.ApplyProposal)
 	}
 }

@@ -10,8 +10,11 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/coze-dev/coze-studio/backend/crossdomain/forma/integration"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/repository"
 	assetsvc "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/service"
+	analystrepo "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
+	analystsvc "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/service"
 	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/meta"
@@ -31,6 +34,7 @@ type ApplicationService struct {
 	DomainSVC   assetsvc.AssetRegistry
 	TenancySVC  tenancysvc.TenancyService
 	BusinessSVC businesssvc.BusinessService
+	AnalystSVC  analystsvc.AnalystService
 }
 
 var ApplicationSVC = &ApplicationService{}
@@ -52,6 +56,13 @@ func InitService(_ context.Context, components *ServiceComponents) *ApplicationS
 	})
 	ApplicationSVC.BusinessSVC = businesssvc.NewBusinessService(&businesssvc.Components{
 		Repo: businessrepo.NewBusinessRepository(components.DB),
+	})
+	auditHook := NewTenancyAuditHook(ApplicationSVC.TenancySVC)
+	ApplicationSVC.AnalystSVC = analystsvc.NewAnalystService(&analystsvc.Components{
+		Repo:        analystrepo.NewAnalystRepository(components.DB),
+		BusinessSVC: ApplicationSVC.BusinessSVC,
+		Model:       integration.NewCozeEinoAnalystModel("FORMA_ANALYST"),
+		AuditHook:   auditHook,
 	})
 	return ApplicationSVC
 }

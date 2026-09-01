@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
+	analystentity "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 )
 
@@ -38,6 +39,20 @@ const (
 	CodeBusinessModelConflict   int32 = 40912
 	CodeBusinessInvalidRelation            int32 = 40011
 	CodeBusinessLayoutModelRevisionMissing int32 = 40412
+
+	CodeAnalystSessionNotFound     int32 = 40420
+	CodeAnalystSessionClosed       int32 = 40020
+	CodeAnalystInvalidTurn         int32 = 40021
+	CodeAnalystModelFailed         int32 = 50020
+	CodeAnalystInvalidExtraction   int32 = 40022
+	CodeAssertionNotFound          int32 = 40421
+	CodeAssertionAlreadyDecided    int32 = 40920
+	CodeAssertionEvidenceRequired  int32 = 40023
+	CodeAnalystProposalNotFound    int32 = 40422
+	CodeAnalystProposalStale       int32 = 40921
+	CodeAnalystProposalInvalid      int32 = 40024
+	CodeAnalystProposalAlreadyApplied int32 = 40922
+	CodeAnalystForbidden           int32 = 40320
 )
 
 const (
@@ -62,6 +77,20 @@ const (
 	KeyBusinessModelConflict   = "FORMA_BUSINESS_MODEL_CONFLICT"
 	KeyBusinessInvalidRelation            = "FORMA_BUSINESS_INVALID_RELATION"
 	KeyBusinessLayoutModelRevisionMissing = "FORMA_BUSINESS_LAYOUT_MODEL_REVISION_NOT_FOUND"
+
+	KeyAnalystSessionNotFound        = "FORMA_ANALYST_SESSION_NOT_FOUND"
+	KeyAnalystSessionClosed          = "FORMA_ANALYST_SESSION_CLOSED"
+	KeyAnalystInvalidTurn            = "FORMA_ANALYST_INVALID_TURN"
+	KeyAnalystModelFailed            = "FORMA_ANALYST_MODEL_FAILED"
+	KeyAnalystInvalidExtraction      = "FORMA_ANALYST_INVALID_EXTRACTION"
+	KeyAssertionNotFound             = "FORMA_ASSERTION_NOT_FOUND"
+	KeyAssertionAlreadyDecided       = "FORMA_ASSERTION_ALREADY_DECIDED"
+	KeyAssertionEvidenceRequired     = "FORMA_ASSERTION_EVIDENCE_REQUIRED"
+	KeyAnalystProposalNotFound       = "FORMA_PROPOSAL_NOT_FOUND"
+	KeyAnalystProposalStale          = "FORMA_PROPOSAL_STALE"
+	KeyAnalystProposalInvalid        = "FORMA_PROPOSAL_INVALID"
+	KeyAnalystProposalAlreadyApplied = "FORMA_PROPOSAL_ALREADY_APPLIED"
+	KeyAnalystForbidden              = "FORMA_ANALYST_FORBIDDEN"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -226,6 +255,97 @@ func BusinessLayoutModelRevisionNotFound(msg string) *FormaError {
 	return New(CodeBusinessLayoutModelRevisionMissing, http.StatusNotFound, KeyBusinessLayoutModelRevisionMissing, msg)
 }
 
+func AnalystSessionNotFound(msg string) *FormaError {
+	if msg == "" {
+		msg = "analyst session not found"
+	}
+	return New(CodeAnalystSessionNotFound, http.StatusNotFound, KeyAnalystSessionNotFound, msg)
+}
+
+func AnalystSessionClosed(msg string) *FormaError {
+	if msg == "" {
+		msg = "analyst session closed"
+	}
+	return New(CodeAnalystSessionClosed, http.StatusBadRequest, KeyAnalystSessionClosed, msg)
+}
+
+func AnalystInvalidTurn(msg string) *FormaError {
+	if msg == "" {
+		msg = "invalid analyst turn"
+	}
+	return New(CodeAnalystInvalidTurn, http.StatusBadRequest, KeyAnalystInvalidTurn, msg)
+}
+
+func AnalystModelFailed(msg string) *FormaError {
+	if msg == "" {
+		msg = "analyst model failed"
+	}
+	return New(CodeAnalystModelFailed, http.StatusInternalServerError, KeyAnalystModelFailed, msg)
+}
+
+func AnalystInvalidExtraction(msg string) *FormaError {
+	if msg == "" {
+		msg = "invalid extraction"
+	}
+	return New(CodeAnalystInvalidExtraction, http.StatusBadRequest, KeyAnalystInvalidExtraction, msg)
+}
+
+func AssertionNotFound(msg string) *FormaError {
+	if msg == "" {
+		msg = "assertion not found"
+	}
+	return New(CodeAssertionNotFound, http.StatusNotFound, KeyAssertionNotFound, msg)
+}
+
+func AssertionAlreadyDecided(msg string) *FormaError {
+	if msg == "" {
+		msg = "assertion already decided"
+	}
+	return New(CodeAssertionAlreadyDecided, http.StatusConflict, KeyAssertionAlreadyDecided, msg)
+}
+
+func AssertionEvidenceRequired(msg string) *FormaError {
+	if msg == "" {
+		msg = "assertion evidence required"
+	}
+	return New(CodeAssertionEvidenceRequired, http.StatusBadRequest, KeyAssertionEvidenceRequired, msg)
+}
+
+func AnalystProposalNotFound(msg string) *FormaError {
+	if msg == "" {
+		msg = "proposal not found"
+	}
+	return New(CodeAnalystProposalNotFound, http.StatusNotFound, KeyAnalystProposalNotFound, msg)
+}
+
+func AnalystProposalStale(msg string) *FormaError {
+	if msg == "" {
+		msg = "proposal stale"
+	}
+	return New(CodeAnalystProposalStale, http.StatusConflict, KeyAnalystProposalStale, msg)
+}
+
+func AnalystProposalInvalid(msg string) *FormaError {
+	if msg == "" {
+		msg = "proposal invalid"
+	}
+	return New(CodeAnalystProposalInvalid, http.StatusBadRequest, KeyAnalystProposalInvalid, msg)
+}
+
+func AnalystProposalAlreadyApplied(msg string) *FormaError {
+	if msg == "" {
+		msg = "proposal already applied"
+	}
+	return New(CodeAnalystProposalAlreadyApplied, http.StatusConflict, KeyAnalystProposalAlreadyApplied, msg)
+}
+
+func AnalystForbidden(msg string) *FormaError {
+	if msg == "" {
+		msg = "analyst action forbidden"
+	}
+	return New(CodeAnalystForbidden, http.StatusForbidden, KeyAnalystForbidden, msg)
+}
+
 // AsFormaError extracts a FormaError from err.
 func AsFormaError(err error) (*FormaError, bool) {
 	var fe *FormaError
@@ -280,6 +400,45 @@ func MapDomainError(err error) *FormaError {
 	}
 	if errors.Is(err, businessentity.ErrLayoutModelRevisionNotFound) {
 		return BusinessLayoutModelRevisionNotFound(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrSessionNotFound) {
+		return AnalystSessionNotFound(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrSessionClosed) {
+		return AnalystSessionClosed(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrInvalidTurn) {
+		return AnalystInvalidTurn(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrModelFailed) {
+		return AnalystModelFailed(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrInvalidExtraction) {
+		return AnalystInvalidExtraction(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrAssertionNotFound) {
+		return AssertionNotFound(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrAssertionAlreadyDecided) {
+		return AssertionAlreadyDecided(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrAssertionEvidenceRequired) {
+		return AssertionEvidenceRequired(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrProposalNotFound) {
+		return AnalystProposalNotFound(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrProposalStale) {
+		return AnalystProposalStale(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrProposalInvalid) {
+		return AnalystProposalInvalid(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrProposalAlreadyApplied) {
+		return AnalystProposalAlreadyApplied(err.Error())
+	}
+	if errors.Is(err, analystentity.ErrForbidden) {
+		return AnalystForbidden(err.Error())
 	}
 	return Internal(err.Error())
 }

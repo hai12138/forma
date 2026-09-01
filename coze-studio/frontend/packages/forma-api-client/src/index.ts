@@ -241,6 +241,123 @@ export interface FormaBootstrapData {
   created: boolean;
 }
 
+export interface FormaAnalystSession {
+  session_id: string;
+  business_id: string;
+  status: string;
+  title: string;
+  confirmation_policy: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaAnalystTurn {
+  turn_id: string;
+  sequence: number;
+  speaker: string;
+  content: string;
+  content_type: string;
+  analysis_status: string;
+  client_request_id?: string;
+  created_at: string;
+}
+
+export interface FormaEvidence {
+  evidence_id: string;
+  session_id: string;
+  turn_id: string;
+  source_type: string;
+  quote: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface FormaAssertion {
+  assertion_id: string;
+  session_id: string;
+  assertion_type: string;
+  subject_ref: string;
+  predicate: string;
+  object_value: string;
+  confidence: number;
+  status: string;
+  source_marker: FormaSourceMarker;
+  evidence_ids: string[];
+  structured_value?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaAssertionEdit {
+  assertion_type: string;
+  subject_ref: string;
+  predicate: string;
+  object_value: string;
+}
+
+export interface FormaConflict {
+  conflict_id: string;
+  session_id: string;
+  assertion_id_a: string;
+  assertion_id_b: string;
+  subject_ref: string;
+  predicate: string;
+  status: string;
+}
+
+export interface FormaGap {
+  gap_id: string;
+  session_id: string;
+  gap_type: string;
+  question: string;
+  status: string;
+  related_assertion_ids?: string[];
+}
+
+export interface FormaPatchOperation {
+  op: string;
+  target_id?: string;
+  node?: FormaSemanticNode;
+  edge?: FormaSemanticEdge;
+  state?: FormaBusinessState;
+  rule?: FormaBusinessRule;
+  source_assertion_ids: string[];
+}
+
+export interface FormaSemanticModelPatch {
+  operations: FormaPatchOperation[];
+}
+
+export interface FormaProposal {
+  proposal_id: string;
+  business_id: string;
+  session_id: string;
+  base_revision: number;
+  assertion_ids: string[];
+  patch: FormaSemanticModelPatch;
+  status: string;
+  content_digest: string;
+  created_at: string;
+}
+
+export interface FormaTurnSubmission {
+  user_turn: FormaAnalystTurn;
+  analyst_turn?: FormaAnalystTurn;
+  evidence?: FormaEvidence;
+  assertions?: FormaAssertion[];
+  conflicts?: FormaConflict[];
+  gaps?: FormaGap[];
+  model_failed?: boolean;
+  model_error?: string;
+  next_question?: { question: string; goal: string; priority: number };
+}
+
+export interface FormaApplyProposalResult {
+  revision_no: number;
+  proposal_id: string;
+}
+
 export interface FormaApiClientOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
@@ -390,6 +507,123 @@ export class FormaApiClient {
     },
   ): Promise<FormaApiEnvelope<FormaLayoutResponse>> {
     return this.request<FormaLayoutResponse>('PUT', `/api/forma/v1/businesses/${id}/layout`, body);
+  }
+
+  async createAnalystSession(
+    businessId: string,
+    body: { title?: string; confirmation_policy?: string },
+  ): Promise<FormaApiEnvelope<FormaAnalystSession>> {
+    return this.request<FormaAnalystSession>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/analyst/sessions`,
+      body,
+    );
+  }
+
+  async listAnalystSessions(businessId: string): Promise<FormaApiEnvelope<FormaAnalystSession[]>> {
+    return this.request<FormaAnalystSession[]>(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/analyst/sessions`,
+    );
+  }
+
+  async getAnalystSession(
+    businessId: string,
+    sessionId: string,
+  ): Promise<FormaApiEnvelope<FormaAnalystSession>> {
+    return this.request<FormaAnalystSession>(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/analyst/sessions/${sessionId}`,
+    );
+  }
+
+  async submitAnalystTurn(
+    businessId: string,
+    sessionId: string,
+    body: { content: string; client_request_id?: string },
+  ): Promise<FormaApiEnvelope<FormaTurnSubmission>> {
+    return this.request<FormaTurnSubmission>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/analyst/sessions/${sessionId}/turns`,
+      body,
+    );
+  }
+
+  async listAnalystTurns(
+    businessId: string,
+    sessionId: string,
+  ): Promise<FormaApiEnvelope<FormaAnalystTurn[]>> {
+    return this.request<FormaAnalystTurn[]>(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/analyst/sessions/${sessionId}/turns`,
+    );
+  }
+
+  async listAssertions(businessId: string): Promise<FormaApiEnvelope<FormaAssertion[]>> {
+    return this.request<FormaAssertion[]>('GET', `/api/forma/v1/businesses/${businessId}/assertions`);
+  }
+
+  async listEvidence(businessId: string): Promise<FormaApiEnvelope<FormaEvidence[]>> {
+    return this.request<FormaEvidence[]>('GET', `/api/forma/v1/businesses/${businessId}/evidence`);
+  }
+
+  async confirmAssertion(
+    businessId: string,
+    assertionId: string,
+    body?: { comment?: string; edit?: FormaAssertionEdit },
+  ): Promise<FormaApiEnvelope<FormaAssertion>> {
+    return this.request<FormaAssertion>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/assertions/${assertionId}/confirm`,
+      body ?? {},
+    );
+  }
+
+  async rejectAssertion(
+    businessId: string,
+    assertionId: string,
+    body?: { comment?: string },
+  ): Promise<FormaApiEnvelope<FormaAssertion>> {
+    return this.request<FormaAssertion>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/assertions/${assertionId}/reject`,
+      body ?? {},
+    );
+  }
+
+  async listConflicts(businessId: string): Promise<FormaApiEnvelope<FormaConflict[]>> {
+    return this.request<FormaConflict[]>('GET', `/api/forma/v1/businesses/${businessId}/conflicts`);
+  }
+
+  async listGaps(businessId: string): Promise<FormaApiEnvelope<FormaGap[]>> {
+    return this.request<FormaGap[]>('GET', `/api/forma/v1/businesses/${businessId}/gaps`);
+  }
+
+  async createProposal(
+    businessId: string,
+    body: { session_id?: string; assertion_ids?: string[] },
+  ): Promise<FormaApiEnvelope<FormaProposal>> {
+    return this.request<FormaProposal>('POST', `/api/forma/v1/businesses/${businessId}/proposals`, body);
+  }
+
+  async getProposal(
+    businessId: string,
+    proposalId: string,
+  ): Promise<FormaApiEnvelope<FormaProposal>> {
+    return this.request<FormaProposal>(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/proposals/${proposalId}`,
+    );
+  }
+
+  async applyProposal(
+    businessId: string,
+    proposalId: string,
+  ): Promise<FormaApiEnvelope<FormaApplyProposalResult>> {
+    return this.request<FormaApplyProposalResult>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/proposals/${proposalId}/apply`,
+    );
   }
 
   private async request<T>(

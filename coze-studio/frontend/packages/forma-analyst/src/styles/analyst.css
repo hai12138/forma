@@ -1,0 +1,123 @@
+/* Forma Analyst workspace styles */
+.forma-analyst-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+  min-height: 520px;
+}
+
+.forma-analyst-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.forma-analyst-turn {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--forma-surface-2, #f4f5f7);
+}
+
+.forma-analyst-turn.user {
+  background: #e8f4ff;
+}
+
+.forma-analyst-turn.analyst {
+  background: #f0f9f4;
+}
+
+.forma-analyst-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.forma-analyst-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.forma-analyst-tab {
+  padding: 6px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.forma-analyst-tab.active {
+  background: #1a56db;
+  color: #fff;
+  border-color: #1a56db;
+}
+
+.forma-analyst-card {
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.forma-analyst-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.forma-analyst-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.forma-analyst-input-row textarea {
+  flex: 1;
+  min-height: 72px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #d0d5dd;
+}
+
+.forma-analyst-processing {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.forma-analyst-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.forma-analyst-proposal-preview {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed #9ca3af;
+  border-radius: 8px;
+}
+
+.forma-btn {
+  padding: 6px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.forma-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.forma-btn-primary {
+  background: #1a56db;
+  color: #fff;
+  border-color: #1a56db;
+}

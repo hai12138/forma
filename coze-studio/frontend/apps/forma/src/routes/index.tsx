@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 
 import { BusinessEditorPage, BusinessListPage } from '@forma/business';
+import { AnalystWorkspacePage } from '@forma/analyst';
 
 import { AppShell } from '@/components/shell';
 import { useFormaSession } from '@/hooks/use-forma-session';
@@ -16,13 +17,18 @@ function BusinessEditorRoute() {
   return <BusinessEditorPage client={client} currentTenant={currentTenant} />;
 }
 
+function AnalystRoute() {
+  const { client, currentTenant } = useFormaSession();
+  return <AnalystWorkspacePage client={client} currentTenant={currentTenant} />;
+}
+
 export function AppRouter() {
   return (
     <AppShell>
       <Routes>
         <Route path="/" element={<OverviewPage />} />
         <Route path="/design" element={<DesignPage />} />
-        <Route path="/analyst" element={<PlaceholderPage title="AI 业务分析师" />} />
+        <Route path="/analyst" element={<AnalystRoute />} />
         <Route path="/business" element={<BusinessListRoute />} />
         <Route path="/business/:businessId" element={<BusinessEditorRoute />} />
         <Route path="/data" element={<PlaceholderPage title="数据平面" />} />

@@ -1349,6 +1349,11 @@
       "tags": ["level-1", "channel-forma"]
     },
     {
+      "packageName": "@forma/analyst",
+      "projectFolder": "frontend/packages/forma-analyst",
+      "tags": ["level-1", "channel-forma"]
+    },
+    {
       "packageName": "@forma/app",
       "projectFolder": "frontend/apps/forma",
       "tags": ["level-1", "channel-forma"]
