@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
@@ -617,6 +618,53 @@ func (d *AnalystDAO) ListConfirmationsForAssertion(ctx context.Context, tenantID
 		})
 	}
 	return out, nil
+}
+
+func (d *AnalystDAO) GetSessionForUpdate(ctx context.Context, tenantID, sessionID string) (*entity.AnalystSession, error) {
+	var row SessionModel
+	err := d.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id = ? AND session_id = ?", tenantID, sessionID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toSession(&row), nil
+}
+
+func (d *AnalystDAO) GetConflictByPair(ctx context.Context, tenantID, businessID, assertionIDA, assertionIDB string) (*entity.AssertionConflict, error) {
+	var row ConflictModel
+	err := d.db.WithContext(ctx).
+		Where("tenant_id = ? AND business_id = ? AND assertion_id_a = ? AND assertion_id_b = ?",
+			tenantID, businessID, assertionIDA, assertionIDB).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &entity.AssertionConflict{
+		ConflictID:   row.ConflictID,
+		TenantID:     row.TenantID,
+		BusinessID:   row.BusinessID,
+		SessionID:    row.SessionID,
+		AssertionIDA: row.AssertionIDA,
+		AssertionIDB: row.AssertionIDB,
+		SubjectRef:   row.SubjectRef,
+		Predicate:    row.Predicate,
+		Status:       entity.ConflictStatus(row.Status),
+		CreatedAt:    row.CreatedAt,
+	}, nil
+}
+
+func (d *AnalystDAO) UpdateConflictStatus(ctx context.Context, tenantID, conflictID string, status entity.ConflictStatus, at time.Time) error {
+	return d.db.WithContext(ctx).Model(&ConflictModel{}).
+		Where("tenant_id = ? AND conflict_id = ?", tenantID, conflictID).
+		Update("status", string(status)).Error
 }
 
 func (d *AnalystDAO) CreateConflict(ctx context.Context, c *entity.AssertionConflict) error {

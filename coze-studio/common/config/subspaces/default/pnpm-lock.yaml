@@ -226,6 +226,9 @@ importers:
 
   ../../../frontend/apps/forma:
     dependencies:
+      '@forma/analyst':
+        specifier: workspace:*
+        version: link:../../packages/forma-analyst
       '@forma/api-client':
         specifier: workspace:*
         version: link:../../packages/forma-api-client
@@ -15865,6 +15868,43 @@ importers:
       zustand:
         specifier: ^4.4.7
         version: 4.5.7(@types/react@18.2.37)(immer@10.2.0)(react@18.2.0)
+
+  ../../../frontend/packages/forma-analyst:
+    dependencies:
+      '@forma/api-client':
+        specifier: workspace:*
+        version: link:../forma-api-client
+      react:
+        specifier: 18.2.0
+        version: 18.2.0
+      react-dom:
+        specifier: 18.2.0
+        version: 18.2.0(react@18.2.0)
+      react-router-dom:
+        specifier: ^6.11.1
+        version: 6.30.6(react-dom@18.2.0)(react@18.2.0)
+    devDependencies:
+      '@coze-arch/eslint-config':
+        specifier: workspace:*
+        version: link:../../config/eslint-config
+      '@coze-arch/ts-config':
+        specifier: workspace:*
+        version: link:../../config/ts-config
+      '@coze-arch/vitest-config':
+        specifier: workspace:*
+        version: link:../../config/vitest-config
+      '@types/react':
+        specifier: 18.2.37
+        version: 18.2.37
+      '@types/react-dom':
+        specifier: 18.2.15
+        version: 18.2.15
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
+      vitest:
+        specifier: ~3.0.5
+        version: 3.0.9(jsdom@22.1.0)
 
   ../../../frontend/packages/forma-api-client:
     devDependencies:

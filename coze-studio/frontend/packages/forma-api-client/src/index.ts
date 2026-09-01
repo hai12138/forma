@@ -358,6 +358,17 @@ export interface FormaApplyProposalResult {
   proposal_id: string;
 }
 
+export interface FormaProposalPreview {
+  proposal: FormaProposal;
+  current_revision: number;
+  validation_valid: boolean;
+  validation_error?: string;
+  assertion_count: number;
+  proposed_model?: FormaSemanticModel;
+  diff?: FormaDiffResponse['diff'];
+  impact?: FormaDiffResponse['impact'];
+}
+
 export interface FormaApiClientOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
@@ -623,6 +634,27 @@ export class FormaApiClient {
     return this.request<FormaApplyProposalResult>(
       'POST',
       `/api/forma/v1/businesses/${businessId}/proposals/${proposalId}/apply`,
+    );
+  }
+
+  async retryAnalystTurnAnalysis(
+    businessId: string,
+    sessionId: string,
+    turnId: string,
+  ): Promise<FormaApiEnvelope<FormaTurnSubmission>> {
+    return this.request<FormaTurnSubmission>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/analyst/sessions/${sessionId}/turns/${turnId}/retry-analysis`,
+    );
+  }
+
+  async getProposalPreview(
+    businessId: string,
+    proposalId: string,
+  ): Promise<FormaApiEnvelope<FormaProposalPreview>> {
+    return this.request<FormaProposalPreview>(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/proposals/${proposalId}/preview`,
     );
   }
 

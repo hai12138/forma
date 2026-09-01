@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 
@@ -18,6 +19,7 @@ import (
 )
 
 // CozeEinoAnalystModel implements FormaAnalystModel via Coze Model Manager / Eino.
+// Production: no heuristic fallback on failure.
 type CozeEinoAnalystModel struct {
 	EnvPrefix string
 }
@@ -27,41 +29,56 @@ func NewCozeEinoAnalystModel(envPrefix string) analystsvc.FormaAnalystModel {
 }
 
 func (m *CozeEinoAnalystModel) GenerateInterviewTurn(ctx context.Context, req *analystsvc.InterviewTurnRequest) (*analystsvc.InterviewTurnResponse, error) {
-	prompt := integration.AnalystSystemPolicy()
-	if req != nil {
-		if req.NextQuestion != nil && req.NextQuestion.Question != "" {
-			return &analystsvc.InterviewTurnResponse{
-				ModelRef: "coze-eino-builtin",
-				Content:  req.NextQuestion.Question,
-			}, nil
-		}
-		prompt = req.SystemPolicy
+	if req == nil {
+		return nil, fmt.Errorf("%w: request required", entity.ErrModelFailed)
 	}
-	content, modelRef, err := m.invoke(ctx, prompt, req.UserMessage)
+	system := req.SystemPolicy
+	if system == "" {
+		system = AnalystSystemPolicy()
+	}
+	userMsg := buildAnalystUserMessage(req)
+	start := time.Now()
+	content, modelRef, inTok, outTok, err := m.invoke(ctx, system, userMsg)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", entity.ErrModelFailed, err)
 	}
+	_ = start
 	return &analystsvc.InterviewTurnResponse{
-		ModelRef: modelRef,
-		Content:  content,
+		ModelRef:     modelRef,
+		Content:      content,
+		InputTokens:  inTok,
+		OutputTokens: outTok,
 	}, nil
 }
 
+func buildAnalystUserMessage(req *analystsvc.InterviewTurnRequest) string {
+	parts := []string{fmt.Sprintf("User message: %s", req.UserMessage)}
+	if req.NextQuestion != nil {
+		if req.NextQuestion.Goal != "" {
+			parts = append(parts, fmt.Sprintf("Interview goal: %s", req.NextQuestion.Goal))
+		}
+		if req.NextQuestion.Question != "" {
+			parts = append(parts, fmt.Sprintf("Suggested follow-up focus: %s", req.NextQuestion.Question))
+		}
+	}
+	parts = append(parts, "Respond as the Forma AI Business Analyst. Ask clarifying business questions. Do not auto-confirm facts.")
+	return strings.Join(parts, "\n")
+}
+
 func (m *CozeEinoAnalystModel) ExtractAssertions(ctx context.Context, req *analystsvc.ExtractionRequest) (*entity.ExtractionResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("%w: request required", entity.ErrInvalidExtraction)
+	}
 	system := extractionSystemPrompt()
 	user := fmt.Sprintf("User turn (%s): %s\n\nReturn JSON only.", req.UserTurnID, req.UserTurnContent)
-	raw, modelRef, err := m.invoke(ctx, system, user)
+	raw, _, _, _, err := m.invoke(ctx, system, user)
 	if err != nil {
-		// Fallback to deterministic heuristic via fake model path
-		fake := analystsvc.NewDeterministicFakeModel()
-		return fake.ExtractAssertions(ctx, req)
+		return nil, fmt.Errorf("%w: %v", entity.ErrModelFailed, err)
 	}
 	res, parseErr := analystsvc.ParseStructuredExtraction(raw, req.UserTurnID)
 	if parseErr != nil {
-		fake := analystsvc.NewDeterministicFakeModel()
-		return fake.ExtractAssertions(ctx, req)
+		return nil, fmt.Errorf("%w: %v", entity.ErrInvalidExtraction, parseErr)
 	}
-	_ = modelRef
 	return res, nil
 }
 
@@ -72,10 +89,10 @@ func (m *CozeEinoAnalystModel) ProposeModelPatch(ctx context.Context, req *analy
 	return analystsvc.BuildProposalPatch(req.Assertions), nil
 }
 
-func (m *CozeEinoAnalystModel) invoke(ctx context.Context, system, user string) (string, string, error) {
+func (m *CozeEinoAnalystModel) invoke(ctx context.Context, system, user string) (content, modelRef string, inputTokens, outputTokens int32, err error) {
 	model, ok, err := modelbuilder.GetBuiltinChatModel(ctx, m.EnvPrefix)
 	if err != nil || !ok || model == nil {
-		return "", "", fmt.Errorf("builtin chat model not configured")
+		return "", "", 0, 0, fmt.Errorf("builtin chat model not configured")
 	}
 	msgs := []*schema.Message{
 		schema.SystemMessage(system),
@@ -83,10 +100,9 @@ func (m *CozeEinoAnalystModel) invoke(ctx context.Context, system, user string) 
 	}
 	out, err := model.Generate(ctx, msgs)
 	if err != nil {
-		return "", "", err
+		return "", "", 0, 0, err
 	}
-	content := strings.TrimSpace(out.Content)
-	return content, "coze-eino-builtin", nil
+	return strings.TrimSpace(out.Content), "coze-eino-builtin", 0, 0, nil
 }
 
 func extractionSystemPrompt() string {
@@ -100,7 +116,7 @@ func extractionSystemPrompt() string {
 Never auto-confirm. JSON only.`
 }
 
-// AnalystSystemPolicy re-export for integration package.
+// AnalystSystemPolicy exposes system policy for ACL layer.
 func AnalystSystemPolicy() string {
 	return analystsvc.AnalystSystemPolicyExport()
 }

@@ -44,7 +44,11 @@ type AnalystRepository interface {
 	ListConfirmationsForAssertion(ctx context.Context, tenantID, assertionID string) ([]*entity.BusinessConfirmation, error)
 
 	CreateConflict(ctx context.Context, c *entity.AssertionConflict) error
+	GetConflictByPair(ctx context.Context, tenantID, businessID, assertionIDA, assertionIDB string) (*entity.AssertionConflict, error)
+	UpdateConflictStatus(ctx context.Context, tenantID, conflictID string, status entity.ConflictStatus, at time.Time) error
 	ListConflicts(ctx context.Context, tenantID, businessID string) ([]*entity.AssertionConflict, error)
+
+	GetSessionForUpdate(ctx context.Context, tenantID, sessionID string) (*entity.AnalystSession, error)
 
 	CreateGap(ctx context.Context, g *entity.AnalystGap) error
 	ListGaps(ctx context.Context, tenantID, businessID string) ([]*entity.AnalystGap, error)
@@ -143,8 +147,17 @@ func (r *gormAnalystRepo) CreateConfirmation(ctx context.Context, c *entity.Busi
 func (r *gormAnalystRepo) ListConfirmationsForAssertion(ctx context.Context, tenantID, assertionID string) ([]*entity.BusinessConfirmation, error) {
 	return r.dao.ListConfirmationsForAssertion(ctx, tenantID, assertionID)
 }
+func (r *gormAnalystRepo) GetSessionForUpdate(ctx context.Context, tenantID, sessionID string) (*entity.AnalystSession, error) {
+	return r.dao.GetSessionForUpdate(ctx, tenantID, sessionID)
+}
 func (r *gormAnalystRepo) CreateConflict(ctx context.Context, c *entity.AssertionConflict) error {
 	return r.dao.CreateConflict(ctx, c)
+}
+func (r *gormAnalystRepo) GetConflictByPair(ctx context.Context, tenantID, businessID, assertionIDA, assertionIDB string) (*entity.AssertionConflict, error) {
+	return r.dao.GetConflictByPair(ctx, tenantID, businessID, assertionIDA, assertionIDB)
+}
+func (r *gormAnalystRepo) UpdateConflictStatus(ctx context.Context, tenantID, conflictID string, status entity.ConflictStatus, at time.Time) error {
+	return r.dao.UpdateConflictStatus(ctx, tenantID, conflictID, status, at)
 }
 func (r *gormAnalystRepo) ListConflicts(ctx context.Context, tenantID, businessID string) ([]*entity.AssertionConflict, error) {
 	return r.dao.ListConflicts(ctx, tenantID, businessID)
@@ -173,6 +186,6 @@ func (r *gormAnalystRepo) CreateProvenance(ctx context.Context, p *entity.Revisi
 func (r *gormAnalystRepo) GetProvenance(ctx context.Context, tenantID, businessID string, revisionNo int32) (*entity.RevisionProvenance, error) {
 	return r.dao.GetProvenance(ctx, tenantID, businessID, revisionNo)
 }
-func (r *gormAnalystRepo) CreateModelCall(ctx context.Context, r *entity.ModelCallRecord) error {
-	return r.dao.CreateModelCall(ctx, r)
+func (r *gormAnalystRepo) CreateModelCall(ctx context.Context, record *entity.ModelCallRecord) error {
+	return r.dao.CreateModelCall(ctx, record)
 }

@@ -55,6 +55,16 @@ test('S3 analyst migration present', () => {
   assert.ok(!sql.includes('FOREIGN KEY'));
 });
 
+test('S3-G1 integrity migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250902010000_s3_g1_integrity.sql'),
+    'utf8',
+  );
+  assert.ok(sql.includes('uk_forma_analyst_turn_sequence'));
+  assert.ok(sql.includes('uk_forma_assertion_conflict_pair'));
+  assert.ok(!sql.includes('ALTER TABLE `forma_analyst_turn`'));
+});
+
 test('atlas sum references migrations', () => {
   const sum = readFileSync(join(root, 'migrations', 'atlas.sum'), 'utf8');
   assert.ok(sum.includes('20250831100000_initial.sql'));
@@ -62,4 +72,5 @@ test('atlas sum references migrations', () => {
   assert.ok(sum.includes('20250831140000_s1_g1_space_mapping.sql'));
   assert.ok(sum.includes('20250901000000_s2_business_model.sql'));
   assert.ok(sum.includes('20250902000000_s3_analyst.sql'));
+  assert.ok(sum.includes('20250902010000_s3_g1_integrity.sql'));
 });

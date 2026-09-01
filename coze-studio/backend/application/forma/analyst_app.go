@@ -7,9 +7,11 @@ package forma
 
 import (
 	"context"
+	"time"
 
 	analystentity "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	analystsvc "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/service"
+	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
 	tenantctx "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/context"
 )
@@ -135,6 +137,17 @@ type CreateProposalInput struct {
 type ApplyProposalResponse struct {
 	RevisionNo int32  `json:"revision_no"`
 	ProposalID string `json:"proposal_id"`
+}
+
+type ProposalPreviewResponse struct {
+	Proposal          *ProposalDTO                    `json:"proposal"`
+	CurrentRevision   int32                           `json:"current_revision"`
+	ValidationValid   bool                            `json:"validation_valid"`
+	ValidationError   string                          `json:"validation_error,omitempty"`
+	AssertionCount    int                             `json:"assertion_count"`
+	ProposedModel     *businessentity.SemanticModel   `json:"proposed_model,omitempty"`
+	Diff              *businessentity.BusinessModelDiff   `json:"diff,omitempty"`
+	Impact            *businessentity.BusinessImpactSummary `json:"impact,omitempty"`
 }
 
 func (s *ApplicationService) CreateAnalystSession(ctx context.Context, businessID string, in *CreateAnalystSessionInput) (*AnalystSessionDTO, error) {
@@ -376,6 +389,50 @@ func (s *ApplicationService) ApplyProposal(ctx context.Context, businessID, prop
 		RevisionNo: rev.RevisionNo,
 		ProposalID: proposalID,
 	}, nil
+}
+
+func (s *ApplicationService) RetryAnalystTurnAnalysis(ctx context.Context, businessID, sessionID, turnID string) (*TurnSubmissionResponse, error) {
+	tc, err := s.requireAnalystTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.GetAnalystSession(ctx, businessID, sessionID); err != nil {
+		return nil, err
+	}
+	result, err := s.AnalystSVC.RetryTurnAnalysis(ctx, tc.TenantID, businessID, sessionID, turnID, tc.PrincipalID)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	return toTurnSubmissionResponse(result), nil
+}
+
+func (s *ApplicationService) GetProposalPreview(ctx context.Context, businessID, proposalID string) (*ProposalPreviewResponse, error) {
+	tc, err := s.requireAnalystTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.AnalystSVC.GetProposal(ctx, tc.TenantID, proposalID)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	if p.BusinessID != businessID {
+		return nil, formaerrors.AnalystProposalNotFound("proposal not found")
+	}
+	preview, err := s.AnalystSVC.GetProposalPreview(ctx, tc.TenantID, proposalID)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	out := &ProposalPreviewResponse{
+		Proposal:        toProposalDTO(preview.Proposal),
+		CurrentRevision: preview.CurrentRevision,
+		ValidationValid: preview.ValidationValid,
+		ValidationError: preview.ValidationError,
+		AssertionCount:  len(preview.Proposal.AssertionIDs),
+		ProposedModel:   preview.ProposedModel,
+		Diff:            preview.Diff,
+		Impact:          preview.Impact,
+	}
+	return out, nil
 }
 
 func (s *ApplicationService) requireAnalystTenant(ctx context.Context) (*tenantctx.TenantContext, error) {

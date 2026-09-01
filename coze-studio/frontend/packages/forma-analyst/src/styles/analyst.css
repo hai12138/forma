@@ -121,3 +121,37 @@
   color: #fff;
   border-color: #1a56db;
 }
+
+.forma-analyst-conflict-vs {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: start;
+}
+
+.forma-analyst-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.forma-analyst-modal .forma-analyst-card {
+  min-width: 320px;
+  max-width: 480px;
+}
+
+.forma-analyst-modal label {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.forma-analyst-modal input {
+  width: 100%;
+  margin-top: 4px;
+}

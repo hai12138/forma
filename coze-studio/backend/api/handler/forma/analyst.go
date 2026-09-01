@@ -184,3 +184,26 @@ func ApplyProposal(ctx context.Context, c *app.RequestContext) {
 	}
 	writeOK(ctx, c, resp)
 }
+
+func RetryAnalystTurnAnalysis(ctx context.Context, c *app.RequestContext) {
+	businessID := c.Param("id")
+	sessionID := c.Param("sessionId")
+	turnID := c.Param("turnId")
+	resp, err := formaapp.ApplicationSVC.RetryAnalystTurnAnalysis(ctx, businessID, sessionID, turnID)
+	if err != nil {
+		writeError(ctx, c, err)
+		return
+	}
+	writeOK(ctx, c, resp)
+}
+
+func GetProposalPreview(ctx context.Context, c *app.RequestContext) {
+	businessID := c.Param("id")
+	proposalID := c.Param("proposalId")
+	resp, err := formaapp.ApplicationSVC.GetProposalPreview(ctx, businessID, proposalID)
+	if err != nil {
+		writeError(ctx, c, err)
+		return
+	}
+	writeOK(ctx, c, resp)
+}

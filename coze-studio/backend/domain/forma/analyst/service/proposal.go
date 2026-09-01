@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
@@ -128,7 +129,9 @@ func splitOnce(s, sep string) []string {
 func ProposalDigest(patch *entity.SemanticModelPatch, baseRev int32, assertionIDs []string) string {
 	h := sha256.New()
 	h.Write([]byte(fmt.Sprintf("base:%d", baseRev)))
-	for _, id := range assertionIDs {
+	sorted := append([]string(nil), assertionIDs...)
+	sort.Strings(sorted)
+	for _, id := range sorted {
 		h.Write([]byte(id))
 	}
 	if patch != nil {

@@ -229,6 +229,76 @@ func (s *businessServiceImpl) SaveModel(
 	return rev, false, nil
 }
 
+// SaveModelRevision persists a revision using repo without opening a nested transaction.
+// Caller must run inside an existing DB transaction when atomicity with other domains is required.
+func SaveModelRevision(
+	ctx context.Context,
+	repo repository.BusinessRepository,
+	tenantID, businessID, createdBy string,
+	expectedRevision int32,
+	model *entity.SemanticModel,
+	changeSummary string,
+) (*entity.BusinessModelRevision, bool, error) {
+	master, err := repo.GetMaster(ctx, tenantID, businessID)
+	if err != nil {
+		return nil, false, err
+	}
+	if master == nil {
+		return nil, false, entity.ErrNotFound
+	}
+	if expectedRevision != master.CurrentRevision {
+		return nil, false, entity.ErrRevisionConflict
+	}
+	if model == nil {
+		return nil, false, fmt.Errorf("%w: semantic_model required", entity.ErrInvalidModel)
+	}
+	if model.SchemaVersion == "" {
+		model.SchemaVersion = entity.SemanticSchemaVersion
+	}
+	if err := ValidateSemanticModel(model); err != nil {
+		return nil, false, err
+	}
+	digest, raw, err := ContentDigest(model)
+	if err != nil {
+		return nil, false, err
+	}
+	cur, err := repo.GetRevision(ctx, tenantID, businessID, master.CurrentRevision)
+	if err != nil {
+		return nil, false, err
+	}
+	if cur != nil && cur.ContentDigest == digest {
+		return cur, true, nil
+	}
+	next := master.CurrentRevision + 1
+	now := time.Now().UTC()
+	if changeSummary == "" {
+		changeSummary = "semantic update"
+	}
+	rev := &entity.BusinessModelRevision{
+		TenantID:          tenantID,
+		BusinessID:        businessID,
+		RevisionNo:        next,
+		BaseRevisionNo:    master.CurrentRevision,
+		SchemaVersion:     model.SchemaVersion,
+		SemanticModelJSON: string(raw),
+		ContentDigest:     digest,
+		ChangeSummary:     changeSummary,
+		CreatedBy:         createdBy,
+		CreatedAt:         now,
+	}
+	ok, err := repo.CASBumpRevision(ctx, tenantID, businessID, expectedRevision, next)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		return nil, false, entity.ErrRevisionConflict
+	}
+	if err := repo.CreateRevision(ctx, rev); err != nil {
+		return nil, false, err
+	}
+	return rev, false, nil
+}
+
 func (s *businessServiceImpl) ListRevisions(ctx context.Context, tenantID, businessID string) ([]*entity.BusinessModelRevision, error) {
 	if _, err := s.Get(ctx, tenantID, businessID); err != nil {
 		return nil, err
@@ -345,6 +415,11 @@ func parseSemantic(raw string) (*entity.SemanticModel, error) {
 	}
 	normalizeSemantic(&sm)
 	return &sm, nil
+}
+
+// ParseSemanticJSON parses persisted semantic model JSON for cross-domain callers.
+func ParseSemanticJSON(raw string) (*entity.SemanticModel, error) {
+	return parseSemantic(raw)
 }
 
 func normalizeSemantic(m *entity.SemanticModel) {

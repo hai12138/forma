@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
+	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/analyst/repository"
@@ -42,6 +44,8 @@ type AnalystService interface {
 	GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error)
 	ApplyProposal(ctx context.Context, tenantID, businessID, proposalID, actorID string) (*entity.BusinessModelRevision, error)
 	GetProvenance(ctx context.Context, tenantID, businessID string, revisionNo int32) (*entity.RevisionProvenance, error)
+	RetryTurnAnalysis(ctx context.Context, tenantID, businessID, sessionID, turnID, actorID string) (*entity.TurnSubmissionResult, error)
+	GetProposalPreview(ctx context.Context, tenantID, proposalID string) (*ProposalPreviewResult, error)
 }
 
 type AssertionEdit struct {
@@ -54,6 +58,8 @@ type AssertionEdit struct {
 type Components struct {
 	Repo         repository.AnalystRepository
 	BusinessSVC  businesssvc.BusinessService
+	BusinessRepo businessrepo.BusinessRepository
+	DB           *gorm.DB
 	Model        FormaAnalystModel
 	AuditHook    AuditHook
 }
@@ -67,10 +73,12 @@ type noopAudit struct{}
 func (noopAudit) RecordAnalystAudit(_ context.Context, _, _, _, _, _ string) error { return nil }
 
 type analystServiceImpl struct {
-	repo        repository.AnalystRepository
-	businessSVC businesssvc.BusinessService
-	model       FormaAnalystModel
-	audit       AuditHook
+	repo         repository.AnalystRepository
+	businessSVC  businesssvc.BusinessService
+	businessRepo businessrepo.BusinessRepository
+	db           *gorm.DB
+	model        FormaAnalystModel
+	audit        AuditHook
 }
 
 func NewAnalystService(c *Components) AnalystService {
@@ -83,13 +91,15 @@ func NewAnalystService(c *Components) AnalystService {
 	}
 	model := c.Model
 	if model == nil {
-		model = NewDeterministicFakeModel()
+		model = NewUnavailableAnalystModel()
 	}
 	return &analystServiceImpl{
-		repo:        c.Repo,
-		businessSVC: c.BusinessSVC,
-		model:       model,
-		audit:       audit,
+		repo:         c.Repo,
+		businessSVC:  c.BusinessSVC,
+		businessRepo: c.BusinessRepo,
+		db:           c.DB,
+		model:        model,
+		audit:        audit,
 	}
 }
 
@@ -164,157 +174,18 @@ func (s *analystServiceImpl) SubmitTurn(ctx context.Context, tenantID, businessI
 		}
 	}
 
-	now := time.Now().UTC()
-	seq, err := s.repo.MaxTurnSequence(ctx, tenantID, sessionID)
+	userTurn, evidence, err := s.createUserTurnWithEvidence(ctx, tenantID, businessID, sessionID, content, clientRequestID, actorID)
 	if err != nil {
-		return nil, err
-	}
-	turnID := newID("turn")
-	clientReq := clientRequestID
-	if clientReq == "" {
-		clientReq = turnID
-	}
-	userTurn := &entity.AnalystTurn{
-		TurnID:          turnID,
-		TenantID:        tenantID,
-		SessionID:       sessionID,
-		Sequence:        seq + 1,
-		Speaker:         entity.SpeakerUser,
-		Content:         content,
-		ContentType:     entity.ContentText,
-		ClientRequestID: clientReq,
-		AnalysisStatus:  entity.AnalysisPending,
-		CreatedAt:       now,
-	}
-	if err := s.repo.CreateTurn(ctx, userTurn); err != nil {
-		return nil, err
-	}
-
-	evidence := &entity.BusinessEvidence{
-		EvidenceID:    newID("evid"),
-		TenantID:      tenantID,
-		BusinessID:    businessID,
-		SessionID:     sessionID,
-		TurnID:        userTurn.TurnID,
-		SourceType:    entity.EvidenceInterviewTurn,
-		SourceRef:     userTurn.TurnID,
-		Quote:         content,
-		ContentDigest: digestString(content),
-		CreatedBy:     actorID,
-		CreatedAt:     now,
-	}
-	if err := s.repo.CreateEvidence(ctx, evidence); err != nil {
+		if clientRequestID != "" && isDuplicateKeyErr(err) {
+			existing, gErr := s.repo.GetTurnByClientRequestID(ctx, tenantID, sessionID, clientRequestID)
+			if gErr == nil && existing != nil {
+				return s.buildIdempotentResult(ctx, tenantID, businessID, sessionID, existing)
+			}
+		}
 		return nil, err
 	}
 	_ = s.audit.RecordAnalystAudit(ctx, tenantID, actorID, "ANALYST_TURN_SUBMITTED", userTurn.TurnID, clientRequestID)
-
-	ctxInput, manifest, err := s.buildContextInput(ctx, tenantID, businessID, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	_, contextText := BuildContext(ctxInput)
-	manifest.IncludedItems = append(manifest.IncludedItems, contextText != "")
-
-	modelRequestID := newID("mreq")
-	start := time.Now()
-	extractReq := &ExtractionRequest{
-		RequestID:       modelRequestID,
-		TenantID:        tenantID,
-		BusinessID:      businessID,
-		SessionID:       sessionID,
-		ContextManifest: manifest,
-		SystemPolicy:    analystSystemPolicy,
-		UserTurnContent: content,
-		UserTurnID:      userTurn.TurnID,
-	}
-	extraction, modelErr := s.model.ExtractAssertions(ctx, extractReq)
-	latency := int32(time.Since(start).Milliseconds())
-
-	result := &entity.TurnSubmissionResult{
-		UserTurn:        userTurn,
-		Evidence:        evidence,
-		ContextManifest: manifest,
-	}
-
-	if modelErr != nil {
-		_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisFailed, modelRequestID)
-		_ = s.repo.CreateModelCall(ctx, &entity.ModelCallRecord{
-			RequestID:    modelRequestID,
-			TenantID:     tenantID,
-			BusinessID:   businessID,
-			SessionID:    sessionID,
-			Operation:    "ExtractAssertions",
-			LatencyMs:    latency,
-			Success:      false,
-			ErrorMessage: modelErr.Error(),
-			CreatedAt:    now,
-		})
-		result.ModelFailed = true
-		result.ModelError = modelErr.Error()
-		userTurn.AnalysisStatus = entity.AnalysisFailed
-		return result, nil
-	}
-
-	assertions, conflicts, gaps, err := s.persistExtraction(ctx, tenantID, businessID, sessionID, actorID, evidence, extraction, now)
-	if err != nil {
-		_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisFailed, modelRequestID)
-		result.ModelFailed = true
-		result.ModelError = err.Error()
-		return result, nil
-	}
-	_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisCompleted, modelRequestID)
-	userTurn.AnalysisStatus = entity.AnalysisCompleted
-
-	plan := PlanNextQuestion(ctxInput)
-	planReq := &InterviewTurnRequest{
-		RequestID:       newID("mreq"),
-		TenantID:        tenantID,
-		BusinessID:      businessID,
-		SessionID:       sessionID,
-		ContextManifest: manifest,
-		SystemPolicy:    analystSystemPolicy,
-		UserMessage:     content,
-		NextQuestion:    plan,
-	}
-	turnResp, turnErr := s.model.GenerateInterviewTurn(ctx, planReq)
-	analystContent := "我已分析您的描述并提取了业务事实，请在右侧查看并确认。"
-	if turnErr == nil && turnResp != nil && turnResp.Content != "" {
-		analystContent = turnResp.Content
-	}
-
-	analystTurn := &entity.AnalystTurn{
-		TurnID:         newID("turn"),
-		TenantID:       tenantID,
-		SessionID:      sessionID,
-		Sequence:       userTurn.Sequence + 1,
-		Speaker:        entity.SpeakerAnalyst,
-		Content:        analystContent,
-		ContentType:    entity.ContentText,
-		ModelRequestID: modelRequestID,
-		AnalysisStatus: entity.AnalysisCompleted,
-		CreatedAt:      now,
-	}
-	if err := s.repo.CreateTurn(ctx, analystTurn); err != nil {
-		return nil, err
-	}
-
-	_ = s.repo.CreateModelCall(ctx, &entity.ModelCallRecord{
-		RequestID:    modelRequestID,
-		TenantID:     tenantID,
-		BusinessID:   businessID,
-		SessionID:    sessionID,
-		Operation:    "ExtractAssertions",
-		LatencyMs:    latency,
-		Success:      true,
-		CreatedAt:    now,
-	})
-
-	result.Assertions = assertions
-	result.Conflicts = conflicts
-	result.Gaps = gaps
-	result.AnalystTurn = analystTurn
-	result.NextQuestion = plan
-	return result, nil
+	return s.runAnalysisForUserTurn(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID)
 }
 
 func (s *analystServiceImpl) buildIdempotentResult(ctx context.Context, tenantID, businessID, sessionID string, userTurn *entity.AnalystTurn) (*entity.TurnSubmissionResult, error) {
@@ -451,36 +322,34 @@ func (s *analystServiceImpl) persistExtraction(
 			allProposed = append(allProposed, e)
 		}
 	}
-	conflicts = detectConflicts(allProposed, tenantID, businessID, sessionID, now)
-	for _, c := range conflicts {
-		if err := s.repo.CreateConflict(ctx, c); err != nil {
+	var outConflicts []*entity.AssertionConflict
+	detected := detectConflicts(allProposed, tenantID, businessID, sessionID, now)
+	for _, c := range detected {
+		uc, err := s.upsertConflict(ctx, s.repo, tenantID, businessID, sessionID, c.AssertionIDA, c.AssertionIDB, c.SubjectRef, c.Predicate, now)
+		if err != nil {
 			return nil, nil, nil, err
 		}
+		outConflicts = append(outConflicts, uc)
 	}
 
 	// Model-reported conflicts
 	for _, mc := range extraction.Conflicts {
 		if mc.AssertionIndexA < len(assertions) && mc.AssertionIndexB < len(assertions) {
-			c := &entity.AssertionConflict{
-				ConflictID:   newID("conf"),
-				TenantID:     tenantID,
-				BusinessID:   businessID,
-				SessionID:    sessionID,
-				AssertionIDA: assertions[mc.AssertionIndexA].AssertionID,
-				AssertionIDB: assertions[mc.AssertionIndexB].AssertionID,
-				SubjectRef:   assertions[mc.AssertionIndexA].SubjectRef,
-				Predicate:    assertions[mc.AssertionIndexA].Predicate,
-				Status:       entity.ConflictOpen,
-				CreatedAt:    now,
-			}
-			if err := s.repo.CreateConflict(ctx, c); err != nil {
+			uc, err := s.upsertConflict(ctx, s.repo, tenantID, businessID, sessionID,
+				assertions[mc.AssertionIndexA].AssertionID,
+				assertions[mc.AssertionIndexB].AssertionID,
+				assertions[mc.AssertionIndexA].SubjectRef,
+				assertions[mc.AssertionIndexA].Predicate,
+				now,
+			)
+			if err != nil {
 				return nil, nil, nil, err
 			}
-			conflicts = append(conflicts, c)
+			outConflicts = append(outConflicts, uc)
 		}
 	}
 
-	return assertions, conflicts, gaps, nil
+	return assertions, outConflicts, gaps, nil
 }
 
 func detectConflicts(assertions []*entity.BusinessAssertion, tenantID, businessID, sessionID string, now time.Time) []*entity.AssertionConflict {
@@ -545,81 +414,6 @@ func (s *analystServiceImpl) ListEvidence(ctx context.Context, tenantID, busines
 	return s.repo.ListEvidence(ctx, tenantID, businessID)
 }
 
-func (s *analystServiceImpl) ConfirmAssertion(ctx context.Context, tenantID, businessID, assertionID, actorID, comment string, edit *AssertionEdit) (*entity.BusinessAssertion, error) {
-	a, err := s.getAssertionForBusiness(ctx, tenantID, businessID, assertionID)
-	if err != nil {
-		return nil, err
-	}
-	if a.Status == entity.AssertionConfirmed || a.Status == entity.AssertionRejected {
-		return nil, entity.ErrAssertionAlreadyDecided
-	}
-	evIDs, _ := s.repo.ListEvidenceIDsForAssertion(ctx, tenantID, assertionID)
-	if len(evIDs) == 0 {
-		return nil, entity.ErrAssertionEvidenceRequired
-	}
-	now := time.Now().UTC()
-	if edit != nil {
-		a.AssertionType = edit.AssertionType
-		a.SubjectRef = edit.SubjectRef
-		a.Predicate = edit.Predicate
-		a.ObjectValue = edit.ObjectValue
-		a.SourceMarker = businessentity.SourceManualModified
-	}
-	a.Status = entity.AssertionConfirmed
-	a.UpdatedAt = now
-	if err := s.repo.UpdateAssertion(ctx, a); err != nil {
-		return nil, err
-	}
-	conf := &entity.BusinessConfirmation{
-		ConfirmationID: newID("confm"),
-		TenantID:       tenantID,
-		BusinessID:     businessID,
-		AssertionID:    assertionID,
-		Decision:       entity.DecisionConfirm,
-		Comment:        comment,
-		DecidedBy:      actorID,
-		DecidedAt:      now,
-	}
-	if err := s.repo.CreateConfirmation(ctx, conf); err != nil {
-		return nil, err
-	}
-	_ = s.audit.RecordAnalystAudit(ctx, tenantID, actorID, "ASSERTION_CONFIRMED", assertionID, "")
-	a.EvidenceIDs = evIDs
-	return a, nil
-}
-
-func (s *analystServiceImpl) RejectAssertion(ctx context.Context, tenantID, businessID, assertionID, actorID, comment string) (*entity.BusinessAssertion, error) {
-	a, err := s.getAssertionForBusiness(ctx, tenantID, businessID, assertionID)
-	if err != nil {
-		return nil, err
-	}
-	if a.Status == entity.AssertionConfirmed || a.Status == entity.AssertionRejected {
-		return nil, entity.ErrAssertionAlreadyDecided
-	}
-	now := time.Now().UTC()
-	a.Status = entity.AssertionRejected
-	a.UpdatedAt = now
-	if err := s.repo.UpdateAssertion(ctx, a); err != nil {
-		return nil, err
-	}
-	conf := &entity.BusinessConfirmation{
-		ConfirmationID: newID("confm"),
-		TenantID:       tenantID,
-		BusinessID:     businessID,
-		AssertionID:    assertionID,
-		Decision:       entity.DecisionReject,
-		Comment:        comment,
-		DecidedBy:      actorID,
-		DecidedAt:      now,
-	}
-	if err := s.repo.CreateConfirmation(ctx, conf); err != nil {
-		return nil, err
-	}
-	_ = s.audit.RecordAnalystAudit(ctx, tenantID, actorID, "ASSERTION_REJECTED", assertionID, "")
-	a.EvidenceIDs, _ = s.repo.ListEvidenceIDsForAssertion(ctx, tenantID, assertionID)
-	return a, nil
-}
-
 func (s *analystServiceImpl) getAssertionForBusiness(ctx context.Context, tenantID, businessID, assertionID string) (*entity.BusinessAssertion, error) {
 	a, err := s.repo.GetAssertion(ctx, tenantID, assertionID)
 	if err != nil {
@@ -653,21 +447,25 @@ func (s *analystServiceImpl) CreateProposal(ctx context.Context, tenantID, busin
 
 	var confirmed []*entity.BusinessAssertion
 	if len(assertionIDs) == 0 {
+		if sessionID == "" {
+			return nil, fmt.Errorf("%w: session_id required", entity.ErrProposalInvalid)
+		}
 		all, err := s.loadAssertionsWithEvidence(ctx, tenantID, businessID)
 		if err != nil {
 			return nil, err
 		}
-		for _, a := range all {
-			if a.Status == entity.AssertionConfirmed {
-				confirmed = append(confirmed, a)
-				assertionIDs = append(assertionIDs, a.AssertionID)
-			}
+		confirmed = filterAssertionsBySession(all, sessionID, true)
+		for _, a := range confirmed {
+			assertionIDs = append(assertionIDs, a.AssertionID)
 		}
 	} else {
 		for _, id := range assertionIDs {
 			a, err := s.getAssertionForBusiness(ctx, tenantID, businessID, id)
 			if err != nil {
 				return nil, err
+			}
+			if sessionID != "" && a.SessionID != sessionID {
+				return nil, fmt.Errorf("%w: assertion %s not in session", entity.ErrProposalInvalid, id)
 			}
 			if a.Status != entity.AssertionConfirmed {
 				return nil, fmt.Errorf("%w: assertion %s not confirmed", entity.ErrProposalInvalid, id)
@@ -730,63 +528,6 @@ func (s *analystServiceImpl) GetProposal(ctx context.Context, tenantID, proposal
 		return nil, entity.ErrProposalNotFound
 	}
 	return p, nil
-}
-
-func (s *analystServiceImpl) ApplyProposal(ctx context.Context, tenantID, businessID, proposalID, actorID string) (*businessentity.BusinessModelRevision, error) {
-	proposal, err := s.GetProposal(ctx, tenantID, proposalID)
-	if err != nil {
-		return nil, err
-	}
-	if proposal.BusinessID != businessID {
-		return nil, entity.ErrProposalNotFound
-	}
-	if proposal.Status == entity.ProposalApplied {
-		return nil, entity.ErrProposalAlreadyApplied
-	}
-	if proposal.Status == entity.ProposalRejected {
-		return nil, entity.ErrProposalInvalid
-	}
-
-	master, model, _, err := s.businessSVC.GetModel(ctx, tenantID, businessID)
-	if err != nil {
-		return nil, err
-	}
-	if master.CurrentRevision != proposal.BaseRevision {
-		_ = s.repo.UpdateProposalStatus(ctx, tenantID, proposalID, entity.ProposalStale, time.Now().UTC())
-		return nil, entity.ErrProposalStale
-	}
-
-	newModel, err := ApplyPatch(model, proposal.Patch)
-	if err != nil {
-		return nil, err
-	}
-
-	// Collect evidence/assertion refs for provenance on semantic model
-	newModel.EvidenceRefs = collectEvidenceRefs(ctx, s.repo, tenantID, businessID, proposal.AssertionIDs)
-	newModel.AssertionRefs = append([]string(nil), proposal.AssertionIDs...)
-
-	summary := fmt.Sprintf("Apply analyst proposal %s", proposal.ProposalID)
-	rev, noChange, err := s.businessSVC.SaveModel(ctx, tenantID, businessID, actorID, proposal.BaseRevision, newModel, summary)
-	if err != nil {
-		return nil, err
-	}
-	if noChange {
-		return nil, entity.ErrProposalInvalid
-	}
-
-	now := time.Now().UTC()
-	_ = s.repo.UpdateProposalStatus(ctx, tenantID, proposalID, entity.ProposalApplied, now)
-	_ = s.repo.CreateProvenance(ctx, &entity.RevisionProvenance{
-		TenantID:     tenantID,
-		BusinessID:   businessID,
-		RevisionNo:   rev.RevisionNo,
-		ProposalID:   proposal.ProposalID,
-		AssertionIDs: proposal.AssertionIDs,
-		CreatedAt:    now,
-	})
-	_ = s.audit.RecordAnalystAudit(ctx, tenantID, actorID, "PROPOSAL_APPLIED", proposalID, "")
-
-	return rev, nil
 }
 
 func collectEvidenceRefs(ctx context.Context, repo repository.AnalystRepository, tenantID, businessID string, assertionIDs []string) []string {

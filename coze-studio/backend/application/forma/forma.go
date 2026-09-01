@@ -59,10 +59,12 @@ func InitService(_ context.Context, components *ServiceComponents) *ApplicationS
 	})
 	auditHook := NewTenancyAuditHook(ApplicationSVC.TenancySVC)
 	ApplicationSVC.AnalystSVC = analystsvc.NewAnalystService(&analystsvc.Components{
-		Repo:        analystrepo.NewAnalystRepository(components.DB),
-		BusinessSVC: ApplicationSVC.BusinessSVC,
-		Model:       integration.NewCozeEinoAnalystModel("FORMA_ANALYST"),
-		AuditHook:   auditHook,
+		Repo:         analystrepo.NewAnalystRepository(components.DB),
+		BusinessSVC:  ApplicationSVC.BusinessSVC,
+		BusinessRepo: businessrepo.NewBusinessRepository(components.DB),
+		DB:           components.DB,
+		Model:        integration.NewCozeEinoAnalystModel("FORMA_ANALYST"),
+		AuditHook:    auditHook,
 	})
 	return ApplicationSVC
 }
