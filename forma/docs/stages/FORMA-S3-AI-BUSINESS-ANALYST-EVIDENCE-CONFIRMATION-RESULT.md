@@ -15,6 +15,7 @@ Do **not** mark FROZEN. Do **not** start S4.
 | S3-G1 | `e58d97d6d2b2d2b25b25c9d0a46ce01b1903b292` |
 | S3-G1-F1 | `f25634efd5f6f8cd334843435412bbec2b8ad169` |
 | S3-G1-F2 | `f52e355c99c178c3ff4d4647620a5aef88046dfe` |
+| **S3-G2** | **`7ff6e583` — `fix(forma): close S3 context and live acceptance gates`** |
 
 ## CI History
 
@@ -26,6 +27,7 @@ Do **not** mark FROZEN. Do **not** start S4.
 | `33475985604` | **PASS** | `f52e355c` — all Forma jobs green |
 | `33476030584` | **PASS** | docs RESULT |
 | `33476235800` | **PASS** | docs CI |
+| `33480332921` | **PASS** | `7ff6e583` — **S3-G2 migration + backend + frontend ALL GREEN** |
 
 ## S3-G2 Context & Live Acceptance (this round)
 
