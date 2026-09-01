@@ -52,14 +52,93 @@ func newMemAnalystRepo() *memAnalystRepo {
 	}
 }
 
-func (m *memAnalystRepo) Transaction(ctx context.Context, fn func(txRepo analystrepo.AnalystRepository) error) error {
-	return fn(m)
+func (m *memAnalystRepo) cloneLocked() *memAnalystRepo {
+	out := newMemAnalystRepo()
+	out.failOn = m.failOn
+	for k, v := range m.sessions {
+		cp := *v
+		out.sessions[k] = &cp
+	}
+	for k, v := range m.turns {
+		cp := *v
+		out.turns[k] = &cp
+	}
+	for k, v := range m.evidence {
+		cp := *v
+		out.evidence[k] = &cp
+	}
+	for k, v := range m.assertions {
+		cp := *v
+		out.assertions[k] = &cp
+	}
+	for k, v := range m.confirmations {
+		cp := *v
+		out.confirmations[k] = &cp
+	}
+	for k, v := range m.conflicts {
+		cp := *v
+		out.conflicts[k] = &cp
+	}
+	for k, v := range m.gaps {
+		cp := *v
+		out.gaps[k] = &cp
+	}
+	for k, v := range m.proposals {
+		cp := *v
+		out.proposals[k] = &cp
+	}
+	for k, v := range m.provenance {
+		cp := *v
+		out.provenance[k] = &cp
+	}
+	for k, v := range m.evRefs {
+		out.evRefs[k] = map[string]bool{}
+		for eid := range v {
+			out.evRefs[k][eid] = true
+		}
+	}
+	for _, c := range m.modelCalls {
+		cp := *c
+		out.modelCalls = append(out.modelCalls, &cp)
+	}
+	return out
+}
+
+func (m *memAnalystRepo) applyFrom(src *memAnalystRepo) {
+	m.sessions = src.sessions
+	m.turns = src.turns
+	m.evidence = src.evidence
+	m.assertions = src.assertions
+	m.confirmations = src.confirmations
+	m.conflicts = src.conflicts
+	m.gaps = src.gaps
+	m.proposals = src.proposals
+	m.provenance = src.provenance
+	m.evRefs = src.evRefs
+	m.modelCalls = src.modelCalls
+	m.failOn = src.failOn
+}
+
+func (m *memAnalystRepo) Transaction(_ context.Context, fn func(txRepo analystrepo.AnalystRepository) error) error {
+	m.mu.Lock()
+	snap := m.cloneLocked()
+	m.mu.Unlock()
+	if err := fn(snap); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.applyFrom(snap)
+	m.mu.Unlock()
+	return nil
 }
 
 func (m *memAnalystRepo) CreateSession(_ context.Context, s *entity.AnalystSession) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	cp := *s
+	if cp.NextTurnSequence <= 0 {
+		cp.NextTurnSequence = 1
+	}
 	m.sessions[s.SessionID] = &cp
 	return nil
 }
@@ -127,6 +206,18 @@ func (m *memAnalystRepo) GetTurn(_ context.Context, tenantID, turnID string) (*e
 	}
 	cp := *t
 	return &cp, nil
+}
+func (m *memAnalystRepo) GetTurnByReplyTo(_ context.Context, tenantID, sessionID, replyToTurnID string) (*entity.AnalystTurn, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.turns {
+		if t.TenantID == tenantID && t.SessionID == sessionID &&
+			t.ReplyToTurnID == replyToTurnID && t.Speaker == entity.SpeakerAnalyst {
+			cp := *t
+			return &cp, nil
+		}
+	}
+	return nil, nil
 }
 func (m *memAnalystRepo) ListTurns(_ context.Context, tenantID, sessionID string) ([]*entity.AnalystTurn, error) {
 	m.mu.Lock()
@@ -373,6 +464,9 @@ func (m *memAnalystRepo) GetProposal(_ context.Context, tenantID, proposalID str
 	}
 	cp := *p
 	return &cp, nil
+}
+func (m *memAnalystRepo) GetProposalForUpdate(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error) {
+	return m.GetProposal(ctx, tenantID, proposalID)
 }
 func (m *memAnalystRepo) UpdateProposalStatus(_ context.Context, tenantID, proposalID string, status entity.ProposalStatus, _ time.Time) error {
 	m.mu.Lock()
@@ -711,4 +805,177 @@ func seedBusiness(ctx context.Context, br *testBusinessMem, tenantID, businessID
 		CreatedBy:         "p1",
 		CreatedAt:         time.Now().UTC(),
 	})
+}
+
+type genFailFakeModel struct {
+	DeterministicFakeModel
+}
+
+func (genFailFakeModel) GenerateInterviewTurn(_ context.Context, _ *InterviewTurnRequest) (*InterviewTurnResponse, error) {
+	return nil, entity.ErrModelFailed
+}
+
+func TestConcurrentTurnSequencesUnique(t *testing.T) {
+	ar := newMemAnalystRepo()
+	br := newBusinessTestMem()
+	svc := newTestAnalystSvc(ar, br)
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+	sess, err := svc.CreateSession(ctx, "t1", "b1", "test", "p1", entity.PolicyDevelopment)
+	require.NoError(t, err)
+
+	const n = 10
+	results := make([]*entity.TurnSubmissionResult, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			cr := fmt.Sprintf("cr_concurrent_%d", idx)
+			results[idx], errs[idx] = svc.SubmitTurn(ctx, "t1", "b1", sess.SessionID, "并发员工报修", cr, "p1")
+		}(i)
+	}
+	wg.Wait()
+	seen := map[int32]bool{}
+	for i := 0; i < n; i++ {
+		require.NoError(t, errs[i])
+		require.NotNil(t, results[i].UserTurn)
+		require.False(t, seen[results[i].UserTurn.Sequence], "duplicate sequence %d", results[i].UserTurn.Sequence)
+		seen[results[i].UserTurn.Sequence] = true
+		require.Greater(t, results[i].UserTurn.ReservedReplySequence, results[i].UserTurn.Sequence)
+		if results[i].AnalystTurn != nil {
+			require.Equal(t, results[i].UserTurn.ReservedReplySequence, results[i].AnalystTurn.Sequence)
+			require.Equal(t, results[i].UserTurn.TurnID, results[i].AnalystTurn.ReplyToTurnID)
+		}
+	}
+	require.Len(t, seen, n)
+}
+
+func TestConcurrentSameClientRequestIdempotent(t *testing.T) {
+	ar := newMemAnalystRepo()
+	br := newBusinessTestMem()
+	svc := newTestAnalystSvc(ar, br)
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+	sess, _ := svc.CreateSession(ctx, "t1", "b1", "test", "p1", entity.PolicyDevelopment)
+
+	const n = 10
+	turnIDs := make([]string, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			res, err := svc.SubmitTurn(ctx, "t1", "b1", sess.SessionID, "相同请求", "same_cr", "p1")
+			require.NoError(t, err)
+			turnIDs[idx] = res.UserTurn.TurnID
+		}(i)
+	}
+	wg.Wait()
+	first := turnIDs[0]
+	for _, id := range turnIDs {
+		require.Equal(t, first, id)
+	}
+	turns, _ := ar.ListTurns(ctx, "t1", sess.SessionID)
+	userTurns := 0
+	for _, t := range turns {
+		if t.Speaker == entity.SpeakerUser && t.ClientRequestID == "same_cr" {
+			userTurns++
+		}
+	}
+	require.Equal(t, 1, userTurns)
+}
+
+func TestResponseFailedRetryNoDuplicateAssertions(t *testing.T) {
+	ar := newMemAnalystRepo()
+	br := newBusinessTestMem()
+	svc := NewAnalystService(&Components{
+		Repo:         ar,
+		BusinessSVC:  businesssvc.NewBusinessService(&businesssvc.Components{Repo: br}),
+		BusinessRepo: br,
+		Model:        genFailFakeModel{},
+	})
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+	sess, _ := svc.CreateSession(ctx, "t1", "b1", "test", "p1", entity.PolicyDevelopment)
+
+	res, err := svc.SubmitTurn(ctx, "t1", "b1", sess.SessionID, "员工发现设备故障后提交报修，维修人员接单处理", "cr_genfail", "p1")
+	require.NoError(t, err)
+	require.True(t, res.ModelFailed)
+	require.Equal(t, entity.AnalysisResponseFailed, res.UserTurn.AnalysisStatus)
+	require.NotEmpty(t, res.Assertions)
+
+	beforeCount := len(res.Assertions)
+	evCount := 0
+	for _, e := range ar.evidence {
+		if e.BusinessID == "b1" {
+			evCount++
+		}
+	}
+	require.Equal(t, 1, evCount)
+
+	// Retry with working fake for generation path only
+	svcImpl := svc.(*analystServiceImpl)
+	svcImpl.model = NewDeterministicFakeModel()
+	retryRes, err := svc.RetryTurnAnalysis(ctx, "t1", "b1", sess.SessionID, res.UserTurn.TurnID, "p1")
+	require.NoError(t, err)
+	require.False(t, retryRes.ModelFailed)
+	require.NotNil(t, retryRes.AnalystTurn)
+	require.Equal(t, res.UserTurn.TurnID, retryRes.AnalystTurn.ReplyToTurnID)
+
+	allAssertions, _ := ar.ListAssertions(ctx, "t1", "b1")
+	require.Equal(t, beforeCount, len(allAssertions))
+}
+
+func TestProposalStalePersisted(t *testing.T) {
+	ar := newMemAnalystRepo()
+	br := newBusinessTestMem()
+	biz := businesssvc.NewBusinessService(&businesssvc.Components{Repo: br})
+	svc := NewAnalystService(&Components{
+		Repo:         ar,
+		BusinessSVC:  biz,
+		BusinessRepo: br,
+		Model:        NewDeterministicFakeModel(),
+	})
+	ctx := context.Background()
+	seedBusiness(ctx, br, "t1", "b1")
+	// bump revision
+	m, _, _ := br.GetMaster(ctx, "t1", "b1")
+	m.CurrentRevision = 2
+	_ = br.CreateRevision(ctx, &businessentity.BusinessModelRevision{
+		TenantID:          "t1",
+		BusinessID:        "b1",
+		RevisionNo:        2,
+		BaseRevisionNo:    1,
+		SchemaVersion:     businessentity.SemanticSchemaVersion,
+		SemanticModelJSON: `{"schema_version":"1.0","nodes":[],"edges":[],"rules":[],"states":[]}`,
+		ContentDigest:     "d2",
+		ChangeSummary:     "bump",
+		CreatedBy:         "p1",
+		CreatedAt:         time.Now().UTC(),
+	})
+	_ = br.CreateMaster(ctx, m)
+
+	now := time.Now().UTC()
+	prop := &entity.BusinessModelProposal{
+		ProposalID:    "prop_stale",
+		TenantID:      "t1",
+		BusinessID:    "b1",
+		SessionID:     "s1",
+		BaseRevision:  1,
+		AssertionIDs:  []string{"a1"},
+		Patch:         &entity.SemanticModelPatch{},
+		Status:        entity.ProposalReadyForReview,
+		ContentDigest: "dig",
+		CreatedBy:       "p1",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	require.NoError(t, ar.CreateProposal(ctx, prop))
+
+	_, err := svc.ApplyProposal(ctx, "t1", "b1", "prop_stale", "p1")
+	require.ErrorIs(t, err, entity.ErrProposalStale)
+	updated, _ := ar.GetProposal(ctx, "t1", "prop_stale")
+	require.Equal(t, entity.ProposalStale, updated.Status)
 }

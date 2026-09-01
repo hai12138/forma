@@ -79,23 +79,24 @@ func TestApplyPatchValidatesModel(t *testing.T) {
 
 func TestDeterministicFakeExtractsWorkOrder(t *testing.T) {
 	fake := NewDeterministicFakeModel()
-	res, err := fake.ExtractAssertions(context.Background(), &ExtractionRequest{
+	out, err := fake.ExtractAssertions(context.Background(), &ExtractionRequest{
 		UserTurnContent: "员工发现设备故障后提交报修，维修人员接单处理，完成后由管理员关闭。",
 		UserTurnID:      "turn_test",
 	})
 	require.NoError(t, err)
-	require.NotEmpty(t, res.Assertions)
-	require.NoError(t, ValidateExtractionResult(res))
+	require.NotNil(t, out)
+	require.NotEmpty(t, out.Result.Assertions)
+	require.Equal(t, "fake-analyst", out.ModelRef)
+	require.NoError(t, ValidateExtractionResult(out.Result))
 }
 
 func TestNoSilentMutationWithoutConfirmApply(t *testing.T) {
-	// Extraction output is not persisted as CONFIRMED — confirmation is a separate human action.
-	res, err := NewDeterministicFakeModel().ExtractAssertions(context.Background(), &ExtractionRequest{
+	out, err := NewDeterministicFakeModel().ExtractAssertions(context.Background(), &ExtractionRequest{
 		UserTurnContent: "员工报修维修工单",
 		UserTurnID:      "t1",
 	})
 	require.NoError(t, err)
-	for _, a := range res.Assertions {
+	for _, a := range out.Result.Assertions {
 		require.True(t, allowedAssertionTypes[a.AssertionType])
 	}
 }

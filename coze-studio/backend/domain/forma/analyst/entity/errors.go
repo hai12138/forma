@@ -22,4 +22,5 @@ var (
 	ErrProposalAlreadyApplied = errors.New("proposal already applied")
 	ErrForbidden            = errors.New("analyst forbidden")
 	ErrNotFound             = errors.New("analyst not found")
+	ErrNotConfigured        = errors.New("analyst service not configured")
 )

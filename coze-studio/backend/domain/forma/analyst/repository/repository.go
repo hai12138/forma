@@ -24,6 +24,7 @@ type AnalystRepository interface {
 	CreateTurn(ctx context.Context, t *entity.AnalystTurn) error
 	GetTurnByClientRequestID(ctx context.Context, tenantID, sessionID, clientRequestID string) (*entity.AnalystTurn, error)
 	GetTurn(ctx context.Context, tenantID, turnID string) (*entity.AnalystTurn, error)
+	GetTurnByReplyTo(ctx context.Context, tenantID, sessionID, replyToTurnID string) (*entity.AnalystTurn, error)
 	ListTurns(ctx context.Context, tenantID, sessionID string) ([]*entity.AnalystTurn, error)
 	MaxTurnSequence(ctx context.Context, tenantID, sessionID string) (int32, error)
 	UpdateTurnAnalysis(ctx context.Context, tenantID, turnID string, status entity.AnalysisStatus, modelRequestID string) error
@@ -56,6 +57,7 @@ type AnalystRepository interface {
 
 	CreateProposal(ctx context.Context, p *entity.BusinessModelProposal) error
 	GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error)
+	GetProposalForUpdate(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error)
 	UpdateProposalStatus(ctx context.Context, tenantID, proposalID string, status entity.ProposalStatus, at time.Time) error
 
 	CreateProvenance(ctx context.Context, p *entity.RevisionProvenance) error
@@ -101,6 +103,9 @@ func (r *gormAnalystRepo) GetTurnByClientRequestID(ctx context.Context, tenantID
 }
 func (r *gormAnalystRepo) GetTurn(ctx context.Context, tenantID, turnID string) (*entity.AnalystTurn, error) {
 	return r.dao.GetTurn(ctx, tenantID, turnID)
+}
+func (r *gormAnalystRepo) GetTurnByReplyTo(ctx context.Context, tenantID, sessionID, replyToTurnID string) (*entity.AnalystTurn, error) {
+	return r.dao.GetTurnByReplyTo(ctx, tenantID, sessionID, replyToTurnID)
 }
 func (r *gormAnalystRepo) ListTurns(ctx context.Context, tenantID, sessionID string) ([]*entity.AnalystTurn, error) {
 	return r.dao.ListTurns(ctx, tenantID, sessionID)
@@ -176,6 +181,9 @@ func (r *gormAnalystRepo) CreateProposal(ctx context.Context, p *entity.Business
 }
 func (r *gormAnalystRepo) GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error) {
 	return r.dao.GetProposal(ctx, tenantID, proposalID)
+}
+func (r *gormAnalystRepo) GetProposalForUpdate(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error) {
+	return r.dao.GetProposalForUpdate(ctx, tenantID, proposalID)
 }
 func (r *gormAnalystRepo) UpdateProposalStatus(ctx context.Context, tenantID, proposalID string, status entity.ProposalStatus, at time.Time) error {
 	return r.dao.UpdateProposalStatus(ctx, tenantID, proposalID, status, at)

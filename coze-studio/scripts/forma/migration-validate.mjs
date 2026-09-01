@@ -21,7 +21,7 @@ test('S1 tenancy migration defines identity tables', () => {
   assert.ok(sql.includes('forma_tenant_membership'));
   assert.ok(sql.includes('forma_tenant_space_ref'));
   assert.ok(sql.includes('forma_audit_event'));
-  assert.ok(!sql.includes('FOREIGN KEY'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
 });
 
 test('S1-G1 space mapping migration present', () => {
@@ -39,7 +39,7 @@ test('S2 business model migration present', () => {
   assert.ok(sql.includes('forma_business_model_revision'));
   assert.ok(sql.includes('forma_business_model_layout'));
   assert.ok(sql.includes('semantic_model_json'));
-  assert.ok(!sql.includes('FOREIGN KEY'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
 });
 
 test('S3 analyst migration present', () => {
@@ -52,7 +52,7 @@ test('S3 analyst migration present', () => {
   assert.ok(sql.includes('forma_business_assertion'));
   assert.ok(sql.includes('forma_business_model_proposal'));
   assert.ok(sql.includes('forma_revision_provenance'));
-  assert.ok(!sql.includes('FOREIGN KEY'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
 });
 
 test('S3-G1 integrity migration present', () => {
@@ -60,9 +60,12 @@ test('S3-G1 integrity migration present', () => {
     join(root, 'migrations', '20250902010000_s3_g1_integrity.sql'),
     'utf8',
   );
+  assert.ok(sql.includes('next_turn_sequence'));
+  assert.ok(sql.includes('reply_to_turn_id'));
   assert.ok(sql.includes('uk_forma_analyst_turn_sequence'));
   assert.ok(sql.includes('uk_forma_assertion_conflict_pair'));
-  assert.ok(!sql.includes('ALTER TABLE `forma_analyst_turn`'));
+  assert.ok(sql.includes('ALTER TABLE'));
+  assert.ok(!sql.includes('CREATE UNIQUE INDEX IF NOT EXISTS'));
 });
 
 test('atlas sum references migrations', () => {

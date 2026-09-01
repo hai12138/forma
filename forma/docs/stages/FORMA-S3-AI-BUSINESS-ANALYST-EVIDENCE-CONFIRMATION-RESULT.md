@@ -4,106 +4,79 @@
 
 PASS_WITH_GATES
 
-S3 initial implementation: `49821f80` — PASS_WITH_GATES  
-S3-G1 closure (this round): **FAIL / G1 IN PROGRESS** — CI blockers addressed locally; Live Model + Browser E2E still pending runtime.
+S3 initial: `49821f80` — PASS_WITH_GATES  
+S3-G1: `e58d97d6` — FAIL (CI 33471829970)  
+S3-G1-F1: **pending CI** after this commit — Live Model + Browser E2E still pending runtime.
 
 ## Frozen Baseline
 
 - S2 Frozen Tag: `forma-s2-frozen` → `413c3bcc148dfe518b31d6267e1a0c72fc2f0645`
 - Post-Freeze main: `65b165dcd84d1b9f9c083e87d65bbf16f9061ad1`
 - S3 implementation: `49821f80ad427ab51ea53b984cdbb5482a57be2c`
+- S3-G1: `e58d97d6d2b2d2b25b25c9d0a46ce01b1903b292`
 
-## Initial S3 CI
+## CI History
 
-- Run: `33469903703`
-- Result: **FAIL** (`forma-backend`, `forma-migration-apply`, `forma-frontend`)
-- Root causes: backend compile (`CreateModelCall` receiver shadow), Atlas checksum mismatch, Rush shrinkwrap stale, `post-rush-install.sh` mode `100644`
+| Run | Result | Notes |
+|-----|--------|-------|
+| `33469903703` | **FAIL** | backend compile, atlas checksum, rush shrinkwrap, hook mode |
+| `33471829970` | **FAIL** | `proposal.go` syntax `]}`; MySQL `CREATE UNIQUE INDEX IF NOT EXISTS`; backend tests blocked |
 
-## S3-G1 Closure (this round)
+## S3-G1-F1 Closure (this round)
 
-### CI / Infra fixes
+### Backend compile
 
-| Item | Fix |
-|------|-----|
-| BLOCKER-01 Backend compile | `CreateModelCall(ctx, record *entity.ModelCallRecord)` |
-| BLOCKER-02 Atlas checksum | `arigaio/atlas:0.32.1 migrate hash`; `atlas.sum` includes G1 migration |
-| BLOCKER-03 Rush shrinkwrap | `rush update` — `pnpm-lock.yaml` includes `@forma/analyst` |
-| BLOCKER-04 Hook executable | `git update-index --chmod=+x scripts/hooks/post-rush-install.sh` → `100755` |
-| STEP 3 G1 migration | `20250902010000_s3_g1_integrity.sql` (turn sequence + conflict pair unique indexes) |
+- Fixed `splitOnce` in `proposal.go`: `]}` → valid slice return
+- `ExtractionOutcome` with `model_ref` on successful extract
 
-### Production model path (fail-closed)
+### Migration (MySQL-compatible)
 
-- `CozeEinoAnalystModel`: **no** `DeterministicFakeModel` fallback on extract/generate failure
-- `NewAnalystService`: `Model == nil` → `NewUnavailableAnalystModel()` (not fake)
-- `GenerateInterviewTurn`: always invokes Eino; planner question passed as model context
-- Model call observability: `ExtractAssertions` + `GenerateInterviewTurn` recorded
+- `20250902010000_s3_g1_integrity.sql`: `ALTER TABLE` + `ADD UNIQUE KEY` (no `IF NOT EXISTS`)
+- Added `next_turn_sequence`, `reply_to_turn_id`, `reserved_reply_sequence`
+- `atlas.sum` regenerated via `arigaio/atlas:0.32.1`
 
-### Transactional integrity
+### Turn sequence allocator
 
-- `ConfirmAssertion` / `RejectAssertion`: single repo transaction; confirmation event atomic
-- Edit-before-confirm: original AI assertion → `SUPERSEDED`; new `MANUAL_MODIFIED` derived assertion + confirmation
-- `ApplyProposal`: cross-domain transaction via `gorm.DB` + analyst/business repos; no ignored provenance/status errors
+- Session `next_turn_sequence`: reserve user + analyst pairs under `FOR UPDATE`
+- Analyst turn: `reply_to_turn_id` + reserved sequence (no `user+1` guess)
+- Idempotency: `GetTurnByReplyTo` instead of `sequence+1`
 
-### API / UX
+### Analysis phase state machine
 
-- `POST .../turns/:turnId/retry-analysis`
-- `GET .../proposals/:proposalId/preview` (S2 semantic diff)
-- Frontend: tenant hard reset, Retry Analysis, Edit & Confirm, evidence↔assertion links, conflict detail, proposal semantic diff
+- `EXTRACTION_FAILED` / `RESPONSE_FAILED` / `COMPLETED`
+- Retry: extraction-failed → full pipeline; response-failed → generation only (no duplicate assertions)
 
-### Tests added
+### Apply / stale / atomic
 
-- Backend integration: digest deterministic, AI assertions PROPOSED, duplicate client_request_id, cross-session proposal rejection, edit-before-confirm provenance, confirmation rollback, conflict dedup
-- Frontend: analyst workspace smoke / tenant switch test scaffold
-- Migration validate: S3-G1 migration + atlas.sum entry
+- Stale proposal: persist `STALE` then return `FORMA_PROPOSAL_STALE` (no rollback of status)
+- Apply: fail-closed without `db`+`businessRepo`; `GetProposalForUpdate` for concurrent apply guard
+- Edit-before-confirm: `ValidateAssertionEdit` before supersede
 
-### Not completed (gates remain)
+### Tests
 
-| Gate | Status |
-|------|--------|
-| G16 Live Model E2E | **BLOCKED/Pending** — requires configured Coze/Eino builtin chat model in CI/runtime |
-| G17 Browser E2E | **Pending** — Playwright full Interview→Confirm→Proposal→Apply not executed locally |
-| G18 UI screenshots | **Pending** — `forma/cursor-results/s3-ui/` |
-| Forma CI ALL GREEN | **Pending push verification** |
-
-## Files Changed (S3-G1)
-
-### Backend
-- `backend/domain/forma/analyst/service/` — analysis, confirm/apply/retry, integrity, unavailable model
-- `backend/crossdomain/forma/integration/analyst_model_adapter.go`
-- `backend/application/forma/analyst_app.go`, `forma.go`
-- `backend/api/handler/forma/analyst.go`, `api/router/forma/api.go`
-- `docker/atlas/forma/migrations/20250902010000_s3_g1_integrity.sql`, `atlas.sum`
+- Snapshot mem repo transaction rollback
+- Concurrent turn sequences (10 goroutines)
+- Same `client_request_id` idempotency
+- Response-failed retry without assertion duplication
+- Proposal stale persistence
 
 ### Frontend
-- `frontend/packages/forma-analyst/` — workspace UX, tests
-- `frontend/packages/forma-api-client/` — retry + proposal preview APIs
-- `common/config/subspaces/default/pnpm-lock.yaml`
 
-### Docs / CI
-- `scripts/forma/migration-validate.mjs`
-- This RESULT file
+- Retry button for `EXTRACTION_FAILED` / `RESPONSE_FAILED` / `FAILED`
 
-## Remaining Mock (allowed scope)
+### Still pending
 
-- `DeterministicFakeModel` **only** via explicit test DI (`integration_test.go`, unit tests)
-- **Not** used in production wiring (`forma.go` uses `CozeEinoAnalystModel`)
+- G16 Live Model E2E (requires configured Coze/Eino model)
+- G17 Browser E2E + `forma/cursor-results/s3-ui/`
+- Forma CI green verification after push
 
-## Gate Evidence (updated)
+## Gate Evidence
 
 | Gate | Status |
 |------|--------|
-| G01–G15 | Implemented + tests (partial expanded) |
-| G16 Live model E2E | **Pending / BLOCKED without real model** |
-| G17 Browser E2E | **Pending** |
-| G18 Work order interview | Heuristic in **tests only** |
-| G19 S2→S3 migration | SQL + atlas.sum (incl. G1) |
-| G20 S0/S1/S2 regression | CI retains prior gates |
-| G21 Forma CI | **Pending green run after push** |
+| G01–G15 | Implemented + expanded tests |
+| G16 Live model | **Pending / BLOCKED without real model** |
+| G17 Browser | **Pending** |
+| G21 Forma CI | **Pending push** |
 
-## S4 Preconditions
-
-S3 freeze + human review. Browser/live E2E gates GREEN. **Do not start S4.**
-
----
-
-**DO NOT START S4.** Awaiting human review. **No `forma-s3-frozen` tag.**
+**DO NOT START S4.** No `forma-s3-frozen`.

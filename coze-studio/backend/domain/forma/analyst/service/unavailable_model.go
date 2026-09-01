@@ -22,7 +22,7 @@ func (unavailableAnalystModel) GenerateInterviewTurn(_ context.Context, _ *Inter
 	return nil, entity.ErrModelFailed
 }
 
-func (unavailableAnalystModel) ExtractAssertions(_ context.Context, _ *ExtractionRequest) (*entity.ExtractionResult, error) {
+func (unavailableAnalystModel) ExtractAssertions(_ context.Context, _ *ExtractionRequest) (*ExtractionOutcome, error) {
 	return nil, entity.ErrModelFailed
 }
 

@@ -20,30 +20,42 @@ func (s *analystServiceImpl) createUserTurnWithEvidence(
 	var userTurn *entity.AnalystTurn
 	var evidence *entity.BusinessEvidence
 	err := s.repo.Transaction(ctx, func(txRepo repository.AnalystRepository) error {
-		if _, err := txRepo.GetSessionForUpdate(ctx, tenantID, sessionID); err != nil {
-			return err
-		}
-		now := time.Now().UTC()
-		seq, err := txRepo.MaxTurnSequence(ctx, tenantID, sessionID)
+		session, err := txRepo.GetSessionForUpdate(ctx, tenantID, sessionID)
 		if err != nil {
 			return err
 		}
+		if session == nil {
+			return entity.ErrSessionNotFound
+		}
+		if session.NextTurnSequence <= 0 {
+			session.NextTurnSequence = 1
+		}
+		now := time.Now().UTC()
+		userSeq := session.NextTurnSequence
+		analystSeq := session.NextTurnSequence + 1
+		session.NextTurnSequence += 2
+		session.UpdatedAt = now
+		if err := txRepo.UpdateSession(ctx, session); err != nil {
+			return err
+		}
+
 		turnID := newID("turn")
 		clientReq := clientRequestID
 		if clientReq == "" {
 			clientReq = turnID
 		}
 		ut := &entity.AnalystTurn{
-			TurnID:          turnID,
-			TenantID:        tenantID,
-			SessionID:       sessionID,
-			Sequence:        seq + 1,
-			Speaker:         entity.SpeakerUser,
-			Content:         content,
-			ContentType:     entity.ContentText,
-			ClientRequestID: clientReq,
-			AnalysisStatus:  entity.AnalysisPending,
-			CreatedAt:       now,
+			TurnID:                turnID,
+			TenantID:              tenantID,
+			SessionID:             sessionID,
+			Sequence:              userSeq,
+			Speaker:               entity.SpeakerUser,
+			Content:               content,
+			ContentType:           entity.ContentText,
+			ClientRequestID:       clientReq,
+			ReservedReplySequence: analystSeq,
+			AnalysisStatus:        entity.AnalysisPending,
+			CreatedAt:             now,
 		}
 		if err := txRepo.CreateTurn(ctx, ut); err != nil {
 			if isDuplicateKeyErr(err) && clientRequestID != "" {
@@ -91,7 +103,7 @@ func (s *analystServiceImpl) createUserTurnWithEvidence(
 			if gErr == nil && existing != nil {
 				evList, _ := s.repo.ListEvidence(ctx, tenantID, businessID)
 				for _, e := range evList {
-					if e.TurnID == existing.TurnID {
+					if e != nil && e.TurnID == existing.TurnID {
 						return existing, e, nil
 					}
 				}
@@ -104,6 +116,22 @@ func (s *analystServiceImpl) createUserTurnWithEvidence(
 }
 
 func (s *analystServiceImpl) runAnalysisForUserTurn(
+	ctx context.Context,
+	tenantID, businessID, sessionID string,
+	userTurn *entity.AnalystTurn,
+	evidence *entity.BusinessEvidence,
+	actorID string,
+) (*entity.TurnSubmissionResult, error) {
+	if userTurn.AnalysisStatus == entity.AnalysisCompleted {
+		return s.buildIdempotentResult(ctx, tenantID, businessID, sessionID, userTurn)
+	}
+	if userTurn.AnalysisStatus == entity.AnalysisResponseFailed {
+		return s.runGenerationOnly(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID)
+	}
+	return s.runFullAnalysis(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID)
+}
+
+func (s *analystServiceImpl) runFullAnalysis(
 	ctx context.Context,
 	tenantID, businessID, sessionID string,
 	userTurn *entity.AnalystTurn,
@@ -130,7 +158,7 @@ func (s *analystServiceImpl) runAnalysisForUserTurn(
 		UserTurnContent: userTurn.Content,
 		UserTurnID:      userTurn.TurnID,
 	}
-	extraction, modelErr := s.model.ExtractAssertions(ctx, extractReq)
+	outcome, modelErr := s.model.ExtractAssertions(ctx, extractReq)
 	extractLatency := int32(time.Since(startExtract).Milliseconds())
 
 	result := &entity.TurnSubmissionResult{
@@ -140,7 +168,7 @@ func (s *analystServiceImpl) runAnalysisForUserTurn(
 	}
 
 	if modelErr != nil {
-		_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisFailed, extractReqID)
+		_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisExtractionFailed, extractReqID)
 		_ = s.repo.CreateModelCall(ctx, &entity.ModelCallRecord{
 			RequestID:    extractReqID,
 			TenantID:     tenantID,
@@ -154,32 +182,86 @@ func (s *analystServiceImpl) runAnalysisForUserTurn(
 		})
 		result.ModelFailed = true
 		result.ModelError = modelErr.Error()
-		userTurn.AnalysisStatus = entity.AnalysisFailed
+		userTurn.AnalysisStatus = entity.AnalysisExtractionFailed
 		return result, nil
 	}
 
+	extractModelRef := ""
+	inTok, outTok := int32(0), int32(0)
+	if outcome != nil {
+		extractModelRef = outcome.ModelRef
+		inTok = outcome.InputTokens
+		outTok = outcome.OutputTokens
+	}
 	_ = s.repo.CreateModelCall(ctx, &entity.ModelCallRecord{
-		RequestID:  extractReqID,
-		TenantID:   tenantID,
-		BusinessID: businessID,
-		SessionID:  sessionID,
-		Operation:  "ExtractAssertions",
-		LatencyMs:  extractLatency,
-		Success:    true,
-		CreatedAt:  now,
+		RequestID:    extractReqID,
+		TenantID:     tenantID,
+		BusinessID:   businessID,
+		SessionID:    sessionID,
+		Operation:    "ExtractAssertions",
+		ModelRef:     extractModelRef,
+		LatencyMs:    extractLatency,
+		Success:      true,
+		InputTokens:  inTok,
+		OutputTokens: outTok,
+		CreatedAt:    now,
 	})
 
+	extraction := outcome.Result
 	assertions, conflicts, gaps, err := s.persistExtraction(ctx, tenantID, businessID, sessionID, actorID, evidence, extraction, now)
 	if err != nil {
-		_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisFailed, extractReqID)
+		_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisExtractionFailed, extractReqID)
 		result.ModelFailed = true
 		result.ModelError = err.Error()
-		userTurn.AnalysisStatus = entity.AnalysisFailed
+		userTurn.AnalysisStatus = entity.AnalysisExtractionFailed
 		return result, nil
 	}
-	_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisCompleted, extractReqID)
-	userTurn.AnalysisStatus = entity.AnalysisCompleted
 
+	return s.completeGeneration(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID, manifest, ctxInput, assertions, conflicts, gaps, result)
+}
+
+func (s *analystServiceImpl) runGenerationOnly(
+	ctx context.Context,
+	tenantID, businessID, sessionID string,
+	userTurn *entity.AnalystTurn,
+	evidence *entity.BusinessEvidence,
+	actorID string,
+) (*entity.TurnSubmissionResult, error) {
+	ctxInput, manifest, err := s.buildContextInput(ctx, tenantID, businessID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	assertions, err := s.loadAssertionsForEvidence(ctx, tenantID, businessID, evidence)
+	if err != nil {
+		return nil, err
+	}
+	conflicts, _ := s.repo.ListConflicts(ctx, tenantID, businessID)
+	gaps, _ := s.repo.ListGaps(ctx, tenantID, businessID)
+	result := &entity.TurnSubmissionResult{
+		UserTurn:        userTurn,
+		Evidence:        evidence,
+		ContextManifest: manifest,
+		Assertions:      assertions,
+		Conflicts:       conflicts,
+		Gaps:            gaps,
+	}
+	return s.completeGeneration(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID, manifest, ctxInput, assertions, conflicts, gaps, result)
+}
+
+func (s *analystServiceImpl) completeGeneration(
+	ctx context.Context,
+	tenantID, businessID, sessionID string,
+	userTurn *entity.AnalystTurn,
+	evidence *entity.BusinessEvidence,
+	actorID string,
+	manifest *entity.ContextManifest,
+	ctxInput *ContextInput,
+	assertions []*entity.BusinessAssertion,
+	conflicts []*entity.AssertionConflict,
+	gaps []*entity.AnalystGap,
+	result *entity.TurnSubmissionResult,
+) (*entity.TurnSubmissionResult, error) {
+	now := time.Now().UTC()
 	plan := PlanNextQuestion(ctxInput)
 	genReqID := newID("mreq")
 	planReq := &InterviewTurnRequest{
@@ -197,6 +279,7 @@ func (s *analystServiceImpl) runAnalysisForUserTurn(
 	genLatency := int32(time.Since(startGen).Milliseconds())
 
 	if turnErr != nil {
+		_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisResponseFailed, genReqID)
 		_ = s.repo.CreateModelCall(ctx, &entity.ModelCallRecord{
 			RequestID:    genReqID,
 			TenantID:     tenantID,
@@ -214,6 +297,7 @@ func (s *analystServiceImpl) runAnalysisForUserTurn(
 		result.Conflicts = conflicts
 		result.Gaps = gaps
 		result.NextQuestion = plan
+		userTurn.AnalysisStatus = entity.AnalysisResponseFailed
 		return result, nil
 	}
 
@@ -242,14 +326,30 @@ func (s *analystServiceImpl) runAnalysisForUserTurn(
 		CreatedAt:    now,
 	})
 
+	existingAnalyst, _ := s.repo.GetTurnByReplyTo(ctx, tenantID, sessionID, userTurn.TurnID)
+	if existingAnalyst != nil {
+		result.Assertions = assertions
+		result.Conflicts = conflicts
+		result.Gaps = gaps
+		result.AnalystTurn = existingAnalyst
+		result.NextQuestion = plan
+		userTurn.AnalysisStatus = entity.AnalysisCompleted
+		return result, nil
+	}
+
+	analystSeq := userTurn.ReservedReplySequence
+	if analystSeq <= 0 {
+		analystSeq = userTurn.Sequence + 1
+	}
 	analystTurn := &entity.AnalystTurn{
 		TurnID:         newID("turn"),
 		TenantID:       tenantID,
 		SessionID:      sessionID,
-		Sequence:       userTurn.Sequence + 1,
+		Sequence:       analystSeq,
 		Speaker:        entity.SpeakerAnalyst,
 		Content:        analystContent,
 		ContentType:    entity.ContentText,
+		ReplyToTurnID:  userTurn.TurnID,
 		ModelRequestID: genReqID,
 		AnalysisStatus: entity.AnalysisCompleted,
 		CreatedAt:      now,
@@ -258,10 +358,39 @@ func (s *analystServiceImpl) runAnalysisForUserTurn(
 		return nil, err
 	}
 
+	_ = s.repo.UpdateTurnAnalysis(ctx, tenantID, userTurn.TurnID, entity.AnalysisCompleted, genReqID)
+	userTurn.AnalysisStatus = entity.AnalysisCompleted
+
 	result.Assertions = assertions
 	result.Conflicts = conflicts
 	result.Gaps = gaps
 	result.AnalystTurn = analystTurn
 	result.NextQuestion = plan
 	return result, nil
+}
+
+func (s *analystServiceImpl) loadAssertionsForEvidence(
+	ctx context.Context,
+	tenantID, businessID string,
+	evidence *entity.BusinessEvidence,
+) ([]*entity.BusinessAssertion, error) {
+	if evidence == nil {
+		return nil, nil
+	}
+	ids, err := s.repo.ListAssertionIDsForEvidence(ctx, tenantID, evidence.EvidenceID)
+	if err != nil {
+		return nil, err
+	}
+	var out []*entity.BusinessAssertion
+	for _, id := range ids {
+		a, err := s.repo.GetAssertion(ctx, tenantID, id)
+		if err != nil {
+			return nil, err
+		}
+		if a != nil && a.BusinessID == businessID {
+			a.EvidenceIDs, _ = s.repo.ListEvidenceIDsForAssertion(ctx, tenantID, id)
+			out = append(out, a)
+		}
+	}
+	return out, nil
 }

@@ -65,13 +65,13 @@ func buildAnalystUserMessage(req *analystsvc.InterviewTurnRequest) string {
 	return strings.Join(parts, "\n")
 }
 
-func (m *CozeEinoAnalystModel) ExtractAssertions(ctx context.Context, req *analystsvc.ExtractionRequest) (*entity.ExtractionResult, error) {
+func (m *CozeEinoAnalystModel) ExtractAssertions(ctx context.Context, req *analystsvc.ExtractionRequest) (*analystsvc.ExtractionOutcome, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: request required", entity.ErrInvalidExtraction)
 	}
 	system := extractionSystemPrompt()
 	user := fmt.Sprintf("User turn (%s): %s\n\nReturn JSON only.", req.UserTurnID, req.UserTurnContent)
-	raw, _, _, _, err := m.invoke(ctx, system, user)
+	raw, modelRef, inTok, outTok, err := m.invoke(ctx, system, user)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", entity.ErrModelFailed, err)
 	}
@@ -79,7 +79,12 @@ func (m *CozeEinoAnalystModel) ExtractAssertions(ctx context.Context, req *analy
 	if parseErr != nil {
 		return nil, fmt.Errorf("%w: %v", entity.ErrInvalidExtraction, parseErr)
 	}
-	return res, nil
+	return &analystsvc.ExtractionOutcome{
+		Result:       res,
+		ModelRef:     modelRef,
+		InputTokens:  inTok,
+		OutputTokens: outTok,
+	}, nil
 }
 
 func (m *CozeEinoAnalystModel) ProposeModelPatch(ctx context.Context, req *analystsvc.ProposalRequest) (*entity.SemanticModelPatch, error) {

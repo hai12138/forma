@@ -27,6 +27,7 @@ type SessionModel struct {
 	Title                  string     `gorm:"column:title"`
 	RuntimeConversationRef string     `gorm:"column:runtime_conversation_ref"`
 	ConfirmationPolicy     string     `gorm:"column:confirmation_policy"`
+	NextTurnSequence       int32      `gorm:"column:next_turn_sequence"`
 	CreatedBy              string     `gorm:"column:created_by"`
 	CreatedAt              time.Time  `gorm:"column:created_at"`
 	UpdatedAt              time.Time  `gorm:"column:updated_at"`
@@ -44,9 +45,11 @@ type TurnModel struct {
 	Speaker         string    `gorm:"column:speaker"`
 	Content         string    `gorm:"column:content"`
 	ContentType     string    `gorm:"column:content_type"`
-	ClientRequestID string    `gorm:"column:client_request_id"`
-	ModelRequestID  string    `gorm:"column:model_request_id"`
-	AnalysisStatus  string    `gorm:"column:analysis_status"`
+	ClientRequestID       string    `gorm:"column:client_request_id"`
+	ModelRequestID      string    `gorm:"column:model_request_id"`
+	ReplyToTurnID         string    `gorm:"column:reply_to_turn_id"`
+	ReservedReplySequence int32     `gorm:"column:reserved_reply_sequence"`
+	AnalysisStatus        string    `gorm:"column:analysis_status"`
 	CreatedAt       time.Time `gorm:"column:created_at"`
 }
 
@@ -239,6 +242,7 @@ func toSession(m *SessionModel) *entity.AnalystSession {
 		Title:                  m.Title,
 		RuntimeConversationRef: m.RuntimeConversationRef,
 		ConfirmationPolicy:     entity.ConfirmationPolicy(m.ConfirmationPolicy),
+		NextTurnSequence:       m.NextTurnSequence,
 		CreatedBy:              m.CreatedBy,
 		CreatedAt:              m.CreatedAt,
 		UpdatedAt:              m.UpdatedAt,
@@ -255,9 +259,11 @@ func toTurn(m *TurnModel) *entity.AnalystTurn {
 		Speaker:         entity.Speaker(m.Speaker),
 		Content:         m.Content,
 		ContentType:     entity.ContentType(m.ContentType),
-		ClientRequestID: m.ClientRequestID,
-		ModelRequestID:  m.ModelRequestID,
-		AnalysisStatus:  entity.AnalysisStatus(m.AnalysisStatus),
+		ClientRequestID:       m.ClientRequestID,
+		ModelRequestID:        m.ModelRequestID,
+		ReplyToTurnID:         m.ReplyToTurnID,
+		ReservedReplySequence: m.ReservedReplySequence,
+		AnalysisStatus:        entity.AnalysisStatus(m.AnalysisStatus),
 		CreatedAt:       m.CreatedAt,
 	}
 }
@@ -308,6 +314,7 @@ func (d *AnalystDAO) CreateSession(ctx context.Context, s *entity.AnalystSession
 		Title:                  s.Title,
 		RuntimeConversationRef: s.RuntimeConversationRef,
 		ConfirmationPolicy:     string(s.ConfirmationPolicy),
+		NextTurnSequence:       s.NextTurnSequence,
 		CreatedBy:              s.CreatedBy,
 		CreatedAt:              s.CreatedAt,
 		UpdatedAt:              s.UpdatedAt,
@@ -347,10 +354,11 @@ func (d *AnalystDAO) UpdateSession(ctx context.Context, s *entity.AnalystSession
 	return d.db.WithContext(ctx).Model(&SessionModel{}).
 		Where("tenant_id = ? AND session_id = ?", s.TenantID, s.SessionID).
 		Updates(map[string]any{
-			"status":     string(s.Status),
-			"title":      s.Title,
-			"updated_at": s.UpdatedAt,
-			"closed_at":  s.ClosedAt,
+			"status":             string(s.Status),
+			"title":              s.Title,
+			"next_turn_sequence": s.NextTurnSequence,
+			"updated_at":         s.UpdatedAt,
+			"closed_at":          s.ClosedAt,
 		}).Error
 }
 
@@ -363,9 +371,11 @@ func (d *AnalystDAO) CreateTurn(ctx context.Context, t *entity.AnalystTurn) erro
 		Speaker:         string(t.Speaker),
 		Content:         t.Content,
 		ContentType:     string(t.ContentType),
-		ClientRequestID: t.ClientRequestID,
-		ModelRequestID:  t.ModelRequestID,
-		AnalysisStatus:  string(t.AnalysisStatus),
+		ClientRequestID:       t.ClientRequestID,
+		ModelRequestID:        t.ModelRequestID,
+		ReplyToTurnID:         t.ReplyToTurnID,
+		ReservedReplySequence: t.ReservedReplySequence,
+		AnalysisStatus:        string(t.AnalysisStatus),
 		CreatedAt:       t.CreatedAt,
 	}).Error
 }
@@ -390,6 +400,24 @@ func (d *AnalystDAO) GetTurnByClientRequestID(ctx context.Context, tenantID, ses
 func (d *AnalystDAO) GetTurn(ctx context.Context, tenantID, turnID string) (*entity.AnalystTurn, error) {
 	var row TurnModel
 	err := d.db.WithContext(ctx).Where("tenant_id = ? AND turn_id = ?", tenantID, turnID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toTurn(&row), nil
+}
+
+func (d *AnalystDAO) GetTurnByReplyTo(ctx context.Context, tenantID, sessionID, replyToTurnID string) (*entity.AnalystTurn, error) {
+	if replyToTurnID == "" {
+		return nil, nil
+	}
+	var row TurnModel
+	err := d.db.WithContext(ctx).
+		Where("tenant_id = ? AND session_id = ? AND reply_to_turn_id = ? AND speaker = ?",
+			tenantID, sessionID, replyToTurnID, string(entity.SpeakerAnalyst)).
+		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -784,6 +812,21 @@ func (d *AnalystDAO) CreateProposal(ctx context.Context, p *entity.BusinessModel
 func (d *AnalystDAO) GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error) {
 	var row ProposalModel
 	err := d.db.WithContext(ctx).Where("tenant_id = ? AND proposal_id = ?", tenantID, proposalID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toProposal(&row), nil
+}
+
+func (d *AnalystDAO) GetProposalForUpdate(ctx context.Context, tenantID, proposalID string) (*entity.BusinessModelProposal, error) {
+	var row ProposalModel
+	err := d.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id = ? AND proposal_id = ?", tenantID, proposalID).
+		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

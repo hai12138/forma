@@ -20,6 +20,11 @@ import (
 )
 
 func (s *analystServiceImpl) ConfirmAssertion(ctx context.Context, tenantID, businessID, assertionID, actorID, comment string, edit *AssertionEdit) (*entity.BusinessAssertion, error) {
+	if edit != nil {
+		if err := ValidateAssertionEdit(edit); err != nil {
+			return nil, err
+		}
+	}
 	var result *entity.BusinessAssertion
 	err := s.repo.Transaction(ctx, func(txRepo analystrepo.AnalystRepository) error {
 		a, err := txRepo.GetAssertion(ctx, tenantID, assertionID)
@@ -158,11 +163,33 @@ func (s *analystServiceImpl) RejectAssertion(ctx context.Context, tenantID, busi
 }
 
 func (s *analystServiceImpl) ApplyProposal(ctx context.Context, tenantID, businessID, proposalID, actorID string) (*businessentity.BusinessModelRevision, error) {
-	if s.db == nil || s.businessRepo == nil {
-		return s.applyProposalWithoutOuterTx(ctx, tenantID, businessID, proposalID, actorID)
+	proposal, err := s.repo.GetProposal(ctx, tenantID, proposalID)
+	if err != nil {
+		return nil, err
 	}
+	if proposal == nil || proposal.BusinessID != businessID {
+		return nil, entity.ErrProposalNotFound
+	}
+	if proposal.Status == entity.ProposalApplied {
+		return nil, entity.ErrProposalAlreadyApplied
+	}
+	master, _, _, err := s.businessSVC.GetModel(ctx, tenantID, businessID)
+	if err != nil {
+		return nil, err
+	}
+	if master == nil {
+		return nil, entity.ErrNotFound
+	}
+	if master.CurrentRevision != proposal.BaseRevision {
+		_ = s.repo.UpdateProposalStatus(ctx, tenantID, proposalID, entity.ProposalStale, time.Now().UTC())
+		return nil, entity.ErrProposalStale
+	}
+	if s.db == nil || s.businessRepo == nil {
+		return nil, entity.ErrNotConfigured
+	}
+
 	var rev *businessentity.BusinessModelRevision
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		ar := analystrepo.NewAnalystRepository(tx)
 		br := businessrepo.NewBusinessRepository(tx)
 		r, err := s.applyProposalWithRepos(ctx, ar, br, tenantID, businessID, proposalID, actorID)
@@ -175,17 +202,13 @@ func (s *analystServiceImpl) ApplyProposal(ctx context.Context, tenantID, busine
 	return rev, err
 }
 
-func (s *analystServiceImpl) applyProposalWithoutOuterTx(ctx context.Context, tenantID, businessID, proposalID, actorID string) (*businessentity.BusinessModelRevision, error) {
-	return s.applyProposalWithRepos(ctx, s.repo, s.businessRepo, tenantID, businessID, proposalID, actorID)
-}
-
 func (s *analystServiceImpl) applyProposalWithRepos(
 	ctx context.Context,
 	ar analystrepo.AnalystRepository,
 	br businessrepo.BusinessRepository,
 	tenantID, businessID, proposalID, actorID string,
 ) (*businessentity.BusinessModelRevision, error) {
-	proposal, err := ar.GetProposal(ctx, tenantID, proposalID)
+	proposal, err := ar.GetProposalForUpdate(ctx, tenantID, proposalID)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +218,7 @@ func (s *analystServiceImpl) applyProposalWithRepos(
 	if proposal.Status == entity.ProposalApplied {
 		return nil, entity.ErrProposalAlreadyApplied
 	}
-	if proposal.Status == entity.ProposalRejected {
+	if proposal.Status == entity.ProposalRejected || proposal.Status == entity.ProposalStale {
 		return nil, entity.ErrProposalInvalid
 	}
 	if proposal.Status != entity.ProposalReadyForReview {
@@ -210,9 +233,6 @@ func (s *analystServiceImpl) applyProposalWithRepos(
 		return nil, entity.ErrNotFound
 	}
 	if master.CurrentRevision != proposal.BaseRevision {
-		if err := ar.UpdateProposalStatus(ctx, tenantID, proposalID, entity.ProposalStale, time.Now().UTC()); err != nil {
-			return nil, err
-		}
 		return nil, entity.ErrProposalStale
 	}
 	curRev, err := br.GetRevision(ctx, tenantID, businessID, master.CurrentRevision)
@@ -267,7 +287,12 @@ func (s *analystServiceImpl) RetryTurnAnalysis(ctx context.Context, tenantID, bu
 	if turn == nil || turn.SessionID != sessionID || turn.Speaker != entity.SpeakerUser {
 		return nil, entity.ErrInvalidTurn
 	}
-	if turn.AnalysisStatus != entity.AnalysisFailed {
+	switch turn.AnalysisStatus {
+	case entity.AnalysisExtractionFailed, entity.AnalysisFailed, entity.AnalysisPending:
+		// full pipeline
+	case entity.AnalysisResponseFailed:
+		// generation only
+	default:
 		return nil, entity.ErrInvalidTurn
 	}
 	evList, err := s.repo.ListEvidence(ctx, tenantID, businessID)
@@ -284,7 +309,10 @@ func (s *analystServiceImpl) RetryTurnAnalysis(ctx context.Context, tenantID, bu
 	if evidence == nil {
 		return nil, entity.ErrInvalidTurn
 	}
-	return s.runAnalysisForUserTurn(ctx, tenantID, businessID, sessionID, turn, evidence, actorID)
+	if turn.AnalysisStatus == entity.AnalysisResponseFailed {
+		return s.runGenerationOnly(ctx, tenantID, businessID, sessionID, turn, evidence, actorID)
+	}
+	return s.runFullAnalysis(ctx, tenantID, businessID, sessionID, turn, evidence, actorID)
 }
 
 func (s *analystServiceImpl) GetProposalPreview(ctx context.Context, tenantID, proposalID string) (*ProposalPreviewResult, error) {

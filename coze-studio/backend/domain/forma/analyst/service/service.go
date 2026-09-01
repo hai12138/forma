@@ -118,6 +118,7 @@ func (s *analystServiceImpl) CreateSession(ctx context.Context, tenantID, busine
 		Status:             entity.SessionActive,
 		Title:              title,
 		ConfirmationPolicy: policy,
+		NextTurnSequence:   1,
 		CreatedBy:          createdBy,
 		CreatedAt:          now,
 		UpdatedAt:          now,
@@ -189,16 +190,9 @@ func (s *analystServiceImpl) SubmitTurn(ctx context.Context, tenantID, businessI
 }
 
 func (s *analystServiceImpl) buildIdempotentResult(ctx context.Context, tenantID, businessID, sessionID string, userTurn *entity.AnalystTurn) (*entity.TurnSubmissionResult, error) {
-	turns, err := s.repo.ListTurns(ctx, tenantID, sessionID)
+	analystTurn, err := s.repo.GetTurnByReplyTo(ctx, tenantID, sessionID, userTurn.TurnID)
 	if err != nil {
 		return nil, err
-	}
-	var analystTurn *entity.AnalystTurn
-	for _, t := range turns {
-		if t.Sequence == userTurn.Sequence+1 && t.Speaker == entity.SpeakerAnalyst {
-			analystTurn = t
-			break
-		}
 	}
 	evidenceList, err := s.repo.ListEvidence(ctx, tenantID, businessID)
 	if err != nil {
@@ -206,12 +200,12 @@ func (s *analystServiceImpl) buildIdempotentResult(ctx context.Context, tenantID
 	}
 	var evidence *entity.BusinessEvidence
 	for _, e := range evidenceList {
-		if e.TurnID == userTurn.TurnID {
+		if e != nil && e.TurnID == userTurn.TurnID {
 			evidence = e
 			break
 		}
 	}
-	assertions, err := s.loadAssertionsWithEvidence(ctx, tenantID, businessID)
+	assertions, err := s.loadAssertionsForEvidence(ctx, tenantID, businessID, evidence)
 	if err != nil {
 		return nil, err
 	}

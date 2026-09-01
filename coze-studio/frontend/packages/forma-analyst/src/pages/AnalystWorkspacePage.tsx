@@ -411,7 +411,10 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
             >
               <strong>{t.speaker === 'USER' ? '用户' : '分析师'}</strong>
               <div>{t.content}</div>
-              {t.analysis_status === 'FAILED' && t.speaker === 'USER' && (
+              {(t.analysis_status === 'FAILED' ||
+                t.analysis_status === 'EXTRACTION_FAILED' ||
+                t.analysis_status === 'RESPONSE_FAILED') &&
+                t.speaker === 'USER' && (
                 <div className="forma-analyst-processing">
                   分析失败 — 您的输入已保存
                   <button

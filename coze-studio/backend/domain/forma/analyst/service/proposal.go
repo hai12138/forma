@@ -123,7 +123,10 @@ func splitOnce(s, sep string) []string {
 	if idx < 0 {
 		return nil
 	}
-	return []string{strings.TrimSpace(s[:idx]), strings.TrimSpace(s[idx+len(sep):])]}
+	return []string{
+		strings.TrimSpace(s[:idx]),
+		strings.TrimSpace(s[idx+len(sep):]),
+	}
 }
 
 func ProposalDigest(patch *entity.SemanticModelPatch, baseRev int32, assertionIDs []string) string {

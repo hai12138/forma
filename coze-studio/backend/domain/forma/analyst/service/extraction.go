@@ -63,6 +63,21 @@ func ValidateExtractionResult(res *entity.ExtractionResult) error {
 	return nil
 }
 
+func ValidateAssertionEdit(edit *AssertionEdit) error {
+	if edit == nil {
+		return nil
+	}
+	if !allowedAssertionTypes[edit.AssertionType] {
+		return fmt.Errorf("%w: invalid assertion type %s", entity.ErrInvalidExtraction, edit.AssertionType)
+	}
+	if strings.TrimSpace(edit.SubjectRef) == "" ||
+		strings.TrimSpace(edit.Predicate) == "" ||
+		strings.TrimSpace(edit.ObjectValue) == "" {
+		return fmt.Errorf("%w: edit requires subject, predicate, and object value", entity.ErrInvalidExtraction)
+	}
+	return nil
+}
+
 // DeterministicFakeModel provides stable extraction for unit/integration tests.
 type DeterministicFakeModel struct{}
 
@@ -81,16 +96,21 @@ func (f *DeterministicFakeModel) GenerateInterviewTurn(_ context.Context, req *I
 	}, nil
 }
 
-func (f *DeterministicFakeModel) ExtractAssertions(_ context.Context, req *ExtractionRequest) (*entity.ExtractionResult, error) {
+func (f *DeterministicFakeModel) ExtractAssertions(_ context.Context, req *ExtractionRequest) (*ExtractionOutcome, error) {
 	content := ""
+	turnID := ""
 	if req != nil {
 		content = req.UserTurnContent
+		turnID = req.UserTurnID
 	}
-	res := extractHeuristic(content, req.UserTurnID)
+	res := extractHeuristic(content, turnID)
 	if err := ValidateExtractionResult(res); err != nil {
 		return nil, err
 	}
-	return res, nil
+	return &ExtractionOutcome{
+		Result:   res,
+		ModelRef: "fake-analyst",
+	}, nil
 }
 
 func (f *DeterministicFakeModel) ProposeModelPatch(_ context.Context, req *ProposalRequest) (*entity.SemanticModelPatch, error) {

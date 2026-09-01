@@ -109,10 +109,12 @@ const (
 type AnalysisStatus string
 
 const (
-	AnalysisNone       AnalysisStatus = "NONE"
-	AnalysisPending    AnalysisStatus = "PENDING"
-	AnalysisCompleted  AnalysisStatus = "COMPLETED"
-	AnalysisFailed     AnalysisStatus = "FAILED"
+	AnalysisNone              AnalysisStatus = "NONE"
+	AnalysisPending           AnalysisStatus = "PENDING"
+	AnalysisCompleted         AnalysisStatus = "COMPLETED"
+	AnalysisFailed            AnalysisStatus = "FAILED" // legacy; prefer EXTRACTION_FAILED
+	AnalysisExtractionFailed  AnalysisStatus = "EXTRACTION_FAILED"
+	AnalysisResponseFailed    AnalysisStatus = "RESPONSE_FAILED"
 )
 
 // AnalystSession is the canonical Forma interview session (not a Coze conversation alias).
@@ -124,6 +126,7 @@ type AnalystSession struct {
 	Title                  string
 	RuntimeConversationRef string
 	ConfirmationPolicy     ConfirmationPolicy
+	NextTurnSequence       int32
 	CreatedBy              string
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
@@ -131,17 +134,19 @@ type AnalystSession struct {
 }
 
 type AnalystTurn struct {
-	TurnID           string
-	TenantID         string
-	SessionID        string
-	Sequence         int32
-	Speaker          Speaker
-	Content          string
-	ContentType      ContentType
-	ClientRequestID  string
-	ModelRequestID   string
-	AnalysisStatus   AnalysisStatus
-	CreatedAt        time.Time
+	TurnID                string
+	TenantID              string
+	SessionID             string
+	Sequence              int32
+	Speaker               Speaker
+	Content               string
+	ContentType           ContentType
+	ClientRequestID       string
+	ModelRequestID        string
+	ReplyToTurnID         string
+	ReservedReplySequence int32
+	AnalysisStatus        AnalysisStatus
+	CreatedAt             time.Time
 }
 
 type BusinessEvidence struct {
