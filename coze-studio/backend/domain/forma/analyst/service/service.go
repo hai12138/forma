@@ -176,7 +176,7 @@ func (s *analystServiceImpl) SubmitTurn(ctx context.Context, tenantID, businessI
 		}
 	}
 
-	userTurn, evidence, err := s.createUserTurnWithEvidence(ctx, tenantID, businessID, sessionID, content, clientRequestID, actorID)
+	userTurn, evidence, createdNew, err := s.createUserTurnWithEvidence(ctx, tenantID, businessID, sessionID, content, clientRequestID, actorID)
 	if err != nil {
 		if clientRequestID != "" && isDuplicateKeyErr(err) {
 			existing, gErr := s.repo.GetTurnByClientRequestID(ctx, tenantID, sessionID, clientRequestID)
@@ -185,6 +185,9 @@ func (s *analystServiceImpl) SubmitTurn(ctx context.Context, tenantID, businessI
 			}
 		}
 		return nil, err
+	}
+	if !createdNew {
+		return s.buildIdempotentResult(ctx, tenantID, businessID, sessionID, userTurn)
 	}
 	_ = s.audit.RecordAnalystAudit(ctx, tenantID, actorID, "ANALYST_TURN_SUBMITTED", userTurn.TurnID, clientRequestID)
 	return s.runAnalysisForUserTurn(ctx, tenantID, businessID, sessionID, userTurn, evidence, actorID)

@@ -8,6 +8,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -263,6 +264,32 @@ func (m *memAnalystRepo) UpdateTurnAnalysis(_ context.Context, tenantID, turnID 
 	t.AnalysisStatus = status
 	t.ModelRequestID = modelRequestID
 	return nil
+}
+func (m *memAnalystRepo) ClaimTurnForRetry(_ context.Context, tenantID, turnID string, expectedStatuses []entity.AnalysisStatus, claimToken string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if claimToken == "" {
+		return false, nil
+	}
+	t := m.turns[turnID]
+	if t == nil || t.TenantID != tenantID {
+		return false, entity.ErrInvalidTurn
+	}
+	statusOK := false
+	for _, s := range expectedStatuses {
+		if t.AnalysisStatus == s {
+			statusOK = true
+			break
+		}
+	}
+	if !statusOK {
+		return false, nil
+	}
+	if t.ModelRequestID != "" && t.ModelRequestID != claimToken && strings.HasPrefix(t.ModelRequestID, "retry_claim:") {
+		return false, nil
+	}
+	t.ModelRequestID = claimToken
+	return true, nil
 }
 func (m *memAnalystRepo) CreateEvidence(_ context.Context, e *entity.BusinessEvidence) error {
 	m.mu.Lock()
@@ -884,32 +911,44 @@ func TestConcurrentTurnSequencesUnique(t *testing.T) {
 func TestConcurrentSameClientRequestIdempotent(t *testing.T) {
 	ar := newMemAnalystRepo()
 	br := newBusinessTestMem()
-	svc := newTestAnalystSvc(ar, br)
+	model := &recordingAnalystModel{}
+	svc := NewAnalystService(&Components{
+		Repo:         ar,
+		BusinessSVC:  businesssvc.NewBusinessService(&businesssvc.Components{Repo: br}),
+		BusinessRepo: br,
+		Model:        model,
+	})
 	ctx := context.Background()
 	seedBusiness(ctx, br, "t1", "b1")
 	sess, _ := svc.CreateSession(ctx, "t1", "b1", "test", "p1", entity.PolicyDevelopment)
 
 	const n = 10
-	turnIDs := make([]string, n)
+	results := make([]*entity.TurnSubmissionResult, n)
+	errs := make([]error, n)
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 0; i < n; i++ {
 		go func(idx int) {
 			defer wg.Done()
-			res, err := svc.SubmitTurn(ctx, "t1", "b1", sess.SessionID, "相同请求", "same_cr", "p1")
-			require.NoError(t, err)
-			turnIDs[idx] = res.UserTurn.TurnID
+			results[idx], errs[idx] = svc.SubmitTurn(ctx, "t1", "b1", sess.SessionID, "相同请求", "same_cr", "p1")
 		}(i)
 	}
 	wg.Wait()
-	first := turnIDs[0]
-	for _, id := range turnIDs {
-		require.Equal(t, first, id)
+
+	for i := 0; i < n; i++ {
+		require.NoError(t, errs[i])
+		require.NotNil(t, results[i])
+		require.NotNil(t, results[i].UserTurn)
 	}
+	first := results[0].UserTurn.TurnID
+	for i := 0; i < n; i++ {
+		require.Equal(t, first, results[i].UserTurn.TurnID)
+	}
+
 	turns, _ := ar.ListTurns(ctx, "t1", sess.SessionID)
 	userTurns := 0
-	for _, t := range turns {
-		if t.Speaker == entity.SpeakerUser && t.ClientRequestID == "same_cr" {
+	for _, tr := range turns {
+		if tr.Speaker == entity.SpeakerUser && tr.ClientRequestID == "same_cr" {
 			userTurns++
 		}
 	}
@@ -920,8 +959,8 @@ func TestConcurrentSameClientRequestIdempotent(t *testing.T) {
 	require.Equal(t, int32(3), session.NextTurnSequence)
 
 	analystTurns := 0
-	for _, t := range turns {
-		if t.Speaker == entity.SpeakerAnalyst && t.ReplyToTurnID == first {
+	for _, tr := range turns {
+		if tr.Speaker == entity.SpeakerAnalyst && tr.ReplyToTurnID == first {
 			analystTurns++
 		}
 	}
@@ -934,6 +973,11 @@ func TestConcurrentSameClientRequestIdempotent(t *testing.T) {
 		}
 	}
 	require.Equal(t, 1, evCount)
+
+	model.mu.Lock()
+	extractCalls := len(model.extractCalls)
+	model.mu.Unlock()
+	require.Equal(t, 1, extractCalls, "duplicate client_request_id must not re-run extraction")
 }
 
 func TestResponseFailedRetryNoDuplicateAssertions(t *testing.T) {

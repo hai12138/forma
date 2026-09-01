@@ -295,13 +295,26 @@ func (s *analystServiceImpl) RetryTurnAnalysis(ctx context.Context, tenantID, bu
 	if turn == nil || turn.SessionID != sessionID || turn.Speaker != entity.SpeakerUser {
 		return nil, entity.ErrInvalidTurn
 	}
+	var expected []entity.AnalysisStatus
 	switch turn.AnalysisStatus {
 	case entity.AnalysisExtractionFailed, entity.AnalysisFailed, entity.AnalysisPending:
-		// full pipeline
+		expected = []entity.AnalysisStatus{
+			entity.AnalysisExtractionFailed,
+			entity.AnalysisFailed,
+			entity.AnalysisPending,
+		}
 	case entity.AnalysisResponseFailed:
-		// generation only
+		expected = []entity.AnalysisStatus{entity.AnalysisResponseFailed}
 	default:
 		return nil, entity.ErrInvalidTurn
+	}
+	claimToken := "retry_claim:" + newID("retry")
+	claimed, err := s.repo.ClaimTurnForRetry(ctx, tenantID, turnID, expected, claimToken)
+	if err != nil {
+		return nil, err
+	}
+	if !claimed {
+		return s.buildIdempotentResult(ctx, tenantID, businessID, sessionID, turn)
 	}
 	evList, err := s.repo.ListEvidence(ctx, tenantID, businessID)
 	if err != nil {

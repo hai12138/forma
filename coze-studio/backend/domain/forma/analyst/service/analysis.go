@@ -16,9 +16,10 @@ import (
 func (s *analystServiceImpl) createUserTurnWithEvidence(
 	ctx context.Context,
 	tenantID, businessID, sessionID, content, clientRequestID, actorID string,
-) (*entity.AnalystTurn, *entity.BusinessEvidence, error) {
+) (*entity.AnalystTurn, *entity.BusinessEvidence, bool, error) {
 	var userTurn *entity.AnalystTurn
 	var evidence *entity.BusinessEvidence
+	createdNew := false
 	err := s.repo.Transaction(ctx, func(txRepo repository.AnalystRepository) error {
 		session, err := txRepo.GetSessionForUpdate(ctx, tenantID, sessionID)
 		if err != nil {
@@ -98,6 +99,7 @@ func (s *analystServiceImpl) createUserTurnWithEvidence(
 		}
 		userTurn = ut
 		evidence = ev
+		createdNew = true
 		return nil
 	})
 	if err != nil {
@@ -107,15 +109,15 @@ func (s *analystServiceImpl) createUserTurnWithEvidence(
 				evList, _ := s.repo.ListEvidence(ctx, tenantID, businessID)
 				for _, e := range evList {
 					if e != nil && e.TurnID == existing.TurnID {
-						return existing, e, nil
+						return existing, e, false, nil
 					}
 				}
-				return existing, nil, nil
+				return existing, nil, false, nil
 			}
 		}
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	return userTurn, evidence, nil
+	return userTurn, evidence, createdNew, nil
 }
 
 func (s *analystServiceImpl) runAnalysisForUserTurn(

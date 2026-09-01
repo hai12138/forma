@@ -401,6 +401,7 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
           className="forma-btn"
           style={{ marginLeft: 12 }}
           disabled={!businessId || loading}
+          data-testid="start-session"
           onClick={() => void startSession()}
         >
           开始访谈
@@ -430,6 +431,27 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
             >
               <strong>{t.speaker === 'USER' ? '用户' : '分析师'}</strong>
               <div>{t.content}</div>
+              {(t.analysis_status === 'PENDING') &&
+                t.speaker === 'USER' &&
+                !turns.some(
+                  other =>
+                    other.speaker === 'ANALYST' &&
+                    other.sequence === t.sequence + 1,
+                ) && (
+                <div className="forma-analyst-processing" data-testid="analysis-pending">
+                  分析尚未完成
+                  <button
+                    type="button"
+                    className="forma-btn"
+                    style={{ marginLeft: 8 }}
+                    data-testid="retry-analysis"
+                    disabled={processing}
+                    onClick={() => void retryAnalysis(t.turn_id)}
+                  >
+                    Retry Analysis
+                  </button>
+                </div>
+              )}
               {(t.analysis_status === 'FAILED' ||
                 t.analysis_status === 'EXTRACTION_FAILED' ||
                 t.analysis_status === 'RESPONSE_FAILED') &&
