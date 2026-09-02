@@ -159,6 +159,16 @@ export function ensureProposedAssertionForEdit({ tenantId, businessId, sessionId
   return assertId;
 }
 
+export function countModelCallsForBusiness(businessId) {
+  if (!businessId) return 0;
+  const n = queryMysql(
+    `SELECT COUNT(*) FROM forma_analyst_model_call mc
+     INNER JOIN forma_analyst_session s ON mc.session_id = s.session_id
+     WHERE s.business_id='${businessId}'`,
+  );
+  return parseInt(n, 10) || 0;
+}
+
 export function countModelCalls(sessionId) {
   if (!sessionId) return 0;
   const n = queryMysql(
@@ -240,6 +250,41 @@ export function seedConfirmedAssertionForStale({ tenantId, businessId, sessionId
       (assertion_id, tenant_id, business_id, session_id, assertion_type, subject_ref, predicate, object_value, structured_value_json, confidence, status, source_marker, derived_from_assertion_id, created_by, created_at, updated_at)
     VALUES
       ('${assertId}', '${tenantId}', '${businessId}', '${sessionId}', 'ACTOR_EXISTS', 'actor:E2E_STALE_GATE', 'exists', 'E2E_STALE_GATE_审批员', '{}', 0.9, 'CONFIRMED', 'AI_EXTRACTED', '', '${principalId}', '${ts}', '${ts}')
+  `);
+  execMysql(`
+    INSERT INTO forma_assertion_evidence_ref (tenant_id, assertion_id, evidence_id, created_at)
+    VALUES ('${tenantId}', '${assertId}', '${evId}', '${ts}')
+  `);
+  return assertId;
+}
+
+/** Confirmed assertion dedicated to proposal UI browser gate (zero model). */
+export function seedConfirmedAssertionForProposalUI({ tenantId, businessId, sessionId, principalId }) {
+  const runKey = sessionId.replace(/^asess_/, '').replace(/-/g, '').slice(0, 12);
+  const assertId = `assert_e2e_pui_${runKey}`;
+  const evId = `evid_e2e_pui_${runKey}`;
+  const actorRef = `actor:E2E_PUI_${runKey}`;
+  const actorLabel = `E2E_PUI_${runKey}_关单员`;
+
+  execMysql(`
+    DELETE FROM forma_assertion_evidence_ref WHERE tenant_id='${tenantId}' AND assertion_id='${assertId}';
+    DELETE FROM forma_business_assertion WHERE tenant_id='${tenantId}' AND assertion_id='${assertId}';
+    DELETE FROM forma_business_evidence WHERE tenant_id='${tenantId}' AND evidence_id='${evId}';
+  `);
+
+  const ts = nowSql();
+  const turnId = `turn_e2e_pui_${randomUUID().slice(0, 8)}`;
+  execMysql(`
+    INSERT INTO forma_business_evidence
+      (evidence_id, tenant_id, business_id, session_id, turn_id, source_type, source_ref, quote, content_digest, created_by, created_at)
+    VALUES
+      ('${evId}', '${tenantId}', '${businessId}', '${sessionId}', '${turnId}', 'INTERVIEW_TURN', '${turnId}', 'E2E proposal UI fixture', 'dig_pui', '${principalId}', '${ts}')
+  `);
+  execMysql(`
+    INSERT INTO forma_business_assertion
+      (assertion_id, tenant_id, business_id, session_id, assertion_type, subject_ref, predicate, object_value, structured_value_json, confidence, status, source_marker, derived_from_assertion_id, created_by, created_at, updated_at)
+    VALUES
+      ('${assertId}', '${tenantId}', '${businessId}', '${sessionId}', 'ACTOR_EXISTS', '${actorRef}', 'exists', '${actorLabel}', '{}', 0.92, 'CONFIRMED', 'AI_EXTRACTED', '', '${principalId}', '${ts}', '${ts}')
   `);
   execMysql(`
     INSERT INTO forma_assertion_evidence_ref (tenant_id, assertion_id, evidence_id, created_at)

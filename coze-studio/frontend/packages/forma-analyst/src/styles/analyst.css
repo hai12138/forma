@@ -155,3 +155,36 @@
   width: 100%;
   margin-top: 4px;
 }
+
+.forma-analyst-proposal-preview {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.forma-biz-diff-block {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.forma-biz-diff-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.forma-biz-diff-added {
+  color: #047857;
+}
+
+.forma-biz-diff-removed {
+  color: #b91c1c;
+}
+
+.forma-biz-diff-modified {
+  color: #b45309;
+}

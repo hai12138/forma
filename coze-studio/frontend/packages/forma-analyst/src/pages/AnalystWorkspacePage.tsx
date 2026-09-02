@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import type {
   FormaApiClient,
@@ -46,7 +45,6 @@ function clearAnalystWorkspaceState() {
 }
 
 export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspacePageProps) {
-  const navigate = useNavigate();
   const tenantId = currentTenant?.tenant_id ?? '';
   const [businesses, setBusinesses] = useState<FormaBusiness[]>([]);
   const [businessId, setBusinessId] = useState('');
@@ -58,6 +56,9 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
   const [gaps, setGaps] = useState<FormaGap[]>([]);
   const [proposal, setProposal] = useState<FormaProposal | null>(null);
   const [proposalPreview, setProposalPreview] = useState<FormaProposalPreview | null>(null);
+  const [applyResult, setApplyResult] = useState<{ revision_no: number; proposal_id: string } | null>(
+    null,
+  );
   const [tab, setTab] = useState<SideTab>('assertions');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -146,20 +147,41 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
     void loadSessionTurns();
   }, [loadSessionTurns]);
 
+  // Restore latest (or URL-selected) analyst session after reload — required for Proposal UI gate.
+  useEffect(() => {
+    if (!businessId || session) return;
+    const wanted = new URLSearchParams(window.location.search).get('session_id');
+    void (async () => {
+      try {
+        const resp = await client.listAnalystSessions(businessId);
+        const list = resp.data ?? [];
+        const hit = wanted ? list.find(s => s.session_id === wanted) : list[list.length - 1];
+        if (hit) {
+          setSession(hit);
+        }
+      } catch {
+        /* session restore optional */
+      }
+    })();
+  }, [businessId, session, client]);
+
+  const loadProposalPreview = useCallback(
+    async (proposalId: string) => {
+      if (!businessId) return null;
+      const resp = await client.getProposalPreview(businessId, proposalId);
+      setProposalPreview(resp.data ?? null);
+      return resp.data ?? null;
+    },
+    [businessId, client],
+  );
+
   useEffect(() => {
     if (!businessId || !proposal) {
       setProposalPreview(null);
       return;
     }
-    void (async () => {
-      try {
-        const resp = await client.getProposalPreview(businessId, proposal.proposal_id);
-        setProposalPreview(resp.data ?? null);
-      } catch {
-        setProposalPreview(null);
-      }
-    })();
-  }, [businessId, proposal, client]);
+    void loadProposalPreview(proposal.proposal_id).catch(() => setProposalPreview(null));
+  }, [businessId, proposal, loadProposalPreview]);
 
   const startSession = async () => {
     if (!businessId) return;
@@ -273,10 +295,14 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
   const generateProposal = async () => {
     if (!businessId || !session) return;
     setLoading(true);
+    setApplyResult(null);
     try {
       const resp = await client.createProposal(businessId, { session_id: session.session_id });
       setProposal(resp.data);
       setTab('proposal');
+      if (resp.data?.proposal_id) {
+        await loadProposalPreview(resp.data.proposal_id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成提案失败');
     } finally {
@@ -291,8 +317,11 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
       const resp = await client.applyProposal(businessId, proposal.proposal_id);
       await refreshAnalystData();
       setProposal(prev => (prev ? { ...prev, status: 'APPLIED' } : prev));
-      if (resp.data?.revision_no) {
-        navigate(`/business/${businessId}`);
+      if (resp.data) {
+        setApplyResult({
+          revision_no: resp.data.revision_no,
+          proposal_id: resp.data.proposal_id,
+        });
       }
     } catch (err) {
       if (err instanceof FormaApiError && err.errorKey === 'FORMA_PROPOSAL_STALE') {
@@ -380,6 +409,7 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
               setTurns([]);
               setProposal(null);
               setProposalPreview(null);
+              setApplyResult(null);
               setAssertions([]);
               setEvidence([]);
               setConflicts([]);
@@ -707,29 +737,53 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
               </button>
               {proposal && (
                 <div className="forma-analyst-proposal-preview">
-                  <div>Base revision r{proposal.base_revision}</div>
-                  <div>Current revision r{proposalPreview?.current_revision ?? '?'}</div>
+                  <div data-testid="proposal-base-revision">Base revision r{proposal.base_revision}</div>
+                  <div data-testid="proposal-current-revision">
+                    Current revision r{proposalPreview?.current_revision ?? '?'}
+                  </div>
                   <div>Assertions used: {proposalPreview?.assertion_count ?? proposal.assertion_ids.length}</div>
-                  <div>
+                  <div data-testid="proposal-validation">
                     Validation:{' '}
                     {proposalPreview?.validation_valid
                       ? 'VALID'
                       : proposalPreview?.validation_error ?? 'checking…'}
                   </div>
-                  <div>Status: {proposal.status}</div>
-                  {proposalPreview?.diff && proposalPreview?.impact && (
+                  <div data-testid="proposal-status">Status: {proposal.status}</div>
+                  {proposalPreview?.diff && (
                     <ProposalDiffView
                       data={{
                         diff: proposalPreview.diff,
-                        impact: proposalPreview.impact,
+                        impact:
+                          proposalPreview.impact ?? {
+                            semantic_changed: true,
+                            affected_node_ids: proposalPreview.diff.nodes.added,
+                            affected_rule_ids: proposalPreview.diff.rules.added,
+                            affected_state_ids: proposalPreview.diff.states.added,
+                          },
                       }}
                     />
+                  )}
+                  {proposal.status === 'APPLIED' && applyResult && (
+                    <div className="forma-analyst-card" data-testid="proposal-applied">
+                      <strong>APPLIED</strong>
+                      <div>Business model revision r{applyResult.revision_no}</div>
+                      <div>Proposal {applyResult.proposal_id}</div>
+                    </div>
+                  )}
+                  {applyResult && (
+                    <div className="forma-analyst-card" data-testid="proposal-provenance">
+                      <strong>Provenance</strong>
+                      <div>
+                        revision r{applyResult.revision_no} ← proposal {applyResult.proposal_id}
+                      </div>
+                      <div>Assertions: {proposal.assertion_ids.join(', ')}</div>
+                    </div>
                   )}
                   <button
                     type="button"
                     className="forma-btn forma-btn-primary"
                     data-testid="apply-proposal"
-                    disabled={!canApplyProposal || loading}
+                    disabled={!canApplyProposal || loading || proposal.status === 'APPLIED'}
                     onClick={() => void applyProposal()}
                   >
                     Apply to Business Model
@@ -795,37 +849,70 @@ export function AnalystWorkspacePage({ client, currentTenant }: AnalystWorkspace
   );
 }
 
+function normalizeElementDiff(block: FormaDiffResponse['diff']['nodes']) {
+  return {
+    added: block?.added ?? [],
+    removed: block?.removed ?? [],
+    modified: block?.modified ?? [],
+  };
+}
+
 function ProposalDiffView({ data }: { data: FormaDiffResponse }) {
   const sections = [
-    ['Nodes', data.diff.nodes],
-    ['Edges', data.diff.edges],
-    ['Rules', data.diff.rules],
-    ['States', data.diff.states],
+    ['Nodes', normalizeElementDiff(data.diff.nodes)],
+    ['Edges', normalizeElementDiff(data.diff.edges)],
+    ['States', normalizeElementDiff(data.diff.states)],
+    ['Rules', normalizeElementDiff(data.diff.rules)],
   ] as const;
+  const impact = data.impact ?? { semantic_changed: true };
 
   return (
     <div data-testid="proposal-semantic-diff">
-      <p className="forma-placeholder">
-        r{data.diff.from_revision} → r{data.diff.to_revision}
-        {data.impact.semantic_changed ? ' · semantic changed' : ' · no semantic change'}
+      <p className="forma-placeholder" data-testid="proposal-diff-summary">
+        Current r{data.diff.from_revision} vs Proposed r{data.diff.to_revision}
+        {impact.semantic_changed ? ' · semantic changed' : ' · no semantic change'}
       </p>
       {sections.map(([title, block]) => (
-        <div key={title} className="forma-biz-diff-block">
+        <div key={title} className="forma-biz-diff-block" data-testid={`proposal-diff-${title.toLowerCase()}`}>
           <b>{title}</b>
-          <ul>
-            {block.added.map(id => (
-              <li key={`a-${id}`} className="forma-biz-diff-added">Added: {id}</li>
-            ))}
-            {block.removed.map(id => (
-              <li key={`r-${id}`} className="forma-biz-diff-removed">Removed: {id}</li>
-            ))}
-            {block.modified.map(id => (
-              <li key={`m-${id}`} className="forma-biz-diff-modified">Modified: {id}</li>
-            ))}
-            {!block.added.length && !block.removed.length && !block.modified.length && (
-              <li className="forma-placeholder">无变更</li>
-            )}
-          </ul>
+          <div className="forma-biz-diff-columns">
+            <div>
+              <span className="forma-placeholder">Current</span>
+              <ul>
+                {block.removed.map(id => (
+                  <li key={`c-r-${id}`} className="forma-biz-diff-removed">
+                    Removed: {id}
+                  </li>
+                ))}
+                {block.modified.map(id => (
+                  <li key={`c-m-${id}`} className="forma-biz-diff-modified">
+                    Modified: {id}
+                  </li>
+                ))}
+                {!block.removed.length && !block.modified.length && (
+                  <li className="forma-placeholder">—</li>
+                )}
+              </ul>
+            </div>
+            <div>
+              <span className="forma-placeholder">Proposed</span>
+              <ul>
+                {block.added.map(id => (
+                  <li key={`p-a-${id}`} className="forma-biz-diff-added">
+                    Added: {id}
+                  </li>
+                ))}
+                {block.modified.map(id => (
+                  <li key={`p-m-${id}`} className="forma-biz-diff-modified">
+                    Modified: {id}
+                  </li>
+                ))}
+                {!block.added.length && !block.modified.length && (
+                  <li className="forma-placeholder">—</li>
+                )}
+              </ul>
+            </div>
+          </div>
         </div>
       ))}
     </div>

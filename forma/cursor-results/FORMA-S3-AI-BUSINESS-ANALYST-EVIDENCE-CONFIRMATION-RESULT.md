@@ -14,6 +14,9 @@ Do **not** mark FROZEN yet. Do **not** start S4.
 | Live harness + DeepSeek builtin model | **PASS** — `BUILTIN_CM_TYPE=deepseek`, `model_ref=coze-eino-builtin` |
 | Real Model Probe (Extract + Generate) | **PASS** — `forma/cursor-results/s3-live-model-e2e.log` |
 | Browser E2E hard gate | **PASS** — `forma/cursor-results/s3-browser-e2e.log` |
+| Browser Proposal Semantic Diff | **PASS** — real UI `proposal-semantic-diff` (07-proposal-diff.png) |
+| Browser Apply | **PASS** — real UI click `apply-proposal` → `proposal-applied` (08-applied.png) |
+| API fallback (proposal/apply) | **NONE** |
 | No Silent Mutation | **PASS** |
 | Gap / Confirm / Edit / Conflict / Proposal / Apply | **PASS** |
 | Provenance | **PASS** — `forma/cursor-results/s3-provenance-e2e.log` |
@@ -30,6 +33,7 @@ Do **not** mark FROZEN yet. Do **not** start S4.
 | Session ID | `asess_60d6080d-95ed-4dcf-8692-c7ceb71e9a7c` |
 | Model ref | `coze-eino-builtin` (not `fake-analyst`) |
 | Browser gate completed | `2026-09-02T06:22:32Z` |
+| Proposal UI browser closure | `2026-09-02T07:54:06Z` — `MAX_REAL_MODEL_CALLS=0`, model calls unchanged (22) |
 
 Credentials supplied via **gitignored** `forma/cursor-results/forma-live.env` (never committed).
 
@@ -51,7 +55,7 @@ Credentials supplied via **gitignored** `forma/cursor-results/forma-live.env` (n
 | `s3-browser-e2e.log` | **PASS** |
 | `s3-provenance-e2e.log` | **PASS** |
 | `s3-tenant-isolation-e2e.log` | **PASS** |
-| `s3-ui/01-session-started.png` … `11-tenant-switch.png` | **PASS** |
+| `s3-ui/07-proposal-diff.png` … `09-provenance.png` | **PASS** — distinct SHA256; semantic diff + applied + provenance UI |
 
 ## Preserved (do not redo)
 
