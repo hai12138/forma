@@ -39,6 +39,7 @@ type ApplicationService struct {
 	AnalystSVC    analystsvc.AnalystService
 	DataSVC       datasvc.DataService
 	MappingSVC    datasvc.MappingService
+	ContractSVC   datasvc.ContractService
 	DatasourceSVC datasvc.DataSourceService
 }
 
@@ -82,6 +83,13 @@ func InitService(_ context.Context, components *ServiceComponents) *ApplicationS
 		DataSourceRepo: datarepo.NewDataSourceRepository(components.DB),
 		BusinessSVC:    ApplicationSVC.BusinessSVC,
 		Model:          integration.NewCozeEinoDataModel("FORMA_DATA"),
+	})
+	ApplicationSVC.ContractSVC = datasvc.NewContractService(&datasvc.ContractComponents{
+		Contracts: datarepo.NewContractRepository(components.DB),
+		Data:      datarepo.NewDataRepository(components.DB),
+		Mappings:  datarepo.NewMappingRepository(components.DB),
+		Sources:   datarepo.NewDataSourceRepository(components.DB),
+		Business:  ApplicationSVC.BusinessSVC,
 	})
 	secretProvider, _ := datasvc.NewLocalSecretProviderFromEnv()
 	ApplicationSVC.DatasourceSVC = datasvc.NewDataSourceService(&datasvc.SourceComponents{

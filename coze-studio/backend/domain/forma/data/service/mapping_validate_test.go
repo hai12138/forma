@@ -78,6 +78,14 @@ func TestValidateTransformSpecContract(t *testing.T) {
 		{"time normalize", entity.MappingTypeTimeNormalize, `{"type":"TIME_NORMALIZE","source_timezone":"Asia/Shanghai","target_timezone":"UTC","format":"2006-01-02T15:04:05Z07:00"}`, []string{"sensor.recorded_at"}, nil},
 		{"time bad timezone", entity.MappingTypeTimeNormalize, `{"type":"TIME_NORMALIZE","source_timezone":"Mars/Base","target_timezone":"UTC","format":"RFC3339"}`, []string{"sensor.recorded_at"}, entity.ErrMappingTransformInvalid},
 		{"join invented", entity.MappingTypeJoinRef, `{"type":"JOIN_REF","relationship":"ghost","from_fields":["sensor_id"],"to_schema":"sensors","to_fields":["id"]}`, []string{"sensor.id"}, entity.ErrMappingLineageInvalid},
+		{"join valid", entity.MappingTypeJoinRef, `{"type":"JOIN_REF","relationship":"sensor","from_fields":["sensor_id"],"to_schema":"sensors","to_fields":["id"]}`, []string{"sensor.id"}, nil},
+		{"cast unknown field", entity.MappingTypeCast, `{"type":"CAST","from_type":"DECIMAL","to_type":"STRING","script":"x"}`, []string{"sensor.temperature"}, entity.ErrMappingTransformInvalid},
+		{"enum unknown field", entity.MappingTypeEnumMap, `{"type":"ENUM_MAP","pairs":{"a":"b"},"expr":"1"}`, []string{"sensor.temperature"}, entity.ErrMappingTransformInvalid},
+		{"unit unknown field", entity.MappingTypeUnitConvert, `{"type":"UNIT_CONVERT","from_unit":"C","to_unit":"F","factor":1.8,"offset":32,"fn":"x"}`, []string{"sensor.temperature"}, entity.ErrMappingTransformInvalid},
+		{"time unknown field", entity.MappingTypeTimeNormalize, `{"type":"TIME_NORMALIZE","source_timezone":"UTC","target_timezone":"UTC","format":"RFC3339","code":"x"}`, []string{"sensor.recorded_at"}, entity.ErrMappingTransformInvalid},
+		{"field path unknown field", entity.MappingTypeFieldPath, `{"type":"FIELD_PATH","path":"sensor.temperature","extra":1}`, []string{"sensor.temperature"}, entity.ErrMappingTransformInvalid},
+		{"join unknown field", entity.MappingTypeJoinRef, `{"type":"JOIN_REF","relationship":"sensor","from_fields":["sensor_id"],"to_schema":"sensors","to_fields":["id"],"sql":"select 1"}`, []string{"sensor.id"}, entity.ErrMappingTransformInvalid},
+		{"cast trailing payload", entity.MappingTypeCast, `{"type":"CAST","from_type":"DECIMAL","to_type":"STRING"}{"x":1}`, []string{"sensor.temperature"}, entity.ErrMappingTransformInvalid},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

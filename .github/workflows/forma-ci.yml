@@ -64,6 +64,7 @@ jobs:
           test -f ../docker/atlas/forma/migrations/20250902110000_s4_g2_data_source_discovery.sql
           test -f ../docker/atlas/forma/migrations/20250902113000_s4_g2_contract_alignment.sql
           test -f ../docker/atlas/forma/migrations/20250902120000_s4_g3_semantic_mapping.sql
+          test -f ../docker/atlas/forma/migrations/20250902130000_s4_g4_data_contract.sql
       - name: Forma analyst domain tests
         run: go test ./domain/forma/analyst/... -count=1
       - name: Forma business domain tests
@@ -72,6 +73,8 @@ jobs:
         run: go test ./domain/forma/data/... -count=1
       - name: Forma semantic mapping tests
         run: go test ./domain/forma/data/service -run "Mapping|Transform|JoinRef" -count=1
+      - name: Forma data contract tests
+        run: go test ./domain/forma/data/service -run "Contract|Drift|Gap|Transform|Mapping" -count=1
       - name: Forma migration smoke validation
         working-directory: coze-studio
         run: node scripts/forma/migration-validate.mjs

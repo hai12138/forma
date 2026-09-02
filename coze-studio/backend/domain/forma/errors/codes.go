@@ -80,6 +80,17 @@ const (
 	CodeDataSemanticMappingLineageInvalid      int32 = 40052
 	CodeDataSemanticMappingRequirementInvalid  int32 = 40955
 
+	CodeDataContractNotFound             int32 = 40460
+	CodeDataContractRevisionNotFound     int32 = 40461
+	CodeDataContractInvalidState         int32 = 40960
+	CodeDataContractInvalidPayload       int32 = 40060
+	CodeDataContractVersionConflict      int32 = 40961
+	CodeDataContractValidationFailed     int32 = 40962
+	CodeDataContractBindingInvalid       int32 = 40061
+	CodeDataContractLogicalSchemaInvalid int32 = 40062
+	CodeDataContractDriftInvalid         int32 = 40063
+	CodeDataContractGapInvalid           int32 = 40064
+
 	CodeDataSourceNotFound            int32 = 40440
 	CodeDataConnectionNotFound        int32 = 40441
 	CodeDataCredentialNotFound        int32 = 40442
@@ -156,6 +167,17 @@ const (
 	KeyDataSemanticMappingTransformInvalid    = "FORMA_DATA_SEMANTIC_MAPPING_TRANSFORM_INVALID"
 	KeyDataSemanticMappingLineageInvalid      = "FORMA_DATA_SEMANTIC_MAPPING_LINEAGE_INVALID"
 	KeyDataSemanticMappingRequirementInvalid  = "FORMA_DATA_SEMANTIC_MAPPING_REQUIREMENT_NOT_CONFIRMED"
+
+	KeyDataContractNotFound             = "FORMA_DATA_CONTRACT_NOT_FOUND"
+	KeyDataContractRevisionNotFound     = "FORMA_DATA_CONTRACT_REVISION_NOT_FOUND"
+	KeyDataContractInvalidState         = "FORMA_DATA_CONTRACT_INVALID_STATE"
+	KeyDataContractInvalidPayload       = "FORMA_DATA_CONTRACT_INVALID_PAYLOAD"
+	KeyDataContractVersionConflict      = "FORMA_DATA_CONTRACT_VERSION_CONFLICT"
+	KeyDataContractValidationFailed     = "FORMA_DATA_CONTRACT_VALIDATION_FAILED"
+	KeyDataContractBindingInvalid       = "FORMA_DATA_CONTRACT_BINDING_INVALID"
+	KeyDataContractLogicalSchemaInvalid = "FORMA_DATA_CONTRACT_LOGICAL_SCHEMA_INVALID"
+	KeyDataContractDriftInvalid         = "FORMA_DATA_CONTRACT_DRIFT_INVALID"
+	KeyDataContractGapInvalid           = "FORMA_DATA_CONTRACT_GAP_INVALID"
 
 	KeyDataSourceNotFound            = "FORMA_DATA_SOURCE_NOT_FOUND"
 	KeyDataConnectionNotFound        = "FORMA_DATA_CONNECTION_NOT_FOUND"
@@ -517,6 +539,40 @@ func DataSemanticMappingRequirementInvalid(msg string) *FormaError {
 	return dataMappingError(CodeDataSemanticMappingRequirementInvalid, http.StatusConflict, KeyDataSemanticMappingRequirementInvalid, msg, "semantic mapping requirement is not confirmed")
 }
 
+func dataContractError(code int32, status int, key, msg, fallback string) *FormaError {
+	return New(code, status, key, defaultMessage(msg, fallback))
+}
+func DataContractNotFound(msg string) *FormaError {
+	return dataContractError(CodeDataContractNotFound, http.StatusNotFound, KeyDataContractNotFound, msg, "data contract not found")
+}
+func DataContractRevisionNotFound(msg string) *FormaError {
+	return dataContractError(CodeDataContractRevisionNotFound, http.StatusNotFound, KeyDataContractRevisionNotFound, msg, "data contract revision not found")
+}
+func DataContractInvalidState(msg string) *FormaError {
+	return dataContractError(CodeDataContractInvalidState, http.StatusConflict, KeyDataContractInvalidState, msg, "data contract invalid state")
+}
+func DataContractInvalidPayload(msg string) *FormaError {
+	return dataContractError(CodeDataContractInvalidPayload, http.StatusBadRequest, KeyDataContractInvalidPayload, msg, "data contract invalid payload")
+}
+func DataContractVersionConflict(msg string) *FormaError {
+	return dataContractError(CodeDataContractVersionConflict, http.StatusConflict, KeyDataContractVersionConflict, msg, "data contract version conflict")
+}
+func DataContractValidationFailed(msg string) *FormaError {
+	return dataContractError(CodeDataContractValidationFailed, http.StatusConflict, KeyDataContractValidationFailed, msg, "data contract validation failed")
+}
+func DataContractBindingInvalid(msg string) *FormaError {
+	return dataContractError(CodeDataContractBindingInvalid, http.StatusBadRequest, KeyDataContractBindingInvalid, msg, "data contract binding invalid")
+}
+func DataContractLogicalSchemaInvalid(msg string) *FormaError {
+	return dataContractError(CodeDataContractLogicalSchemaInvalid, http.StatusBadRequest, KeyDataContractLogicalSchemaInvalid, msg, "data contract logical schema invalid")
+}
+func DataContractDriftInvalid(msg string) *FormaError {
+	return dataContractError(CodeDataContractDriftInvalid, http.StatusBadRequest, KeyDataContractDriftInvalid, msg, "data contract drift invalid")
+}
+func DataContractGapInvalid(msg string) *FormaError {
+	return dataContractError(CodeDataContractGapInvalid, http.StatusBadRequest, KeyDataContractGapInvalid, msg, "data contract gap invalid")
+}
+
 func DataSourceNotFound(msg string) *FormaError {
 	return New(CodeDataSourceNotFound, http.StatusNotFound, KeyDataSourceNotFound, defaultMessage(msg, "data source not found"))
 }
@@ -729,6 +785,36 @@ func MapDomainError(err error) *FormaError {
 	}
 	if errors.Is(err, dataentity.ErrMappingRequirementNotConfirmed) {
 		return DataSemanticMappingRequirementInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractNotFound) {
+		return DataContractNotFound(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractRevisionNotFound) {
+		return DataContractRevisionNotFound(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractInvalidState) {
+		return DataContractInvalidState(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractInvalidPayload) {
+		return DataContractInvalidPayload(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractVersionConflict) {
+		return DataContractVersionConflict(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractValidationFailed) {
+		return DataContractValidationFailed(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractBindingInvalid) {
+		return DataContractBindingInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractLogicalSchemaInvalid) {
+		return DataContractLogicalSchemaInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractDriftInvalid) {
+		return DataContractDriftInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractGapInvalid) {
+		return DataContractGapInvalid(err.Error())
 	}
 	if errors.Is(err, dataentity.ErrDataSourceNotFound) {
 		return DataSourceNotFound("")

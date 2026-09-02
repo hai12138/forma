@@ -6,8 +6,10 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"time"
@@ -83,6 +85,11 @@ func isAllowedMappingType(value string) bool {
 	return ok
 }
 
+// IsAllowedLogicalType exposes the canonical Forma logical type allowlist.
+func IsAllowedLogicalType(value string) bool {
+	return isAllowedMappingType(value)
+}
+
 func requireSingleTarget(paths []string, schema *entity.PhysicalSchema) (entity.PhysicalField, error) {
 	if len(paths) != 1 {
 		return entity.PhysicalField{}, entity.ErrMappingTransformInvalid
@@ -91,6 +98,18 @@ func requireSingleTarget(paths []string, schema *entity.PhysicalSchema) (entity.
 		return entity.PhysicalField{}, err
 	}
 	return buildFieldPathIndex(schema)[strings.TrimSpace(paths[0])], nil
+}
+
+func decodeStrictJSON(raw json.RawMessage, dest any) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dest); err != nil {
+		return err
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return fmt.Errorf("trailing json payload")
+	}
+	return nil
 }
 
 func ValidateTransformSpec(mappingType entity.MappingType, raw json.RawMessage, paths []string, schema *entity.PhysicalSchema) error {
@@ -120,16 +139,14 @@ func ValidateTransformSpec(mappingType entity.MappingType, raw json.RawMessage, 
 			return err
 		}
 		var v entity.DirectTransformSpec
-		dec := json.NewDecoder(strings.NewReader(string(raw)))
-		dec.DisallowUnknownFields()
-		return valid(dec.Decode(&v))
+		return valid(decodeStrictJSON(raw, &v))
 	case entity.MappingTypeCast:
 		field, err := requireSingleTarget(paths, schema)
 		if err != nil {
 			return err
 		}
 		var v entity.CastTransformSpec
-		if err := valid(json.Unmarshal(raw, &v), v.FromType, v.ToType); err != nil || !isAllowedMappingType(v.ToType) {
+		if err := valid(decodeStrictJSON(raw, &v), v.FromType, v.ToType); err != nil || !isAllowedMappingType(v.ToType) {
 			return entity.ErrMappingTransformInvalid
 		}
 		if strings.TrimSpace(field.DataType) == "" {
@@ -145,7 +162,7 @@ func ValidateTransformSpec(mappingType entity.MappingType, raw json.RawMessage, 
 			return err
 		}
 		var v entity.EnumMapTransformSpec
-		if err := json.Unmarshal(raw, &v); err != nil || len(v.Pairs) == 0 {
+		if err := decodeStrictJSON(raw, &v); err != nil || len(v.Pairs) == 0 {
 			return entity.ErrMappingTransformInvalid
 		}
 		seenKeys := make(map[string]struct{}, len(v.Pairs))
@@ -164,7 +181,7 @@ func ValidateTransformSpec(mappingType entity.MappingType, raw json.RawMessage, 
 			return err
 		}
 		var v entity.UnitConvertTransformSpec
-		if err := valid(json.Unmarshal(raw, &v), v.FromUnit, v.ToUnit); err != nil || math.IsNaN(v.Factor) || math.IsInf(v.Factor, 0) || v.Factor == 0 {
+		if err := valid(decodeStrictJSON(raw, &v), v.FromUnit, v.ToUnit); err != nil || math.IsNaN(v.Factor) || math.IsInf(v.Factor, 0) || v.Factor == 0 {
 			return entity.ErrMappingTransformInvalid
 		}
 		return nil
@@ -173,7 +190,7 @@ func ValidateTransformSpec(mappingType entity.MappingType, raw json.RawMessage, 
 			return err
 		}
 		var v entity.TimeNormalizeTransformSpec
-		if err := valid(json.Unmarshal(raw, &v), v.SourceTimezone, v.TargetTimezone, v.Format); err != nil {
+		if err := valid(decodeStrictJSON(raw, &v), v.SourceTimezone, v.TargetTimezone, v.Format); err != nil {
 			return err
 		}
 		if _, err := time.LoadLocation(v.SourceTimezone); err != nil {
@@ -188,25 +205,24 @@ func ValidateTransformSpec(mappingType entity.MappingType, raw json.RawMessage, 
 			return err
 		}
 		var v entity.FieldPathTransformSpec
-		if err := valid(json.Unmarshal(raw, &v), v.Path); err != nil || strings.TrimSpace(v.Path) != strings.TrimSpace(paths[0]) {
+		if err := valid(decodeStrictJSON(raw, &v), v.Path); err != nil || strings.TrimSpace(v.Path) != strings.TrimSpace(paths[0]) {
 			return entity.ErrMappingTransformInvalid
 		}
 		return nil
 	case entity.MappingTypeJoinRef:
 		var v entity.JoinRefTransformSpec
-		if err := json.Unmarshal(raw, &v); err != nil || v.Relationship == "" || v.ToSchema == "" || len(v.FromFields) == 0 || len(v.FromFields) != len(v.ToFields) {
+		if err := decodeStrictJSON(raw, &v); err != nil || v.Relationship == "" || v.ToSchema == "" || len(v.FromFields) == 0 || len(v.FromFields) != len(v.ToFields) {
 			return entity.ErrMappingTransformInvalid
 		}
 		return ValidateJoinRef(raw, schema)
 	default:
 		return entity.ErrMappingTransformInvalid
 	}
-	return nil
 }
 
 func ValidateJoinRef(raw json.RawMessage, schema *entity.PhysicalSchema) error {
 	var spec entity.JoinRefTransformSpec
-	if err := json.Unmarshal(raw, &spec); err != nil || schema == nil {
+	if err := decodeStrictJSON(raw, &spec); err != nil || schema == nil {
 		return entity.ErrMappingTransformInvalid
 	}
 	for _, rel := range schema.Relationships {

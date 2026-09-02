@@ -85,7 +85,7 @@ func (s *stubBusiness) GetRevision(_ context.Context, tenantID, businessID strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.getRevisionCalls++
-	if tenantID == "" || revision != s.currentRevision {
+	if tenantID == "" || revision <= 0 || revision > s.currentRevision {
 		return nil, nil, businessentity.ErrRevisionNotFound
 	}
 	return &businessentity.BusinessModelRevision{
