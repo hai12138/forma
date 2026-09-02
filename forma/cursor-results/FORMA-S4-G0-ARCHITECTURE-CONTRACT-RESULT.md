@@ -137,7 +137,11 @@ Observed conventions preserved for later gates:
 | Documentation only | **YES** |
 | REAL_MODEL_CALLS | **0** |
 | S3 Live E2E re-run | **NOT RUN** (forbidden) |
-| Forma CI (this commit) | *(recorded after push)* |
+| G0 commit | `c6057ce059ecd3fe4fdf9940889916a76864302a` |
+| Forma CI | [33610932722](https://github.com/hai12138/forma/actions/runs/33610932722) **ALL GREEN** |
+| forma-backend | **PASS** |
+| forma-frontend | **PASS** |
+| forma-migration-apply | **PASS** |
 
 ---
 
