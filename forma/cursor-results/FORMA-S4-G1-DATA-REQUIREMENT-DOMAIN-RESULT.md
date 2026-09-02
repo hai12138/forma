@@ -2,7 +2,7 @@
 
 ## Status
 
-**S4-G1 = PASS (pending CI confirmation)**
+**S4-G1 = PASS**
 
 ## Baseline
 
@@ -137,9 +137,12 @@ Both use the same domain, API, tables, and enums — no industry switch.
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
-| S4-G1 final status | TBD |
+| Commit SHA | `27c9282673ce8696e77124927dd837799eb815a6` |
+| Forma CI | [33618771679](https://github.com/hai12138/forma/actions/runs/33618771679) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| S4-G1 final status | **PASS** |
 
 ## STOP
 
