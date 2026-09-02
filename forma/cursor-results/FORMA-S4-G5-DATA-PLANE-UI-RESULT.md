@@ -1,8 +1,6 @@
-# FORMA-S4-G5 DATA PLANE UI RESULT
-
 ## Status
 
-**S4-G5 = PASS** (pending CI record)
+**S4-G5 = PASS**
 
 ## Baseline
 
@@ -61,8 +59,11 @@ S4-G6 Live E2E / Security / Freeze, Business Capability, Agent, Runtime Query En
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
+| Commit SHA | `7c952201aced701419df0e1efb041dc98ebdbd60` |
+| Forma CI | [33666159055](https://github.com/hai12138/forma/actions/runs/33666159055) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
 
 ## STOP
 
