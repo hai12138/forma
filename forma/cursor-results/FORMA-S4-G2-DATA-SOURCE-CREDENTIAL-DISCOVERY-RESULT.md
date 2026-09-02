@@ -151,9 +151,12 @@ Domain/service tests cover: source/connection separation, multi-env, credential 
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
-| S4-G2-F1 final status | TBD |
+| Commit SHA | `356b0c15cf3bbc4a48607981953b73ba490c3e2a` |
+| Forma CI | [33638988178](https://github.com/hai12138/forma/actions/runs/33638988178) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| S4-G2-F1 final status | **PASS** |
 
 ## STOP
 
