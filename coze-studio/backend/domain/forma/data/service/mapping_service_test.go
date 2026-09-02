@@ -46,7 +46,9 @@ func mappingFixture(t *testing.T) (MappingService, repository.MappingRepository,
 			TargetFieldPaths: []string{"temp_c"}, MappingType: entity.MappingTypeDirect, TransformSpec: json.RawMessage(`{"type":"DIRECT"}`), Confidence: .93,
 		}}}, nil
 	}}
-	return NewMappingService(&MappingComponents{MappingRepo: mappings, DataRepo: data, DataSourceRepo: sources, Model: model}), mappings, model, req.RequirementID
+	business := newStubBusiness()
+	business.currentRevision = 7
+	return NewMappingService(&MappingComponents{MappingRepo: mappings, DataRepo: data, DataSourceRepo: sources, BusinessSVC: business, Model: model}), mappings, model, req.RequirementID
 }
 
 func TestAnalyzeSemanticMappingsPersistsValidBatchIdempotently(t *testing.T) {
@@ -62,6 +64,47 @@ func TestAnalyzeSemanticMappingsPersistsValidBatchIdempotently(t *testing.T) {
 	}
 	if first.Run.AnalysisRunID != second.Run.AnalysisRunID || model.SuggestCalls != 1 || len(first.Mappings) != 1 {
 		t.Fatalf("idempotency failed: first=%+v second=%+v calls=%d", first, second, model.SuggestCalls)
+	}
+}
+
+func TestAnalyzeSemanticMappingsLoadsPinnedSemanticModel(t *testing.T) {
+	svc, _, model, reqID := mappingFixture(t)
+	_, err := svc.AnalyzeSemanticMappings(context.Background(), &AnalyzeSemanticMappingsInput{
+		TenantID: "tenant", BusinessID: "lab", BusinessModelRevision: 7,
+		RequirementIDs: []string{reqID}, SchemaSnapshotIDs: []string{"snapshot"},
+		ClientRequestID: "semantic-context", ActorID: "actor",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.LastSuggestReq == nil || model.LastSuggestReq.SemanticModel == nil || len(model.LastSuggestReq.SemanticModel.Nodes) == 0 {
+		t.Fatalf("semantic model was not supplied: %+v", model.LastSuggestReq)
+	}
+	if model.LastSuggestReq.BusinessModelRevision != 7 {
+		t.Fatalf("business revision changed: %d", model.LastSuggestReq.BusinessModelRevision)
+	}
+}
+
+func TestAnalyzeSemanticMappingsRejectsConfidenceOutOfRange(t *testing.T) {
+	svc, repo, model, reqID := mappingFixture(t)
+	model.SuggestFn = func(context.Context, *SuggestSemanticMappingsRequest) (*SuggestSemanticMappingsResponse, error) {
+		return &SuggestSemanticMappingsResponse{Proposals: []entity.SemanticMappingProposal{{
+			RequirementID: reqID, SourceID: "source", ConnectionID: "connection", AssetID: "asset", SchemaSnapshotID: "snapshot",
+			TargetFieldPaths: []string{"temp_c"}, MappingType: entity.MappingTypeDirect,
+			TransformSpec: json.RawMessage(`{"type":"DIRECT"}`), Confidence: 1.01,
+		}}}, nil
+	}
+	result, err := svc.AnalyzeSemanticMappings(context.Background(), &AnalyzeSemanticMappingsInput{
+		TenantID: "tenant", BusinessID: "lab", BusinessModelRevision: 7,
+		RequirementIDs: []string{reqID}, SchemaSnapshotIDs: []string{"snapshot"},
+		ClientRequestID: "bad-confidence", ActorID: "actor",
+	})
+	if !errors.Is(err, entity.ErrMappingTransformInvalid) || result.Run.Status != entity.AnalysisFailed {
+		t.Fatalf("expected failed confidence validation, got %+v %v", result, err)
+	}
+	got, _ := repo.ListMappings(context.Background(), "tenant", "lab", 7, "")
+	if len(got) != 0 {
+		t.Fatalf("invalid proposal persisted: %d", len(got))
 	}
 }
 
@@ -203,13 +246,13 @@ func TestValidateTransformAndJoinRef(t *testing.T) {
 		t.Fatalf("expected target error, got %v", err)
 	}
 	valid := json.RawMessage(`{"type":"JOIN_REF","relationship":"customer","from_fields":["customer_id"],"to_schema":"customers","to_fields":["id"]}`)
-	if err := ValidateTransformSpec(entity.MappingTypeJoinRef, valid); err != nil {
+	if err := ValidateTransformSpec(entity.MappingTypeJoinRef, valid, []string{"customer_id"}, schema); err != nil {
 		t.Fatal(err)
 	}
 	if err := ValidateJoinRef(valid, schema); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateTransformSpec(entity.MappingTypeCast, json.RawMessage(`{"type":"CAST"}`)); !errors.Is(err, entity.ErrMappingTransformInvalid) {
+	if err := ValidateTransformSpec(entity.MappingTypeCast, json.RawMessage(`{"type":"CAST"}`), []string{"customer_id"}, schema); !errors.Is(err, entity.ErrMappingTransformInvalid) {
 		t.Fatalf("expected transform error, got %v", err)
 	}
 }

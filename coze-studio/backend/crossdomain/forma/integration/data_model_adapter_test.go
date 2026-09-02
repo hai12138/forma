@@ -7,8 +7,12 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
+	datasvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
 )
 
 func TestParseDataRequirementProposals(t *testing.T) {
@@ -37,7 +41,44 @@ func TestParseDataRequirementProposals(t *testing.T) {
 func TestSuggestSemanticMappingsRejectsEmptyInputWithoutModelCall(t *testing.T) {
 	model := &CozeEinoDataModel{EnvPrefix: "FORMA_DATA"}
 	_, err := model.SuggestSemanticMappings(context.Background(), nil)
-	if err == nil || !strings.Contains(err.Error(), "requirements and schemas required") {
+	if err == nil || !strings.Contains(err.Error(), "semantic model, requirements, and schemas required") {
 		t.Fatalf("expected request validation, got %v", err)
+	}
+}
+
+func TestSuggestSemanticMappingsRequiresSemanticModel(t *testing.T) {
+	model := &CozeEinoDataModel{EnvPrefix: "FORMA_DATA"}
+	_, err := model.SuggestSemanticMappings(context.Background(), &datasvc.SuggestSemanticMappingsRequest{
+		Requirements:    []datasvc.MappingRequirementMetadata{{RequirementID: "req"}},
+		SchemaSnapshots: []datasvc.NormalizedSchemaSnapshot{{SchemaSnapshotID: "snap"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "semantic model") {
+		t.Fatalf("expected semantic model validation, got %v", err)
+	}
+}
+
+func TestSemanticMappingPayloadContainsCanonicalContext(t *testing.T) {
+	req := &datasvc.SuggestSemanticMappingsRequest{
+		BusinessID:            "lab",
+		BusinessModelRevision: 7,
+		SemanticModel: &businessentity.SemanticModel{
+			SchemaVersion: businessentity.SemanticSchemaVersion,
+			Nodes:         []businessentity.SemanticNode{{ID: "sample", Name: "Sample"}},
+		},
+		Requirements:    []datasvc.MappingRequirementMetadata{{RequirementID: "req"}},
+		SchemaSnapshots: []datasvc.NormalizedSchemaSnapshot{{SchemaSnapshotID: "snap"}},
+	}
+	raw, err := semanticMappingPayload(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"semantic_model", "requirements", "schema_snapshots", "business_id", "business_model_revision"} {
+		if _, ok := payload[key]; !ok {
+			t.Fatalf("payload missing %q: %s", key, raw)
+		}
 	}
 }

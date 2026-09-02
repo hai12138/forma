@@ -62,13 +62,10 @@ func (m *CozeEinoDataModel) AnalyzeDataRequirements(ctx context.Context, req *da
 }
 
 func (m *CozeEinoDataModel) SuggestSemanticMappings(ctx context.Context, req *datasvc.SuggestSemanticMappingsRequest) (*datasvc.SuggestSemanticMappingsResponse, error) {
-	if req == nil || len(req.Requirements) == 0 || len(req.SchemaSnapshots) == 0 {
-		return nil, fmt.Errorf("suggest semantic mappings: requirements and schemas required")
+	if req == nil || req.SemanticModel == nil || len(req.Requirements) == 0 || len(req.SchemaSnapshots) == 0 {
+		return nil, fmt.Errorf("suggest semantic mappings: semantic model, requirements, and schemas required")
 	}
-	payload, err := json.Marshal(struct {
-		Requirements    any `json:"requirements"`
-		SchemaSnapshots any `json:"schema_snapshots"`
-	}{req.Requirements, req.SchemaSnapshots})
+	payload, err := semanticMappingPayload(req)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +75,7 @@ func (m *CozeEinoDataModel) SuggestSemanticMappings(ctx context.Context, req *da
 	}
 	out, err := model.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(semanticMappingSystemPrompt),
-		schema.UserMessage(fmt.Sprintf("Business ID: %s\nBusiness model revision: %d\nInput JSON:\n%s", req.BusinessID, req.BusinessModelRevision, payload)),
+		schema.UserMessage(fmt.Sprintf("Input JSON:\n%s", payload)),
 	})
 	if err != nil {
 		return nil, err
@@ -91,6 +88,22 @@ func (m *CozeEinoDataModel) SuggestSemanticMappings(ctx context.Context, req *da
 		return nil, fmt.Errorf("parse semantic mapping output: %w", err)
 	}
 	return &datasvc.SuggestSemanticMappingsResponse{ModelRef: "coze-eino-builtin", Proposals: decoded.Proposals}, nil
+}
+
+func semanticMappingPayload(req *datasvc.SuggestSemanticMappingsRequest) ([]byte, error) {
+	return json.Marshal(struct {
+		SemanticModel         any    `json:"semantic_model"`
+		Requirements          any    `json:"requirements"`
+		SchemaSnapshots       any    `json:"schema_snapshots"`
+		BusinessID            string `json:"business_id"`
+		BusinessModelRevision int32  `json:"business_model_revision"`
+	}{
+		SemanticModel:         req.SemanticModel,
+		Requirements:          req.Requirements,
+		SchemaSnapshots:       req.SchemaSnapshots,
+		BusinessID:            req.BusinessID,
+		BusinessModelRevision: req.BusinessModelRevision,
+	})
 }
 
 type dataRequirementModelOutput struct {
@@ -135,6 +148,7 @@ Return JSON only:
 Every requirement must reference at least one existing semantic model node, edge, rule, or state ID.
 Do not include data sources, credentials, mappings, contracts, physical schemas, status, or source fields.`
 
-const semanticMappingSystemPrompt = `Propose semantic-to-physical mappings from confirmed requirements to the supplied normalized physical schemas.
+const semanticMappingSystemPrompt = `Business Model is canonical semantic context. Mappings must respect Business Model semantics rather than field-name similarity alone.
+Propose semantic-to-physical mappings from confirmed requirements to the supplied normalized physical schemas.
 Return JSON only: {"proposals":[{"requirement_id":"","source_id":"","connection_id":"","asset_id":"","schema_snapshot_id":"","target_field_paths":[""],"mapping_type":"DIRECT|CAST|ENUM_MAP|UNIT_CONVERT|TIME_NORMALIZE|FIELD_PATH|JOIN_REF","transform_spec":{"type":"DIRECT"},"confidence":0.0,"reason":""}]}.
 Use only IDs and field paths present in the input. transform_spec must be declarative JSON and its type must equal mapping_type. For JOIN_REF, reference one supplied physical relationship exactly. Never emit credentials, connection configuration, secrets, status, source, SQL, scripts, or executable code.`

@@ -34,11 +34,13 @@ type AnalyzeDataRequirementsResponse struct {
 	OutputTokens int32
 }
 
+// SuggestSemanticMappingsRequest must never contain Credential, Secret, or PublicConfig data.
 type SuggestSemanticMappingsRequest struct {
 	RequestID             string
 	TenantID              string
 	BusinessID            string
 	BusinessModelRevision int32
+	SemanticModel         *businessentity.SemanticModel
 	RequirementIDs        []string
 	Requirements          []MappingRequirementMetadata
 	SchemaSnapshots       []NormalizedSchemaSnapshot
@@ -68,10 +70,11 @@ type SuggestSemanticMappingsResponse struct {
 
 // FakeFormaDataModel is a deterministic test double (zero provider calls).
 type FakeFormaDataModel struct {
-	AnalyzeFn    func(ctx context.Context, req *AnalyzeDataRequirementsRequest) (*AnalyzeDataRequirementsResponse, error)
-	Calls        int
-	SuggestFn    func(ctx context.Context, req *SuggestSemanticMappingsRequest) (*SuggestSemanticMappingsResponse, error)
-	SuggestCalls int
+	AnalyzeFn      func(ctx context.Context, req *AnalyzeDataRequirementsRequest) (*AnalyzeDataRequirementsResponse, error)
+	Calls          int
+	SuggestFn      func(ctx context.Context, req *SuggestSemanticMappingsRequest) (*SuggestSemanticMappingsResponse, error)
+	SuggestCalls   int
+	LastSuggestReq *SuggestSemanticMappingsRequest
 }
 
 func (f *FakeFormaDataModel) AnalyzeDataRequirements(ctx context.Context, req *AnalyzeDataRequirementsRequest) (*AnalyzeDataRequirementsResponse, error) {
@@ -84,6 +87,7 @@ func (f *FakeFormaDataModel) AnalyzeDataRequirements(ctx context.Context, req *A
 
 func (f *FakeFormaDataModel) SuggestSemanticMappings(ctx context.Context, req *SuggestSemanticMappingsRequest) (*SuggestSemanticMappingsResponse, error) {
 	f.SuggestCalls++
+	f.LastSuggestReq = req
 	if f.SuggestFn != nil {
 		return f.SuggestFn(ctx, req)
 	}

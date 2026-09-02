@@ -2,7 +2,8 @@
 
 ## Status
 
-**S4-G3 = PASS**
+**S4-G3 = PASS**  
+**FORMA-S4-G3-F1 = PASS** (pending CI record)
 
 ## Baseline
 
@@ -10,6 +11,9 @@
 |------|-------|
 | Parent tip | `22bb090392604f88990acd28364a9ce8f2e1aab6` |
 | S4-G2-F1 | PASS (`356b0c15`) |
+| G3 implementation | `7402f98ce43e53c17afee12831c6b4ed64708472` |
+| G3 CI | [33644969294](https://github.com/hai12138/forma/actions/runs/33644969294) PASS |
+| Pre-F1 main tip | `40fb2bdc0c7b499e31e44a14398f6249d9a0bb93` |
 
 ## Scope Delivered
 
@@ -42,11 +46,13 @@ All production code under `domain/forma/data/` (single S4 bounded context).
 |------|--------|
 | `20250902120000_s4_g3_semantic_mapping.sql` | `forma_data_semantic_mapping`, `forma_data_semantic_mapping_analysis_run`, `forma_data_semantic_mapping_decision` |
 
+G3-F1 migration: **NONE** (no change to G3 migration).
+
 ## Controlled DSL
 
 DIRECT, CAST, ENUM_MAP, UNIT_CONVERT, TIME_NORMALIZE, FIELD_PATH, JOIN_REF — validate + serialize only; no SQL/JS/eval.
 
-## Invariants
+## Invariants (G3)
 
 | Invariant | Result |
 |-----------|--------|
@@ -63,7 +69,7 @@ DIRECT, CAST, ENUM_MAP, UNIT_CONVERT, TIME_NORMALIZE, FIELD_PATH, JOIN_REF — v
 | G2_REGRESSION | PASS |
 | REAL_MODEL_CALLS | 0 |
 
-## Delivery
+## G3 Delivery
 
 | Item | Value |
 |------|-------|
@@ -73,6 +79,49 @@ DIRECT, CAST, ENUM_MAP, UNIT_CONVERT, TIME_NORMALIZE, FIELD_PATH, JOIN_REF — v
 | forma-migration-apply | PASS |
 | forma-frontend | PASS |
 | S4-G3 final status | **PASS** |
+
+## G3-F1 Contract Hardening
+
+**FORMA-S4-G3-F1 = PASS** (local suites green; CI SHA below after push)
+
+| Invariant | Result |
+|-----------|--------|
+| BUSINESS_MODEL_CONTEXT | PASS |
+| PINNED_SEMANTIC_MODEL | PASS |
+| FIELD_PATH_NO_GUESS | PASS |
+| DUPLICATE_PATH_REJECTED | PASS |
+| DIRECT_CARDINALITY | PASS |
+| FIELD_PATH_CONSISTENCY | PASS |
+| CAST_DSL | PASS |
+| ENUM_MAP_DSL | PASS |
+| UNIT_CONVERT_DSL | PASS |
+| TIME_NORMALIZE_DSL | PASS |
+| JOIN_REF_DSL | PASS |
+| CONFIDENCE_VALIDATION | PASS |
+| APPLICATION_AUTH | PASS |
+| TENANT_ISOLATION | PASS |
+| BUSINESS_MODEL_MUTATION | NONE |
+| G1_REGRESSION | PASS |
+| G2_REGRESSION | PASS |
+| REAL_MODEL_CALLS | 0 |
+
+### Hardening notes
+
+- Canonical `PhysicalField.Path` is mandatory and unique; field-name fallback is denied.
+- Mapping targets are non-empty, exact, and duplicate-free.
+- DIRECT, FIELD_PATH, CAST, ENUM_MAP, UNIT_CONVERT, TIME_NORMALIZE, and JOIN_REF contracts are fully validated.
+- AI and manual confidence values are bounded to `[0,1]`; confidence never authorizes confirmation.
+- Mapping analysis loads the pinned Business Model revision without mutating the current revision.
+- Suggest payload includes `semantic_model`, requirements, schema snapshots, business ID, and revision.
+- Credential / Secret / PublicConfig remain excluded from model requests.
+- OWNER/ADMIN mutation, MEMBER read-only access, and tenant isolation covered by `mapping_app_test.go`.
+- Migration: NONE.
+- REAL_MODEL_CALLS: 0.
+
+| Item | Value |
+|------|-------|
+| Commit SHA | TBD |
+| Forma CI | TBD |
 
 ## STOP
 

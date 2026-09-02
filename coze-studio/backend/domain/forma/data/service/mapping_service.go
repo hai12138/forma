@@ -196,6 +196,9 @@ func (s *mappingService) loadMappingInputs(ctx context.Context, in *AnalyzeSeman
 		if json.Unmarshal([]byte(snap.SchemaJSON), &schema) != nil {
 			return nil, nil, entity.ErrMappingTargetInvalid
 		}
+		if err := ValidateSchemaPaths(&schema); err != nil {
+			return nil, nil, err
+		}
 		snaps = append(snaps, NormalizedSchemaSnapshot{snap.SnapshotID, snap.SourceID, snap.ConnectionID, snap.AssetID, schema})
 	}
 	return reqs, snaps, nil
@@ -205,7 +208,14 @@ func (s *mappingService) executeMappingAnalysis(ctx context.Context, run *entity
 	if err != nil {
 		return s.failMappingRun(ctx, run, err)
 	}
-	resp, err := s.model.SuggestSemanticMappings(ctx, &SuggestSemanticMappingsRequest{RequestID: run.AnalysisRunID, TenantID: run.TenantID, BusinessID: run.BusinessID, BusinessModelRevision: run.BusinessModelRevision, RequirementIDs: append([]string(nil), in.RequirementIDs...), Requirements: reqs, SchemaSnapshots: snaps})
+	if s.business == nil {
+		return s.failMappingRun(ctx, run, entity.ErrBusinessRevisionNotFound)
+	}
+	_, semanticModel, err := s.business.GetRevision(ctx, run.TenantID, run.BusinessID, run.BusinessModelRevision)
+	if err != nil || semanticModel == nil {
+		return s.failMappingRun(ctx, run, entity.ErrBusinessRevisionNotFound)
+	}
+	resp, err := s.model.SuggestSemanticMappings(ctx, &SuggestSemanticMappingsRequest{RequestID: run.AnalysisRunID, TenantID: run.TenantID, BusinessID: run.BusinessID, BusinessModelRevision: run.BusinessModelRevision, SemanticModel: semanticModel, RequirementIDs: append([]string(nil), in.RequirementIDs...), Requirements: reqs, SchemaSnapshots: snaps})
 	if err != nil || resp == nil {
 		if err == nil {
 			err = errors.New("empty model response")
@@ -236,13 +246,11 @@ func (s *mappingService) executeMappingAnalysis(ctx context.Context, run *entity
 		if err := ValidateMappingTarget(p.TargetFieldPaths, &snap.Schema); err != nil {
 			return s.failMappingRun(ctx, run, err)
 		}
-		if err := ValidateTransformSpec(p.MappingType, p.TransformSpec); err != nil {
+		if err := ValidateTransformSpec(p.MappingType, p.TransformSpec, p.TargetFieldPaths, &snap.Schema); err != nil {
 			return s.failMappingRun(ctx, run, err)
 		}
-		if p.MappingType == entity.MappingTypeJoinRef {
-			if err := ValidateJoinRef(p.TransformSpec, &snap.Schema); err != nil {
-				return s.failMappingRun(ctx, run, err)
-			}
+		if err := ValidateConfidence(p.Confidence, true); err != nil {
+			return s.failMappingRun(ctx, run, err)
 		}
 		maps = append(maps, &entity.SemanticMapping{MappingID: newID("map"), TenantID: run.TenantID, BusinessID: run.BusinessID, BusinessModelRevision: run.BusinessModelRevision, RequirementID: p.RequirementID, SourceID: p.SourceID, ConnectionID: p.ConnectionID, AssetID: p.AssetID, SchemaSnapshotID: p.SchemaSnapshotID, TargetFieldPaths: append([]string(nil), p.TargetFieldPaths...), MappingType: p.MappingType, TransformSpec: append([]byte(nil), p.TransformSpec...), Status: entity.MappingStatusProposed, Source: entity.MappingSourceAIGenerated, Confidence: p.Confidence, Reason: p.Reason, AnalysisRunID: run.AnalysisRunID, CreatedBy: run.CreatedBy, CreatedAt: now, UpdatedAt: now})
 	}
@@ -328,13 +336,11 @@ func (s *mappingService) validateManual(ctx context.Context, in *ManualMappingIn
 	if err := ValidateMappingTarget(in.TargetFieldPaths, &schema); err != nil {
 		return nil, err
 	}
-	if err := ValidateTransformSpec(in.MappingType, in.TransformSpec); err != nil {
+	if err := ValidateTransformSpec(in.MappingType, in.TransformSpec, in.TargetFieldPaths, &schema); err != nil {
 		return nil, err
 	}
-	if in.MappingType == entity.MappingTypeJoinRef {
-		if err := ValidateJoinRef(in.TransformSpec, &schema); err != nil {
-			return nil, err
-		}
+	if err := ValidateConfidence(in.Confidence, false); err != nil {
+		return nil, err
 	}
 	return &schema, nil
 }
@@ -422,7 +428,7 @@ func (s *mappingService) EditConfirmMapping(ctx context.Context, in *EditConfirm
 		} else if !errors.Is(err, entity.ErrMappingNotFound) {
 			return err
 		}
-		manual := &ManualMappingInput{TenantID: old.TenantID, BusinessID: old.BusinessID, BusinessModelRevision: old.BusinessModelRevision, RequirementID: old.RequirementID, SourceID: firstNonEmpty(in.SourceID, old.SourceID), ConnectionID: firstNonEmpty(in.ConnectionID, old.ConnectionID), AssetID: firstNonEmpty(in.AssetID, old.AssetID), SchemaSnapshotID: firstNonEmpty(in.SchemaSnapshotID, old.SchemaSnapshotID), TargetFieldPaths: in.TargetFieldPaths, MappingType: in.MappingType, TransformSpec: in.TransformSpec}
+		manual := &ManualMappingInput{TenantID: old.TenantID, BusinessID: old.BusinessID, BusinessModelRevision: old.BusinessModelRevision, RequirementID: old.RequirementID, SourceID: firstNonEmpty(in.SourceID, old.SourceID), ConnectionID: firstNonEmpty(in.ConnectionID, old.ConnectionID), AssetID: firstNonEmpty(in.AssetID, old.AssetID), SchemaSnapshotID: firstNonEmpty(in.SchemaSnapshotID, old.SchemaSnapshotID), TargetFieldPaths: in.TargetFieldPaths, MappingType: in.MappingType, TransformSpec: in.TransformSpec, Confidence: in.Confidence}
 		if len(manual.TargetFieldPaths) == 0 {
 			manual.TargetFieldPaths = old.TargetFieldPaths
 		}

@@ -44,26 +44,26 @@ type DirectTransformSpec struct {
 	Type MappingType `json:"type"`
 }
 type CastTransformSpec struct {
-	Type MappingType `json:"type"`
-	To   string      `json:"to"`
+	Type     MappingType `json:"type"`
+	FromType string      `json:"from_type"`
+	ToType   string      `json:"to_type"`
 }
 type EnumMapTransformSpec struct {
-	Type    MappingType       `json:"type"`
-	Values  map[string]string `json:"values"`
-	Default *string           `json:"default,omitempty"`
+	Type  MappingType       `json:"type"`
+	Pairs map[string]string `json:"pairs"`
 }
 type UnitConvertTransformSpec struct {
-	Type   MappingType `json:"type"`
-	From   string      `json:"from"`
-	To     string      `json:"to"`
-	Factor float64     `json:"factor"`
-	Offset float64     `json:"offset,omitempty"`
+	Type     MappingType `json:"type"`
+	FromUnit string      `json:"from_unit"`
+	ToUnit   string      `json:"to_unit"`
+	Factor   float64     `json:"factor"`
+	Offset   float64     `json:"offset"`
 }
 type TimeNormalizeTransformSpec struct {
-	Type         MappingType `json:"type"`
-	InputFormat  string      `json:"input_format"`
-	OutputFormat string      `json:"output_format"`
-	Timezone     string      `json:"timezone,omitempty"`
+	Type           MappingType `json:"type"`
+	SourceTimezone string      `json:"source_timezone"`
+	TargetTimezone string      `json:"target_timezone"`
+	Format         string      `json:"format"`
 }
 type FieldPathTransformSpec struct {
 	Type MappingType `json:"type"`
