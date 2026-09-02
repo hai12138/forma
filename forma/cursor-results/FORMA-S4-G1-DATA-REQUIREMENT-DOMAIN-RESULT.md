@@ -147,3 +147,45 @@ Both use the same domain, API, tables, and enums — no industry switch.
 ## STOP
 
 Do **not** start S4-G2. Do **not** create `forma-s4-frozen`. Await human review.
+
+---
+
+## G1-F1 — Analysis Lease Recovery / Retry Audit
+
+**Status:** PASS (pending CI confirmation)
+
+### Reliability Hardening
+
+| Component | Result |
+|-----------|--------|
+| PENDING execution lease (5 min default) | PASS |
+| Expired PENDING CAS takeover | PASS |
+| Execution generation fencing | PASS |
+| Old owner cannot complete after takeover | PASS |
+| Explicit FAILED retry CAS | PASS |
+| Retry actor audit (`last_retry_by`, `last_retry_at`) | PASS |
+| `created_by` preserved on retry | PASS |
+| `retry_count` increments | PASS |
+
+### Migration
+
+| File | Change |
+|------|--------|
+| `20250902103000_s4_g1_analysis_lease_audit.sql` | Adds `execution_generation`, `execution_claimed_at`, `lease_expires_at`, `last_retry_by`, `last_retry_at` |
+
+### G1-F1 Invariants
+
+| Invariant | Result |
+|-----------|--------|
+| PENDING_LEASE_RECOVERY | PASS |
+| EXECUTION_FENCING | PASS |
+| RETRY_ACTOR_AUDIT | PASS |
+| REAL_MODEL_CALLS | 0 |
+
+### G1-F1 Delivery
+
+| Item | Value |
+|------|-------|
+| Commit SHA | TBD |
+| Forma CI | TBD |
+| S4-G1-F1 final status | TBD |

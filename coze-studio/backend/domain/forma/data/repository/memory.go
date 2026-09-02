@@ -82,6 +82,18 @@ func cloneRun(in *entity.DataRequirementAnalysisRun) *entity.DataRequirementAnal
 		v := *in.CompletedAt
 		out.CompletedAt = &v
 	}
+	if in.LastRetryAt != nil {
+		v := *in.LastRetryAt
+		out.LastRetryAt = &v
+	}
+	if in.ExecutionClaimedAt != nil {
+		v := *in.ExecutionClaimedAt
+		out.ExecutionClaimedAt = &v
+	}
+	if in.LeaseExpiresAt != nil {
+		v := *in.LeaseExpiresAt
+		out.LeaseExpiresAt = &v
+	}
 	return &out
 }
 
@@ -180,9 +192,20 @@ func (r *memRepo) createOrClaimAnalysisRun(_ context.Context, run *entity.DataRe
 	if _, exists := r.runs[idKey]; exists {
 		return nil, false, fmt.Errorf("duplicate data analysis run %q", run.AnalysisRunID)
 	}
-	r.runs[idKey] = cloneRun(run)
+	stored := cloneRun(run)
+	if stored.ExecutionGeneration == 0 {
+		stored.ExecutionGeneration = 1
+	}
+	if stored.ExecutionClaimedAt == nil && stored.StartedAt != nil {
+		stored.ExecutionClaimedAt = stored.StartedAt
+	}
+	if stored.LeaseExpiresAt == nil && stored.ExecutionClaimedAt != nil {
+		exp := stored.ExecutionClaimedAt.Add(5 * time.Minute)
+		stored.LeaseExpiresAt = &exp
+	}
+	r.runs[idKey] = stored
 	r.runKeys[key] = run.AnalysisRunID
-	return cloneRun(run), true, nil
+	return cloneRun(stored), true, nil
 }
 
 func (r *memRepo) GetAnalysisRun(ctx context.Context, tenantID, analysisRunID string) (*entity.DataRequirementAnalysisRun, error) {
@@ -213,18 +236,18 @@ func (r *memRepo) getAnalysisRunByIdempotencyKey(ctx context.Context, tenantID, 
 	return r.getAnalysisRun(ctx, tenantID, id)
 }
 
-func (r *memRepo) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string) error {
+func (r *memRepo) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string, expectedGeneration int32) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.markAnalysisSucceeded(ctx, tenantID, analysisRunID, modelRef)
+	return r.markAnalysisSucceeded(ctx, tenantID, analysisRunID, modelRef, expectedGeneration)
 }
 
-func (r *memRepo) markAnalysisSucceeded(_ context.Context, tenantID, analysisRunID, modelRef string) error {
+func (r *memRepo) markAnalysisSucceeded(_ context.Context, tenantID, analysisRunID, modelRef string, expectedGeneration int32) error {
 	run, ok := r.runs[runKey(tenantID, analysisRunID)]
 	if !ok {
 		return entity.ErrAnalysisNotFound
 	}
-	if run.Status != entity.AnalysisPending {
+	if run.Status != entity.AnalysisPending || run.ExecutionGeneration != expectedGeneration {
 		return entity.ErrRequirementInvalidState
 	}
 	now := time.Now().UTC()
@@ -233,18 +256,18 @@ func (r *memRepo) markAnalysisSucceeded(_ context.Context, tenantID, analysisRun
 	return nil
 }
 
-func (r *memRepo) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string) error {
+func (r *memRepo) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string, expectedGeneration int32) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.markAnalysisFailed(ctx, tenantID, analysisRunID, errorKey, sanitizedMsg)
+	return r.markAnalysisFailed(ctx, tenantID, analysisRunID, errorKey, sanitizedMsg, expectedGeneration)
 }
 
-func (r *memRepo) markAnalysisFailed(_ context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string) error {
+func (r *memRepo) markAnalysisFailed(_ context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string, expectedGeneration int32) error {
 	run, ok := r.runs[runKey(tenantID, analysisRunID)]
 	if !ok {
 		return entity.ErrAnalysisNotFound
 	}
-	if run.Status != entity.AnalysisPending {
+	if run.Status != entity.AnalysisPending || run.ExecutionGeneration != expectedGeneration {
 		return entity.ErrRequirementInvalidState
 	}
 	if len(sanitizedMsg) > 1024 {
@@ -256,21 +279,71 @@ func (r *memRepo) markAnalysisFailed(_ context.Context, tenantID, analysisRunID,
 	return nil
 }
 
-func (r *memRepo) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID string) (bool, error) {
+func (r *memRepo) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID, actorID string) (bool, int32, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.claimAnalysisRetry(ctx, tenantID, analysisRunID)
+	return r.claimAnalysisRetry(ctx, tenantID, analysisRunID, actorID)
 }
 
-func (r *memRepo) claimAnalysisRetry(_ context.Context, tenantID, analysisRunID string) (bool, error) {
+func (r *memRepo) claimAnalysisRetry(_ context.Context, tenantID, analysisRunID, actorID string) (bool, int32, error) {
 	run, ok := r.runs[runKey(tenantID, analysisRunID)]
 	if !ok || run.Status != entity.AnalysisFailed {
-		return false, nil
+		return false, 0, nil
 	}
 	now := time.Now().UTC()
-	run.Status, run.RetryCount, run.StartedAt, run.CompletedAt = entity.AnalysisPending, run.RetryCount+1, &now, nil
-	run.ErrorKey, run.ErrorMessageSanitized, run.UpdatedAt = "", "", now
-	return true, nil
+	exp := now.Add(5 * time.Minute)
+	newGen := run.ExecutionGeneration + 1
+	run.Status = entity.AnalysisPending
+	run.RetryCount++
+	run.LastRetryBy = actorID
+	run.LastRetryAt = &now
+	run.ExecutionGeneration = newGen
+	run.ExecutionClaimedAt = &now
+	run.LeaseExpiresAt = &exp
+	run.StartedAt = &now
+	run.CompletedAt = nil
+	run.ErrorKey, run.ErrorMessageSanitized = "", ""
+	run.UpdatedAt = now
+	return true, newGen, nil
+}
+
+func (r *memRepo) ClaimExpiredPendingExecution(ctx context.Context, tenantID, analysisRunID string, expectedGeneration int32, now time.Time) (*entity.DataRequirementAnalysisRun, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.claimExpiredPendingExecution(ctx, tenantID, analysisRunID, expectedGeneration, now)
+}
+
+func (r *memRepo) claimExpiredPendingExecution(_ context.Context, tenantID, analysisRunID string, expectedGeneration int32, now time.Time) (*entity.DataRequirementAnalysisRun, bool, error) {
+	run, ok := r.runs[runKey(tenantID, analysisRunID)]
+	if !ok {
+		return nil, false, entity.ErrAnalysisNotFound
+	}
+	if run.Status != entity.AnalysisPending || run.ExecutionGeneration != expectedGeneration {
+		latest, _ := r.getAnalysisRun(context.Background(), tenantID, analysisRunID)
+		return latest, false, nil
+	}
+	if run.LeaseExpiresAt == nil || now.Before(*run.LeaseExpiresAt) {
+		return cloneRun(run), false, nil
+	}
+	exp := now.Add(5 * time.Minute)
+	run.ExecutionGeneration = expectedGeneration + 1
+	run.ExecutionClaimedAt = &now
+	run.LeaseExpiresAt = &exp
+	run.StartedAt = &now
+	run.UpdatedAt = now
+	return cloneRun(run), true, nil
+}
+
+// SetLeaseExpiresAtForTest adjusts lease expiry for abandoned-PENDING test scenarios.
+func (r *memRepo) SetLeaseExpiresAtForTest(_ context.Context, tenantID, analysisRunID string, expiresAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	run, ok := r.runs[runKey(tenantID, analysisRunID)]
+	if !ok {
+		return entity.ErrAnalysisNotFound
+	}
+	run.LeaseExpiresAt = &expiresAt
+	return nil
 }
 
 func (r *memRepo) CreateDecision(ctx context.Context, d *entity.DataRequirementDecision) error {
@@ -431,14 +504,17 @@ func (tx *memRepoTx) GetAnalysisRun(ctx context.Context, tenantID, analysisRunID
 func (tx *memRepoTx) GetAnalysisRunByIdempotencyKey(ctx context.Context, tenantID, businessID string, revision int32, clientRequestID string) (*entity.DataRequirementAnalysisRun, error) {
 	return tx.repo.getAnalysisRunByIdempotencyKey(ctx, tenantID, businessID, revision, clientRequestID)
 }
-func (tx *memRepoTx) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string) error {
-	return tx.repo.markAnalysisSucceeded(ctx, tenantID, analysisRunID, modelRef)
+func (tx *memRepoTx) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string, expectedGeneration int32) error {
+	return tx.repo.markAnalysisSucceeded(ctx, tenantID, analysisRunID, modelRef, expectedGeneration)
 }
-func (tx *memRepoTx) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string) error {
-	return tx.repo.markAnalysisFailed(ctx, tenantID, analysisRunID, errorKey, sanitizedMsg)
+func (tx *memRepoTx) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string, expectedGeneration int32) error {
+	return tx.repo.markAnalysisFailed(ctx, tenantID, analysisRunID, errorKey, sanitizedMsg, expectedGeneration)
 }
-func (tx *memRepoTx) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID string) (bool, error) {
-	return tx.repo.claimAnalysisRetry(ctx, tenantID, analysisRunID)
+func (tx *memRepoTx) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID, actorID string) (bool, int32, error) {
+	return tx.repo.claimAnalysisRetry(ctx, tenantID, analysisRunID, actorID)
+}
+func (tx *memRepoTx) ClaimExpiredPendingExecution(ctx context.Context, tenantID, analysisRunID string, expectedGeneration int32, now time.Time) (*entity.DataRequirementAnalysisRun, bool, error) {
+	return tx.repo.claimExpiredPendingExecution(ctx, tenantID, analysisRunID, expectedGeneration, now)
 }
 func (tx *memRepoTx) CreateDecision(ctx context.Context, d *entity.DataRequirementDecision) error {
 	return tx.repo.createDecision(ctx, d)

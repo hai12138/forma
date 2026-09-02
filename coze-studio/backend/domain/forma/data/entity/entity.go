@@ -90,6 +90,11 @@ type DataRequirementAnalysisRun struct {
 	ErrorKey                string
 	ErrorMessageSanitized   string
 	RetryCount              int32
+	LastRetryBy             string
+	LastRetryAt             *time.Time
+	ExecutionGeneration     int32
+	ExecutionClaimedAt      *time.Time
+	LeaseExpiresAt          *time.Time
 	CreatedBy               string
 	StartedAt               *time.Time
 	CompletedAt             *time.Time

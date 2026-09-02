@@ -62,6 +62,11 @@ type analysisRunRow struct {
 	ErrorKey              string     `gorm:"column:error_key"`
 	ErrorMessageSanitized string     `gorm:"column:error_message_sanitized"`
 	RetryCount            int32      `gorm:"column:retry_count"`
+	LastRetryBy           string     `gorm:"column:last_retry_by"`
+	LastRetryAt           *time.Time `gorm:"column:last_retry_at"`
+	ExecutionGeneration   int32      `gorm:"column:execution_generation"`
+	ExecutionClaimedAt    *time.Time `gorm:"column:execution_claimed_at"`
+	LeaseExpiresAt        *time.Time `gorm:"column:lease_expires_at"`
 	CreatedBy             string     `gorm:"column:created_by"`
 	StartedAt             *time.Time `gorm:"column:started_at"`
 	CompletedAt           *time.Time `gorm:"column:completed_at"`
@@ -166,6 +171,11 @@ func toAnalysisRun(r *analysisRunRow) *entity.DataRequirementAnalysisRun {
 		ErrorKey:              r.ErrorKey,
 		ErrorMessageSanitized: r.ErrorMessageSanitized,
 		RetryCount:            r.RetryCount,
+		LastRetryBy:           r.LastRetryBy,
+		LastRetryAt:           r.LastRetryAt,
+		ExecutionGeneration:   r.ExecutionGeneration,
+		ExecutionClaimedAt:    r.ExecutionClaimedAt,
+		LeaseExpiresAt:        r.LeaseExpiresAt,
 		CreatedBy:             r.CreatedBy,
 		StartedAt:             r.StartedAt,
 		CompletedAt:           r.CompletedAt,
@@ -238,6 +248,12 @@ func (d *DataDAO) UpdateRequirementStatusCAS(ctx context.Context, tenantID, requ
 	return res.RowsAffected == 1, nil
 }
 
+const analysisExecutionLease = 5 * time.Minute
+
+func leaseExpiryFrom(now time.Time) time.Time {
+	return now.Add(analysisExecutionLease)
+}
+
 func (d *DataDAO) CreateOrClaimAnalysisRun(ctx context.Context, run *entity.DataRequirementAnalysisRun) (*entity.DataRequirementAnalysisRun, bool, error) {
 	existing, err := d.GetAnalysisRunByIdempotencyKey(ctx, run.TenantID, run.BusinessID, run.BusinessModelRevision, run.ClientRequestID)
 	if err == nil {
@@ -259,10 +275,20 @@ func (d *DataDAO) CreateOrClaimAnalysisRun(ctx context.Context, run *entity.Data
 		RequestDigest:         run.RequestDigest,
 		Status:                string(run.Status),
 		ModelRef:              run.ModelRef,
+		ExecutionGeneration:   1,
+		ExecutionClaimedAt:    run.ExecutionClaimedAt,
+		LeaseExpiresAt:        run.LeaseExpiresAt,
 		CreatedBy:             run.CreatedBy,
 		StartedAt:             run.StartedAt,
 		CreatedAt:             run.CreatedAt,
 		UpdatedAt:             run.UpdatedAt,
+	}
+	if row.ExecutionClaimedAt == nil && run.StartedAt != nil {
+		row.ExecutionClaimedAt = run.StartedAt
+	}
+	if row.LeaseExpiresAt == nil && row.ExecutionClaimedAt != nil {
+		exp := leaseExpiryFrom(*row.ExecutionClaimedAt)
+		row.LeaseExpiresAt = &exp
 	}
 	err = d.db.WithContext(ctx).Create(row).Error
 	if err != nil {
@@ -310,16 +336,17 @@ func (d *DataDAO) GetAnalysisRunByIdempotencyKey(ctx context.Context, tenantID, 
 	return toAnalysisRun(&row), nil
 }
 
-func (d *DataDAO) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string) error {
+func (d *DataDAO) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string, expectedGeneration int32) error {
 	now := time.Now().UTC()
 	res := d.db.WithContext(ctx).Model(&analysisRunRow{}).
-		Where("tenant_id = ? AND analysis_run_id = ? AND status = ?", tenantID, analysisRunID, string(entity.AnalysisPending)).
+		Where("tenant_id = ? AND analysis_run_id = ? AND status = ? AND execution_generation = ?",
+			tenantID, analysisRunID, string(entity.AnalysisPending), expectedGeneration).
 		Updates(map[string]any{
-			"status":       string(entity.AnalysisSucceeded),
-			"model_ref":    modelRef,
-			"completed_at": now,
-			"updated_at":   now,
-			"error_key":    "",
+			"status":                  string(entity.AnalysisSucceeded),
+			"model_ref":               modelRef,
+			"completed_at":            now,
+			"updated_at":              now,
+			"error_key":               "",
 			"error_message_sanitized": "",
 		})
 	if res.Error != nil {
@@ -331,13 +358,14 @@ func (d *DataDAO) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisR
 	return nil
 }
 
-func (d *DataDAO) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string) error {
+func (d *DataDAO) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string, expectedGeneration int32) error {
 	now := time.Now().UTC()
 	if len(sanitizedMsg) > 1024 {
 		sanitizedMsg = sanitizedMsg[:1024]
 	}
 	res := d.db.WithContext(ctx).Model(&analysisRunRow{}).
-		Where("tenant_id = ? AND analysis_run_id = ? AND status = ?", tenantID, analysisRunID, string(entity.AnalysisPending)).
+		Where("tenant_id = ? AND analysis_run_id = ? AND status = ? AND execution_generation = ?",
+			tenantID, analysisRunID, string(entity.AnalysisPending), expectedGeneration).
 		Updates(map[string]any{
 			"status":                  string(entity.AnalysisFailed),
 			"error_key":               errorKey,
@@ -354,13 +382,31 @@ func (d *DataDAO) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunI
 	return nil
 }
 
-func (d *DataDAO) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID string) (bool, error) {
-	now := time.Now().UTC()
-	res := d.db.WithContext(ctx).Model(&analysisRunRow{}).
+func (d *DataDAO) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID, actorID string) (bool, int32, error) {
+	var row analysisRunRow
+	err := d.db.WithContext(ctx).
 		Where("tenant_id = ? AND analysis_run_id = ? AND status = ?", tenantID, analysisRunID, string(entity.AnalysisFailed)).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, 0, nil
+	}
+	if err != nil {
+		return false, 0, err
+	}
+	now := time.Now().UTC()
+	exp := leaseExpiryFrom(now)
+	newGen := row.ExecutionGeneration + 1
+	res := d.db.WithContext(ctx).Model(&analysisRunRow{}).
+		Where("tenant_id = ? AND analysis_run_id = ? AND status = ? AND execution_generation = ?",
+			tenantID, analysisRunID, string(entity.AnalysisFailed), row.ExecutionGeneration).
 		Updates(map[string]any{
 			"status":                  string(entity.AnalysisPending),
 			"retry_count":             gorm.Expr("retry_count + 1"),
+			"last_retry_by":           actorID,
+			"last_retry_at":           now,
+			"execution_generation":    newGen,
+			"execution_claimed_at":    now,
+			"lease_expires_at":        exp,
 			"started_at":              now,
 			"completed_at":            nil,
 			"error_key":               "",
@@ -368,9 +414,39 @@ func (d *DataDAO) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunI
 			"updated_at":              now,
 		})
 	if res.Error != nil {
-		return false, res.Error
+		return false, 0, res.Error
 	}
-	return res.RowsAffected == 1, nil
+	if res.RowsAffected != 1 {
+		return false, 0, nil
+	}
+	return true, newGen, nil
+}
+
+func (d *DataDAO) ClaimExpiredPendingExecution(ctx context.Context, tenantID, analysisRunID string, expectedGeneration int32, now time.Time) (*entity.DataRequirementAnalysisRun, bool, error) {
+	exp := leaseExpiryFrom(now)
+	newGen := expectedGeneration + 1
+	res := d.db.WithContext(ctx).Model(&analysisRunRow{}).
+		Where("tenant_id = ? AND analysis_run_id = ? AND status = ? AND execution_generation = ? AND lease_expires_at <= ?",
+			tenantID, analysisRunID, string(entity.AnalysisPending), expectedGeneration, now).
+		Updates(map[string]any{
+			"execution_generation": newGen,
+			"execution_claimed_at": now,
+			"lease_expires_at":     exp,
+			"started_at":           now,
+			"updated_at":           now,
+		})
+	if res.Error != nil {
+		return nil, false, res.Error
+	}
+	if res.RowsAffected != 1 {
+		latest, err := d.GetAnalysisRun(ctx, tenantID, analysisRunID)
+		return latest, false, err
+	}
+	run, err := d.GetAnalysisRun(ctx, tenantID, analysisRunID)
+	if err != nil {
+		return nil, false, err
+	}
+	return run, true, nil
 }
 
 func (d *DataDAO) CreateDecision(ctx context.Context, dec *entity.DataRequirementDecision) error {

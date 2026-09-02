@@ -7,3 +7,4 @@ h1:zC9wS0VzXjUYuY6kMVcUBWfVqi3e7ODi4sVFvguiKAw=
 20250902010000_s3_g1_integrity.sql h1:owIJMRwaPTg9c4o+FcVlyOKxXj6s7l+djC+NPTVE7gw=
 20250902020000_s3_g2_context_gap.sql h1:v/P5eQXaZbRaT2L6gKNgYrw7q3r8DWMFLRe6NlSSTCk=
 20250902100000_s4_g1_data_requirement.sql h1:hyqjXOx+bkDbL6z36EtoShioBxp+5jthqM0eZ9c5M3E=
+20250902103000_s4_g1_analysis_lease_audit.sql h1:REChDYIselDSJLDHsS9yT8aXtw5FCS1Af671suQbDA4=

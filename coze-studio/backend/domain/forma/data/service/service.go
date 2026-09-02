@@ -214,21 +214,56 @@ func (s *dataServiceImpl) AnalyzeDataRequirements(ctx context.Context, in *Analy
 		CreatedAt:             now,
 		UpdatedAt:             now,
 	}
+	seedExecutionLease(run, now)
 
 	existing, created, err := s.repo.CreateOrClaimAnalysisRun(ctx, run)
 	if err != nil {
 		return nil, err
 	}
 	if !created {
-		reqs, lerr := s.repo.ListRequirementsByRevision(ctx, in.TenantID, in.BusinessID, in.BusinessModelRevision)
-		if lerr != nil {
-			return nil, lerr
-		}
-		filtered := filterByAnalysisRun(reqs, existing.AnalysisRunID)
-		return &AnalyzeResult{Run: existing, Requirements: filtered, OwnedExecute: false}, nil
+		return s.handleExistingAnalysisRun(ctx, in, existing, sm)
 	}
 
-	return s.executeAnalysis(ctx, existing, sm, in.ActorID)
+	return s.executeAnalysis(ctx, existing, sm, in.ActorID, existing.ExecutionGeneration)
+}
+
+func (s *dataServiceImpl) handleExistingAnalysisRun(ctx context.Context, in *AnalyzeInput, existing *entity.DataRequirementAnalysisRun, sm *businessentity.SemanticModel) (*AnalyzeResult, error) {
+	reqs, lerr := s.repo.ListRequirementsByRevision(ctx, in.TenantID, in.BusinessID, in.BusinessModelRevision)
+	if lerr != nil {
+		return nil, lerr
+	}
+	filtered := filterByAnalysisRun(reqs, existing.AnalysisRunID)
+	now := time.Now().UTC()
+
+	switch existing.Status {
+	case entity.AnalysisSucceeded, entity.AnalysisFailed:
+		return &AnalyzeResult{Run: existing, Requirements: filtered, OwnedExecute: false}, nil
+	case entity.AnalysisPending:
+		if hasActiveAnalysisLease(existing, now) {
+			return &AnalyzeResult{Run: existing, Requirements: filtered, OwnedExecute: false}, nil
+		}
+		if !analysisLeaseExpired(existing, now) {
+			return &AnalyzeResult{Run: existing, Requirements: filtered, OwnedExecute: false}, nil
+		}
+		run, claimed, err := s.repo.ClaimExpiredPendingExecution(ctx, in.TenantID, existing.AnalysisRunID, existing.ExecutionGeneration, now)
+		if err != nil {
+			return nil, err
+		}
+		if !claimed {
+			latest, gerr := s.repo.GetAnalysisRun(ctx, in.TenantID, existing.AnalysisRunID)
+			if gerr != nil {
+				return nil, gerr
+			}
+			reqs, lerr = s.repo.ListRequirementsByRevision(ctx, in.TenantID, in.BusinessID, in.BusinessModelRevision)
+			if lerr != nil {
+				return nil, lerr
+			}
+			return &AnalyzeResult{Run: latest, Requirements: filterByAnalysisRun(reqs, latest.AnalysisRunID), OwnedExecute: false}, nil
+		}
+		return s.executeAnalysis(ctx, run, sm, in.ActorID, run.ExecutionGeneration)
+	default:
+		return &AnalyzeResult{Run: existing, Requirements: filtered, OwnedExecute: false}, nil
+	}
 }
 
 func filterByAnalysisRun(reqs []*entity.DataRequirement, runID string) []*entity.DataRequirement {
@@ -241,7 +276,7 @@ func filterByAnalysisRun(reqs []*entity.DataRequirement, runID string) []*entity
 	return out
 }
 
-func (s *dataServiceImpl) executeAnalysis(ctx context.Context, run *entity.DataRequirementAnalysisRun, sm *businessentity.SemanticModel, actorID string) (*AnalyzeResult, error) {
+func (s *dataServiceImpl) executeAnalysis(ctx context.Context, run *entity.DataRequirementAnalysisRun, sm *businessentity.SemanticModel, actorID string, generation int32) (*AnalyzeResult, error) {
 	resp, err := s.model.AnalyzeDataRequirements(ctx, &AnalyzeDataRequirementsRequest{
 		RequestID:             run.AnalysisRunID,
 		TenantID:              run.TenantID,
@@ -250,12 +285,12 @@ func (s *dataServiceImpl) executeAnalysis(ctx context.Context, run *entity.DataR
 		SemanticModel:         sm,
 	})
 	if err != nil {
-		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, "FORMA_DATA_MODEL_FAILED", sanitizeError(err.Error()))
+		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, "FORMA_DATA_MODEL_FAILED", sanitizeError(err.Error()), generation)
 		failed, _ := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
 		return &AnalyzeResult{Run: failed, Requirements: nil, OwnedExecute: true}, entity.ErrModelFailed
 	}
 	if resp == nil {
-		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, "FORMA_DATA_MODEL_FAILED", "empty model response")
+		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, "FORMA_DATA_MODEL_FAILED", "empty model response", generation)
 		failed, _ := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
 		return &AnalyzeResult{Run: failed, Requirements: nil, OwnedExecute: true}, entity.ErrModelFailed
 	}
@@ -266,7 +301,7 @@ func (s *dataServiceImpl) executeAnalysis(ctx context.Context, run *entity.DataR
 		if strings.Contains(err.Error(), "element ref") {
 			key = "FORMA_DATA_BUSINESS_ELEMENT_REF_INVALID"
 		}
-		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, key, sanitizeError(err.Error()))
+		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, key, sanitizeError(err.Error()), generation)
 		failed, _ := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
 		return &AnalyzeResult{Run: failed, Requirements: nil, OwnedExecute: true}, err
 	}
@@ -290,7 +325,7 @@ func (s *dataServiceImpl) executeAnalysis(ctx context.Context, run *entity.DataR
 			Source:                   entity.SourceAIGenerated,
 			DerivedFromRequirementID: "",
 			AnalysisRunID:            run.AnalysisRunID,
-			CreatedBy:                actorID,
+			CreatedBy:                run.CreatedBy,
 			CreatedAt:                now,
 			UpdatedAt:                now,
 		})
@@ -304,10 +339,10 @@ func (s *dataServiceImpl) executeAnalysis(ctx context.Context, run *entity.DataR
 		if modelRef == "" {
 			modelRef = "unknown"
 		}
-		return tx.MarkAnalysisSucceeded(ctx, run.TenantID, run.AnalysisRunID, modelRef)
+		return tx.MarkAnalysisSucceeded(ctx, run.TenantID, run.AnalysisRunID, modelRef, generation)
 	})
 	if err != nil {
-		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, "FORMA_INTERNAL", sanitizeError(err.Error()))
+		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, "FORMA_INTERNAL", sanitizeError(err.Error()), generation)
 		failed, _ := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
 		return &AnalyzeResult{Run: failed, Requirements: nil, OwnedExecute: true}, err
 	}
@@ -331,11 +366,19 @@ func (s *dataServiceImpl) RetryFailedAnalysis(ctx context.Context, tenantID, ana
 	if run.Status != entity.AnalysisFailed {
 		return nil, entity.ErrAnalysisNotFailed
 	}
-	ok, err := s.repo.ClaimAnalysisRetry(ctx, tenantID, analysisRunID)
+	claimed, generation, err := s.repo.ClaimAnalysisRetry(ctx, tenantID, analysisRunID, actorID)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+	if !claimed {
+		latest, gerr := s.repo.GetAnalysisRun(ctx, tenantID, analysisRunID)
+		if gerr != nil {
+			return nil, gerr
+		}
+		if latest.Status == entity.AnalysisPending || latest.Status == entity.AnalysisSucceeded {
+			reqs, _ := s.repo.ListRequirementsByRevision(ctx, tenantID, latest.BusinessID, latest.BusinessModelRevision)
+			return &AnalyzeResult{Run: latest, Requirements: filterByAnalysisRun(reqs, latest.AnalysisRunID), OwnedExecute: false}, nil
+		}
 		return nil, entity.ErrAnalysisNotFailed
 	}
 	run, err = s.repo.GetAnalysisRun(ctx, tenantID, analysisRunID)
@@ -344,11 +387,10 @@ func (s *dataServiceImpl) RetryFailedAnalysis(ctx context.Context, tenantID, ana
 	}
 	sm, err := s.loadPinnedSemantic(ctx, run.TenantID, run.BusinessID, run.BusinessModelRevision)
 	if err != nil {
-		_ = s.repo.MarkAnalysisFailed(ctx, tenantID, analysisRunID, "FORMA_DATA_BUSINESS_REVISION_NOT_FOUND", sanitizeError(err.Error()))
+		_ = s.repo.MarkAnalysisFailed(ctx, tenantID, analysisRunID, "FORMA_DATA_BUSINESS_REVISION_NOT_FOUND", sanitizeError(err.Error()), generation)
 		return nil, err
 	}
-	_ = actorID
-	return s.executeAnalysis(ctx, run, sm, run.CreatedBy)
+	return s.executeAnalysis(ctx, run, sm, run.CreatedBy, generation)
 }
 
 func (s *dataServiceImpl) ListRequirements(ctx context.Context, tenantID, businessID string, revision int32) ([]*entity.DataRequirement, error) {

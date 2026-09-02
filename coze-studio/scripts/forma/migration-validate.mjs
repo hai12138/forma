@@ -81,6 +81,19 @@ test('S4-G1 data requirement migration present', () => {
   assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
 });
 
+test('S4-G1-F1 analysis lease audit migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250902103000_s4_g1_analysis_lease_audit.sql'),
+    'utf8',
+  );
+  assert.ok(sql.includes('execution_generation'));
+  assert.ok(sql.includes('lease_expires_at'));
+  assert.ok(sql.includes('last_retry_by'));
+  assert.ok(sql.includes('last_retry_at'));
+  assert.ok(sql.includes('ALTER TABLE'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
+});
+
 test('atlas sum references migrations', () => {
   const sum = readFileSync(join(root, 'migrations', 'atlas.sum'), 'utf8');
   assert.ok(sum.includes('20250831100000_initial.sql'));
@@ -90,4 +103,5 @@ test('atlas sum references migrations', () => {
   assert.ok(sum.includes('20250902000000_s3_analyst.sql'));
   assert.ok(sum.includes('20250902010000_s3_g1_integrity.sql'));
   assert.ok(sum.includes('20250902100000_s4_g1_data_requirement.sql'));
+  assert.ok(sum.includes('20250902103000_s4_g1_analysis_lease_audit.sql'));
 });

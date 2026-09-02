@@ -106,12 +106,13 @@ func TestMemoryRepositoryCASRetryDecisionAndTenantIsolation(t *testing.T) {
 	if _, _, err := repo.CreateOrClaimAnalysisRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	ok, err = repo.ClaimAnalysisRetry(ctx, "tenant-a", "run")
-	if err != nil || !ok {
-		t.Fatalf("retry = (%v, %v)", ok, err)
+	claimed, gen, err := repo.ClaimAnalysisRetry(ctx, "tenant-a", "run", "retry-actor")
+	if err != nil || !claimed || gen == 0 {
+		t.Fatalf("retry = (%v, %v, %v)", claimed, gen, err)
 	}
 	retried, err := repo.GetAnalysisRun(ctx, "tenant-a", "run")
-	if err != nil || retried.Status != entity.AnalysisPending || retried.RetryCount != 1 {
+	if err != nil || retried.Status != entity.AnalysisPending || retried.RetryCount != 1 ||
+		retried.LastRetryBy != "retry-actor" || retried.LastRetryAt == nil {
 		t.Fatalf("retried run = (%+v, %v)", retried, err)
 	}
 

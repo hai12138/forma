@@ -7,6 +7,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/data/internal/dal"
@@ -25,9 +26,11 @@ type DataRepository interface {
 	CreateOrClaimAnalysisRun(ctx context.Context, run *entity.DataRequirementAnalysisRun) (existing *entity.DataRequirementAnalysisRun, created bool, err error)
 	GetAnalysisRun(ctx context.Context, tenantID, analysisRunID string) (*entity.DataRequirementAnalysisRun, error)
 	GetAnalysisRunByIdempotencyKey(ctx context.Context, tenantID, businessID string, revision int32, clientRequestID string) (*entity.DataRequirementAnalysisRun, error)
-	MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string) error
-	MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string) error
-	ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID string) (bool, error)
+	MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string, expectedGeneration int32) error
+	MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string, expectedGeneration int32) error
+	ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID, actorID string) (claimed bool, newGeneration int32, err error)
+	// ClaimExpiredPendingExecution CAS-takes an abandoned PENDING run after lease expiry.
+	ClaimExpiredPendingExecution(ctx context.Context, tenantID, analysisRunID string, expectedGeneration int32, now time.Time) (*entity.DataRequirementAnalysisRun, bool, error)
 
 	CreateDecision(ctx context.Context, d *entity.DataRequirementDecision) error
 	GetDecisionBySource(ctx context.Context, tenantID, sourceRequirementID string) (*entity.DataRequirementDecision, error)
@@ -75,16 +78,20 @@ func (r *gormDataRepo) GetAnalysisRunByIdempotencyKey(ctx context.Context, tenan
 	return r.dao.GetAnalysisRunByIdempotencyKey(ctx, tenantID, businessID, revision, clientRequestID)
 }
 
-func (r *gormDataRepo) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string) error {
-	return r.dao.MarkAnalysisSucceeded(ctx, tenantID, analysisRunID, modelRef)
+func (r *gormDataRepo) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string, expectedGeneration int32) error {
+	return r.dao.MarkAnalysisSucceeded(ctx, tenantID, analysisRunID, modelRef, expectedGeneration)
 }
 
-func (r *gormDataRepo) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string) error {
-	return r.dao.MarkAnalysisFailed(ctx, tenantID, analysisRunID, errorKey, sanitizedMsg)
+func (r *gormDataRepo) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorKey, sanitizedMsg string, expectedGeneration int32) error {
+	return r.dao.MarkAnalysisFailed(ctx, tenantID, analysisRunID, errorKey, sanitizedMsg, expectedGeneration)
 }
 
-func (r *gormDataRepo) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID string) (bool, error) {
-	return r.dao.ClaimAnalysisRetry(ctx, tenantID, analysisRunID)
+func (r *gormDataRepo) ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID, actorID string) (bool, int32, error) {
+	return r.dao.ClaimAnalysisRetry(ctx, tenantID, analysisRunID, actorID)
+}
+
+func (r *gormDataRepo) ClaimExpiredPendingExecution(ctx context.Context, tenantID, analysisRunID string, expectedGeneration int32, now time.Time) (*entity.DataRequirementAnalysisRun, bool, error) {
+	return r.dao.ClaimExpiredPendingExecution(ctx, tenantID, analysisRunID, expectedGeneration, now)
 }
 
 func (r *gormDataRepo) CreateDecision(ctx context.Context, d *entity.DataRequirementDecision) error {
