@@ -66,11 +66,11 @@ Credentials supplied via **gitignored** `forma/cursor-results/forma-live.env` (n
 |------|-------|
 | FREEZE_CANDIDATE | `707ba0a0b248f87368d196a2e91cc2169103d926` |
 | FREEZE_CANDIDATE_CI | `33606187132` |
-| FREEZE_COMMIT_SHA | *(recorded at freeze commit)* |
-| FREEZE_COMMIT_CI | *(recorded after freeze commit CI)* |
+| FREEZE_COMMIT_SHA | `a13fbfc606f873be8e0f88e30baa1709ff32c9dd` |
+| FREEZE_COMMIT_CI | `33607675628` **PASS** — forma-backend / forma-frontend / forma-migration-apply |
 | TAG | `forma-s3-frozen` |
-| TAG_OBJECT_SHA | *(recorded after tag creation)* |
-| TAG_TARGET_SHA | *(recorded after tag creation)* |
+| TAG_OBJECT_SHA | `48cac4a5c16d0aa86fe8ba0f770d891a6d844660` |
+| TAG_TARGET_SHA | `a13fbfc606f873be8e0f88e30baa1709ff32c9dd` |
 
 ## Evidence Artifacts
 
