@@ -125,6 +125,19 @@ test('S4-G2-F1 contract alignment migration present', () => {
   assert.ok(sql.includes('last_test_error_key'));
 });
 
+test('S4-G3 semantic mapping migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250902120000_s4_g3_semantic_mapping.sql'),
+    'utf8',
+  );
+  assert.ok(sql.includes('forma_data_semantic_mapping'));
+  assert.ok(sql.includes('forma_data_semantic_mapping_analysis_run'));
+  assert.ok(sql.includes('forma_data_semantic_mapping_decision'));
+  assert.ok(sql.includes('uk_forma_data_mapping_analysis_idempotency'));
+  assert.ok(sql.includes('uk_forma_data_mapping_decision_source'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
+});
+
 test('atlas sum references migrations', () => {
   const sum = readFileSync(join(root, 'migrations', 'atlas.sum'), 'utf8');
   assert.ok(sum.includes('20250831100000_initial.sql'));
@@ -137,4 +150,5 @@ test('atlas sum references migrations', () => {
   assert.ok(sum.includes('20250902103000_s4_g1_analysis_lease_audit.sql'));
   assert.ok(sum.includes('20250902110000_s4_g2_data_source_discovery.sql'));
   assert.ok(sum.includes('20250902113000_s4_g2_contract_alignment.sql'));
+  assert.ok(sum.includes('20250902120000_s4_g3_semantic_mapping.sql'));
 });

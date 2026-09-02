@@ -28,27 +28,50 @@ type AnalyzeDataRequirementsRequest struct {
 }
 
 type AnalyzeDataRequirementsResponse struct {
-	ModelRef   string
-	Proposals  []entity.DataRequirementProposal
+	ModelRef     string
+	Proposals    []entity.DataRequirementProposal
 	InputTokens  int32
 	OutputTokens int32
 }
 
 type SuggestSemanticMappingsRequest struct {
-	RequestID  string
-	TenantID   string
-	BusinessID string
+	RequestID             string
+	TenantID              string
+	BusinessID            string
+	BusinessModelRevision int32
+	RequirementIDs        []string
+	Requirements          []MappingRequirementMetadata
+	SchemaSnapshots       []NormalizedSchemaSnapshot
+}
+
+type MappingRequirementMetadata struct {
+	RequirementID   string                 `json:"requirement_id"`
+	RequirementKind entity.RequirementKind `json:"requirement_kind"`
+	SemanticName    string                 `json:"semantic_name"`
+	Description     string                 `json:"description"`
+	Requiredness    string                 `json:"requiredness"`
+	AccessNeed      string                 `json:"access_need"`
+}
+
+type NormalizedSchemaSnapshot struct {
+	SchemaSnapshotID string                `json:"schema_snapshot_id"`
+	SourceID         string                `json:"source_id"`
+	ConnectionID     string                `json:"connection_id"`
+	AssetID          string                `json:"asset_id"`
+	Schema           entity.PhysicalSchema `json:"schema"`
 }
 
 type SuggestSemanticMappingsResponse struct {
-	ModelRef string
-	// G1: interface reserved; domain does not persist mappings.
+	ModelRef  string
+	Proposals []entity.SemanticMappingProposal
 }
 
 // FakeFormaDataModel is a deterministic test double (zero provider calls).
 type FakeFormaDataModel struct {
-	AnalyzeFn func(ctx context.Context, req *AnalyzeDataRequirementsRequest) (*AnalyzeDataRequirementsResponse, error)
-	Calls     int
+	AnalyzeFn    func(ctx context.Context, req *AnalyzeDataRequirementsRequest) (*AnalyzeDataRequirementsResponse, error)
+	Calls        int
+	SuggestFn    func(ctx context.Context, req *SuggestSemanticMappingsRequest) (*SuggestSemanticMappingsResponse, error)
+	SuggestCalls int
 }
 
 func (f *FakeFormaDataModel) AnalyzeDataRequirements(ctx context.Context, req *AnalyzeDataRequirementsRequest) (*AnalyzeDataRequirementsResponse, error) {
@@ -59,6 +82,10 @@ func (f *FakeFormaDataModel) AnalyzeDataRequirements(ctx context.Context, req *A
 	return &AnalyzeDataRequirementsResponse{ModelRef: "fake-data-model", Proposals: nil}, nil
 }
 
-func (f *FakeFormaDataModel) SuggestSemanticMappings(_ context.Context, _ *SuggestSemanticMappingsRequest) (*SuggestSemanticMappingsResponse, error) {
+func (f *FakeFormaDataModel) SuggestSemanticMappings(ctx context.Context, req *SuggestSemanticMappingsRequest) (*SuggestSemanticMappingsResponse, error) {
+	f.SuggestCalls++
+	if f.SuggestFn != nil {
+		return f.SuggestFn(ctx, req)
+	}
 	return &SuggestSemanticMappingsResponse{ModelRef: "fake-data-model"}, nil
 }

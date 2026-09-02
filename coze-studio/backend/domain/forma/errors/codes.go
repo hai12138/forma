@@ -56,18 +56,29 @@ const (
 	CodeAnalystForbidden              int32 = 40320
 	CodeAnalystGapNotFound            int32 = 40423
 
-	CodeDataRequirementNotFound         int32 = 40430
-	CodeDataRequirementAlreadyDecided   int32 = 40930
-	CodeDataRequirementInvalidState     int32 = 40931
-	CodeDataAnalysisNotFound            int32 = 40431
-	CodeDataAnalysisIdempotencyConflict int32 = 40932
-	CodeDataAnalysisNotFailed           int32 = 40933
-	CodeDataBusinessRevisionNotFound    int32 = 40432
-	CodeDataBusinessElementRefInvalid   int32 = 40030
-	CodeDataRequirementInvalid          int32 = 40031
-	CodeDataForbidden                   int32 = 40330
-	CodeDataNotConfigured               int32 = 50030
-	CodeDataModelFailed                 int32 = 50031
+	CodeDataRequirementNotFound                int32 = 40430
+	CodeDataRequirementAlreadyDecided          int32 = 40930
+	CodeDataRequirementInvalidState            int32 = 40931
+	CodeDataAnalysisNotFound                   int32 = 40431
+	CodeDataAnalysisIdempotencyConflict        int32 = 40932
+	CodeDataAnalysisNotFailed                  int32 = 40933
+	CodeDataBusinessRevisionNotFound           int32 = 40432
+	CodeDataBusinessElementRefInvalid          int32 = 40030
+	CodeDataRequirementInvalid                 int32 = 40031
+	CodeDataForbidden                          int32 = 40330
+	CodeDataNotConfigured                      int32 = 50030
+	CodeDataModelFailed                        int32 = 50031
+	CodeDataSemanticMappingNotFound            int32 = 40450
+	CodeDataSemanticMappingAlreadyDecided      int32 = 40950
+	CodeDataSemanticMappingInvalidState        int32 = 40951
+	CodeDataSemanticMappingAlreadyConfirmed    int32 = 40952
+	CodeDataSemanticMappingAnalysisNotFound    int32 = 40451
+	CodeDataSemanticMappingIdempotencyConflict int32 = 40953
+	CodeDataSemanticMappingAnalysisNotFailed   int32 = 40954
+	CodeDataSemanticMappingTargetInvalid       int32 = 40050
+	CodeDataSemanticMappingTransformInvalid    int32 = 40051
+	CodeDataSemanticMappingLineageInvalid      int32 = 40052
+	CodeDataSemanticMappingRequirementInvalid  int32 = 40955
 
 	CodeDataSourceNotFound            int32 = 40440
 	CodeDataConnectionNotFound        int32 = 40441
@@ -122,18 +133,29 @@ const (
 	KeyAnalystForbidden              = "FORMA_ANALYST_FORBIDDEN"
 	KeyAnalystGapNotFound            = "FORMA_ANALYST_GAP_NOT_FOUND"
 
-	KeyDataRequirementNotFound         = "FORMA_DATA_REQUIREMENT_NOT_FOUND"
-	KeyDataRequirementAlreadyDecided   = "FORMA_DATA_REQUIREMENT_ALREADY_DECIDED"
-	KeyDataRequirementInvalidState     = "FORMA_DATA_REQUIREMENT_INVALID_STATE"
-	KeyDataAnalysisNotFound            = "FORMA_DATA_ANALYSIS_NOT_FOUND"
-	KeyDataAnalysisIdempotencyConflict = "FORMA_DATA_ANALYSIS_IDEMPOTENCY_CONFLICT"
-	KeyDataAnalysisNotFailed           = "FORMA_DATA_ANALYSIS_NOT_FAILED"
-	KeyDataBusinessRevisionNotFound    = "FORMA_DATA_BUSINESS_REVISION_NOT_FOUND"
-	KeyDataBusinessElementRefInvalid   = "FORMA_DATA_BUSINESS_ELEMENT_REF_INVALID"
-	KeyDataRequirementInvalid          = "FORMA_DATA_REQUIREMENT_INVALID"
-	KeyDataForbidden                   = "FORMA_DATA_FORBIDDEN"
-	KeyDataNotConfigured               = "FORMA_DATA_NOT_CONFIGURED"
-	KeyDataModelFailed                 = "FORMA_DATA_MODEL_FAILED"
+	KeyDataRequirementNotFound                = "FORMA_DATA_REQUIREMENT_NOT_FOUND"
+	KeyDataRequirementAlreadyDecided          = "FORMA_DATA_REQUIREMENT_ALREADY_DECIDED"
+	KeyDataRequirementInvalidState            = "FORMA_DATA_REQUIREMENT_INVALID_STATE"
+	KeyDataAnalysisNotFound                   = "FORMA_DATA_ANALYSIS_NOT_FOUND"
+	KeyDataAnalysisIdempotencyConflict        = "FORMA_DATA_ANALYSIS_IDEMPOTENCY_CONFLICT"
+	KeyDataAnalysisNotFailed                  = "FORMA_DATA_ANALYSIS_NOT_FAILED"
+	KeyDataBusinessRevisionNotFound           = "FORMA_DATA_BUSINESS_REVISION_NOT_FOUND"
+	KeyDataBusinessElementRefInvalid          = "FORMA_DATA_BUSINESS_ELEMENT_REF_INVALID"
+	KeyDataRequirementInvalid                 = "FORMA_DATA_REQUIREMENT_INVALID"
+	KeyDataForbidden                          = "FORMA_DATA_FORBIDDEN"
+	KeyDataNotConfigured                      = "FORMA_DATA_NOT_CONFIGURED"
+	KeyDataModelFailed                        = "FORMA_DATA_MODEL_FAILED"
+	KeyDataSemanticMappingNotFound            = "FORMA_DATA_SEMANTIC_MAPPING_NOT_FOUND"
+	KeyDataSemanticMappingAlreadyDecided      = "FORMA_DATA_SEMANTIC_MAPPING_ALREADY_DECIDED"
+	KeyDataSemanticMappingInvalidState        = "FORMA_DATA_SEMANTIC_MAPPING_INVALID_STATE"
+	KeyDataSemanticMappingAlreadyConfirmed    = "FORMA_DATA_SEMANTIC_MAPPING_ALREADY_CONFIRMED"
+	KeyDataSemanticMappingAnalysisNotFound    = "FORMA_DATA_SEMANTIC_MAPPING_ANALYSIS_NOT_FOUND"
+	KeyDataSemanticMappingIdempotencyConflict = "FORMA_DATA_SEMANTIC_MAPPING_ANALYSIS_IDEMPOTENCY_CONFLICT"
+	KeyDataSemanticMappingAnalysisNotFailed   = "FORMA_DATA_SEMANTIC_MAPPING_ANALYSIS_NOT_FAILED"
+	KeyDataSemanticMappingTargetInvalid       = "FORMA_DATA_SEMANTIC_MAPPING_TARGET_INVALID"
+	KeyDataSemanticMappingTransformInvalid    = "FORMA_DATA_SEMANTIC_MAPPING_TRANSFORM_INVALID"
+	KeyDataSemanticMappingLineageInvalid      = "FORMA_DATA_SEMANTIC_MAPPING_LINEAGE_INVALID"
+	KeyDataSemanticMappingRequirementInvalid  = "FORMA_DATA_SEMANTIC_MAPPING_REQUIREMENT_NOT_CONFIRMED"
 
 	KeyDataSourceNotFound            = "FORMA_DATA_SOURCE_NOT_FOUND"
 	KeyDataConnectionNotFound        = "FORMA_DATA_CONNECTION_NOT_FOUND"
@@ -458,6 +480,43 @@ func DataModelFailed(msg string) *FormaError {
 	return New(CodeDataModelFailed, http.StatusInternalServerError, KeyDataModelFailed, defaultMessage(msg, "data model failed"))
 }
 
+func dataMappingError(code int32, status int, key, msg, fallback string) *FormaError {
+	return New(code, status, key, defaultMessage(msg, fallback))
+}
+func DataSemanticMappingNotFound(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingNotFound, http.StatusNotFound, KeyDataSemanticMappingNotFound, msg, "semantic mapping not found")
+}
+func DataSemanticMappingAlreadyDecided(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingAlreadyDecided, http.StatusConflict, KeyDataSemanticMappingAlreadyDecided, msg, "semantic mapping already decided")
+}
+func DataSemanticMappingInvalidState(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingInvalidState, http.StatusConflict, KeyDataSemanticMappingInvalidState, msg, "semantic mapping invalid state")
+}
+func DataSemanticMappingAlreadyConfirmed(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingAlreadyConfirmed, http.StatusConflict, KeyDataSemanticMappingAlreadyConfirmed, msg, "semantic mapping already confirmed")
+}
+func DataSemanticMappingAnalysisNotFound(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingAnalysisNotFound, http.StatusNotFound, KeyDataSemanticMappingAnalysisNotFound, msg, "semantic mapping analysis run not found")
+}
+func DataSemanticMappingIdempotencyConflict(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingIdempotencyConflict, http.StatusConflict, KeyDataSemanticMappingIdempotencyConflict, msg, "semantic mapping analysis idempotency conflict")
+}
+func DataSemanticMappingAnalysisNotFailed(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingAnalysisNotFailed, http.StatusConflict, KeyDataSemanticMappingAnalysisNotFailed, msg, "semantic mapping analysis run is not failed")
+}
+func DataSemanticMappingTargetInvalid(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingTargetInvalid, http.StatusBadRequest, KeyDataSemanticMappingTargetInvalid, msg, "semantic mapping target invalid")
+}
+func DataSemanticMappingTransformInvalid(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingTransformInvalid, http.StatusBadRequest, KeyDataSemanticMappingTransformInvalid, msg, "semantic mapping transform invalid")
+}
+func DataSemanticMappingLineageInvalid(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingLineageInvalid, http.StatusBadRequest, KeyDataSemanticMappingLineageInvalid, msg, "semantic mapping lineage invalid")
+}
+func DataSemanticMappingRequirementInvalid(msg string) *FormaError {
+	return dataMappingError(CodeDataSemanticMappingRequirementInvalid, http.StatusConflict, KeyDataSemanticMappingRequirementInvalid, msg, "semantic mapping requirement is not confirmed")
+}
+
 func DataSourceNotFound(msg string) *FormaError {
 	return New(CodeDataSourceNotFound, http.StatusNotFound, KeyDataSourceNotFound, defaultMessage(msg, "data source not found"))
 }
@@ -637,6 +696,39 @@ func MapDomainError(err error) *FormaError {
 	}
 	if errors.Is(err, dataentity.ErrModelFailed) {
 		return DataModelFailed(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingNotFound) {
+		return DataSemanticMappingNotFound(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingAlreadyDecided) {
+		return DataSemanticMappingAlreadyDecided(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingInvalidState) {
+		return DataSemanticMappingInvalidState(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingAlreadyConfirmed) {
+		return DataSemanticMappingAlreadyConfirmed(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingAnalysisNotFound) {
+		return DataSemanticMappingAnalysisNotFound(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingAnalysisIdempotencyConflict) {
+		return DataSemanticMappingIdempotencyConflict(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingAnalysisNotFailed) {
+		return DataSemanticMappingAnalysisNotFailed(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingTargetInvalid) {
+		return DataSemanticMappingTargetInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingTransformInvalid) {
+		return DataSemanticMappingTransformInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingLineageInvalid) {
+		return DataSemanticMappingLineageInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrMappingRequirementNotConfirmed) {
+		return DataSemanticMappingRequirementInvalid(err.Error())
 	}
 	if errors.Is(err, dataentity.ErrDataSourceNotFound) {
 		return DataSourceNotFound("")

@@ -7,7 +7,7 @@ package integration
 
 import (
 	"context"
-	"errors"
+	"strings"
 	"testing"
 )
 
@@ -34,10 +34,10 @@ func TestParseDataRequirementProposals(t *testing.T) {
 	}
 }
 
-func TestSuggestSemanticMappingsIsNotImplementedWithoutModelCall(t *testing.T) {
+func TestSuggestSemanticMappingsRejectsEmptyInputWithoutModelCall(t *testing.T) {
 	model := &CozeEinoDataModel{EnvPrefix: "FORMA_DATA"}
 	_, err := model.SuggestSemanticMappings(context.Background(), nil)
-	if !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("expected ErrNotImplemented, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "requirements and schemas required") {
+		t.Fatalf("expected request validation, got %v", err)
 	}
 }

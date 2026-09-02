@@ -8,7 +8,6 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -18,8 +17,6 @@ import (
 	dataentity "github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 	datasvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
 )
-
-var ErrNotImplemented = errors.New("not implemented")
 
 // CozeEinoDataModel implements FormaDataModel through Coze Model Manager / Eino.
 type CozeEinoDataModel struct {
@@ -64,8 +61,36 @@ func (m *CozeEinoDataModel) AnalyzeDataRequirements(ctx context.Context, req *da
 	}, nil
 }
 
-func (m *CozeEinoDataModel) SuggestSemanticMappings(context.Context, *datasvc.SuggestSemanticMappingsRequest) (*datasvc.SuggestSemanticMappingsResponse, error) {
-	return nil, fmt.Errorf("suggest semantic mappings: %w", ErrNotImplemented)
+func (m *CozeEinoDataModel) SuggestSemanticMappings(ctx context.Context, req *datasvc.SuggestSemanticMappingsRequest) (*datasvc.SuggestSemanticMappingsResponse, error) {
+	if req == nil || len(req.Requirements) == 0 || len(req.SchemaSnapshots) == 0 {
+		return nil, fmt.Errorf("suggest semantic mappings: requirements and schemas required")
+	}
+	payload, err := json.Marshal(struct {
+		Requirements    any `json:"requirements"`
+		SchemaSnapshots any `json:"schema_snapshots"`
+	}{req.Requirements, req.SchemaSnapshots})
+	if err != nil {
+		return nil, err
+	}
+	model, ok, err := modelbuilder.GetBuiltinChatModel(ctx, m.EnvPrefix)
+	if err != nil || !ok || model == nil {
+		return nil, fmt.Errorf("builtin chat model not configured")
+	}
+	out, err := model.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(semanticMappingSystemPrompt),
+		schema.UserMessage(fmt.Sprintf("Business ID: %s\nBusiness model revision: %d\nInput JSON:\n%s", req.BusinessID, req.BusinessModelRevision, payload)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	raw := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(out.Content), "```json"), "```"), "```"))
+	var decoded struct {
+		Proposals []dataentity.SemanticMappingProposal `json:"proposals"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &decoded); err != nil {
+		return nil, fmt.Errorf("parse semantic mapping output: %w", err)
+	}
+	return &datasvc.SuggestSemanticMappingsResponse{ModelRef: "coze-eino-builtin", Proposals: decoded.Proposals}, nil
 }
 
 type dataRequirementModelOutput struct {
@@ -109,3 +134,7 @@ Return JSON only:
 {"requirements":[{"requirement_kind":"ENTITY|ATTRIBUTE|RELATION|EVENT|METRIC|STATE|TIME_SERIES|DOCUMENT|LOOKUP|HISTORY","semantic_name":"","description":"","business_element_refs":["existing semantic model element id"],"requiredness":"","freshness_requirement":"","access_need":""}]}
 Every requirement must reference at least one existing semantic model node, edge, rule, or state ID.
 Do not include data sources, credentials, mappings, contracts, physical schemas, status, or source fields.`
+
+const semanticMappingSystemPrompt = `Propose semantic-to-physical mappings from confirmed requirements to the supplied normalized physical schemas.
+Return JSON only: {"proposals":[{"requirement_id":"","source_id":"","connection_id":"","asset_id":"","schema_snapshot_id":"","target_field_paths":[""],"mapping_type":"DIRECT|CAST|ENUM_MAP|UNIT_CONVERT|TIME_NORMALIZE|FIELD_PATH|JOIN_REF","transform_spec":{"type":"DIRECT"},"confidence":0.0,"reason":""}]}.
+Use only IDs and field paths present in the input. transform_spec must be declarative JSON and its type must equal mapping_type. For JOIN_REF, reference one supplied physical relationship exactly. Never emit credentials, connection configuration, secrets, status, source, SQL, scripts, or executable code.`

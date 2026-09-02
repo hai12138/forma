@@ -38,6 +38,7 @@ type ApplicationService struct {
 	BusinessSVC   businesssvc.BusinessService
 	AnalystSVC    analystsvc.AnalystService
 	DataSVC       datasvc.DataService
+	MappingSVC    datasvc.MappingService
 	DatasourceSVC datasvc.DataSourceService
 }
 
@@ -74,6 +75,13 @@ func InitService(_ context.Context, components *ServiceComponents) *ApplicationS
 		Repo:        datarepo.NewDataRepository(components.DB),
 		BusinessSVC: ApplicationSVC.BusinessSVC,
 		Model:       integration.NewCozeEinoDataModel("FORMA_DATA"),
+	})
+	ApplicationSVC.MappingSVC = datasvc.NewMappingService(&datasvc.MappingComponents{
+		MappingRepo:    datarepo.NewMappingRepository(components.DB),
+		DataRepo:       datarepo.NewDataRepository(components.DB),
+		DataSourceRepo: datarepo.NewDataSourceRepository(components.DB),
+		BusinessSVC:    ApplicationSVC.BusinessSVC,
+		Model:          integration.NewCozeEinoDataModel("FORMA_DATA"),
 	})
 	secretProvider, _ := datasvc.NewLocalSecretProviderFromEnv()
 	ApplicationSVC.DatasourceSVC = datasvc.NewDataSourceService(&datasvc.SourceComponents{
