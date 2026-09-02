@@ -85,3 +85,72 @@ No FOREIGN KEY. G1–G3 migrations untouched.
 ## STOP
 
 Do **not** start S4-G5. Do **not** implement Data Plane UI / Business Capability. Do **not** create `forma-s4-frozen`.
+
+---
+
+# FORMA-S4-G4-F1 DATA CONTRACT CONSISTENCY / GUARANTEE / DRIFT HARDENING
+
+## Status
+
+**S4-G4-F1 = PASS**
+
+## Scope Delivered
+
+| Component | Status |
+|-----------|--------|
+| Contract row lock (`GetContractForUpdate` FOR UPDATE) | PASS |
+| Active pointer CAS clear (`ClearContractActiveRevisionIfMatch`) | PASS |
+| Activate serializes on contract lock | PASS |
+| Deprecate / BREAKING→STALE clears active pointer | PASS |
+| Drift snapshot lineage (source/connection/asset) | PASS |
+| `ResolveMappingOutputContractType` + physical type normalize | PASS |
+| Validate type / nullability guarantees | PASS |
+| Drift TYPE_GUARANTEE_LOST / NULLABILITY_GUARANTEE_LOST | PASS |
+| Gap Unmapped = current confirmed without confirmed mapping | PASS |
+| Classification policy logical-key only | PASS |
+| Consumer `DataContractDescriptor` + active-descriptor API | PASS |
+| Duplicate `requirement_ids` denied | PASS |
+| Migration | NONE (prefer no migration) |
+| REAL_MODEL_CALLS | 0 |
+
+## Invariants (G4-F1)
+
+| Invariant | Result |
+|-----------|--------|
+| ACTIVE_POINTER_CONSISTENCY | PASS |
+| ACTIVATION_SERIALIZATION | PASS |
+| DRIFT_LINEAGE | PASS |
+| CONTRACT_TYPE_GUARANTEE | PASS |
+| NULLABILITY_GUARANTEE | PASS |
+| GAP_SEMANTICS | PASS |
+| REQUIREMENT_ID_UNIQUENESS | PASS |
+| CLASSIFICATION_POLICY | PASS |
+| CONSUMER_DESCRIPTOR | PASS |
+| SOURCE_INDEPENDENCE | PASS |
+| G1_REGRESSION | PASS |
+| G2_REGRESSION | PASS |
+| G3_REGRESSION | PASS |
+| BUSINESS_MODEL_MUTATION | NONE |
+| REAL_MODEL_CALLS | 0 |
+| NO_MIGRATION | PASS |
+| G4_ARCHITECTURE_PRESERVED | PASS |
+
+## Verification
+
+```text
+docker run --rm -v "d:/product/Forma/forma-workspace/coze-studio/backend:/src" -w /src golang:1.24 \
+  go test ./domain/forma/data/... ./application/forma/ ./api/handler/forma/ -count=1
+```
+
+All packages green.
+
+## Delivery
+
+| Item | Value |
+|------|-------|
+| Commit SHA | TBD |
+| Forma CI | TBD |
+
+## STOP
+
+Do **not** start S4-G5. Do **not** implement Data Plane UI / Business Capability. Do **not** create `forma-s4-frozen`.

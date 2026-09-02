@@ -90,6 +90,7 @@ const (
 	CodeDataContractLogicalSchemaInvalid int32 = 40062
 	CodeDataContractDriftInvalid         int32 = 40063
 	CodeDataContractGapInvalid           int32 = 40064
+	CodeDataContractNotActive            int32 = 40963
 
 	CodeDataSourceNotFound            int32 = 40440
 	CodeDataConnectionNotFound        int32 = 40441
@@ -178,6 +179,7 @@ const (
 	KeyDataContractLogicalSchemaInvalid = "FORMA_DATA_CONTRACT_LOGICAL_SCHEMA_INVALID"
 	KeyDataContractDriftInvalid         = "FORMA_DATA_CONTRACT_DRIFT_INVALID"
 	KeyDataContractGapInvalid           = "FORMA_DATA_CONTRACT_GAP_INVALID"
+	KeyDataContractNotActive            = "FORMA_DATA_CONTRACT_NOT_ACTIVE"
 
 	KeyDataSourceNotFound            = "FORMA_DATA_SOURCE_NOT_FOUND"
 	KeyDataConnectionNotFound        = "FORMA_DATA_CONNECTION_NOT_FOUND"
@@ -572,6 +574,9 @@ func DataContractDriftInvalid(msg string) *FormaError {
 func DataContractGapInvalid(msg string) *FormaError {
 	return dataContractError(CodeDataContractGapInvalid, http.StatusBadRequest, KeyDataContractGapInvalid, msg, "data contract gap invalid")
 }
+func DataContractNotActive(msg string) *FormaError {
+	return dataContractError(CodeDataContractNotActive, http.StatusConflict, KeyDataContractNotActive, msg, "data contract not active")
+}
 
 func DataSourceNotFound(msg string) *FormaError {
 	return New(CodeDataSourceNotFound, http.StatusNotFound, KeyDataSourceNotFound, defaultMessage(msg, "data source not found"))
@@ -815,6 +820,9 @@ func MapDomainError(err error) *FormaError {
 	}
 	if errors.Is(err, dataentity.ErrContractGapInvalid) {
 		return DataContractGapInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrContractNotActive) {
+		return DataContractNotActive(err.Error())
 	}
 	if errors.Is(err, dataentity.ErrDataSourceNotFound) {
 		return DataSourceNotFound("")

@@ -34,6 +34,8 @@ type ContractService interface {
 	EvaluateBusinessGap(context.Context, *EvaluateGapInput) (*entity.DataContractGapResult, error)
 	ListGapResults(context.Context, string, string) ([]*entity.DataContractGapResult, error)
 	ListLifecycleEvents(context.Context, string, string) ([]*entity.DataContractLifecycleEvent, error)
+	BuildContractDescriptor(*entity.DataContractRevision) *entity.DataContractDescriptor
+	GetActiveContractDescriptor(context.Context, string, string) (*entity.DataContractDescriptor, error)
 }
 
 type ContractComponents struct {
@@ -128,6 +130,9 @@ func (s *contractService) CreateContract(ctx context.Context, in *CreateContract
 	if in == nil || strings.TrimSpace(in.TenantID) == "" || strings.TrimSpace(in.BusinessID) == "" || in.BusinessModelRevision <= 0 || strings.TrimSpace(in.Name) == "" {
 		return nil, nil, entity.ErrContractInvalidPayload
 	}
+	if err := ValidateRequirementIDsUnique(in.RequirementIDs); err != nil {
+		return nil, nil, err
+	}
 	bindings, err := s.materializeBindings(ctx, in.TenantID, in.BusinessID, in.BusinessModelRevision, in.MappingIDs)
 	if err != nil {
 		return nil, nil, err
@@ -197,6 +202,9 @@ func (s *contractService) CreateRevision(ctx context.Context, in *CreateRevision
 	}
 	if in == nil || strings.TrimSpace(in.TenantID) == "" || strings.TrimSpace(in.ContractID) == "" || strings.TrimSpace(in.BaseRevisionID) == "" || in.BusinessModelRevision <= 0 || strings.TrimSpace(in.Name) == "" {
 		return nil, entity.ErrContractInvalidPayload
+	}
+	if err := ValidateRequirementIDsUnique(in.RequirementIDs); err != nil {
+		return nil, err
 	}
 	contract, err := s.contracts.GetContract(ctx, in.TenantID, in.ContractID)
 	if err != nil {
@@ -299,6 +307,9 @@ func (s *contractService) ValidateRevision(ctx context.Context, tenantID, revisi
 
 	issues := []entity.ValidationIssue{}
 	fingerprints := map[string]string{}
+	if err := ValidateRequirementIDsUnique(rev.RequirementIDs); err != nil {
+		issues = append(issues, entity.ValidationIssue{Code: "REQUIREMENT_IDS_DUPLICATE", Message: err.Error()})
+	}
 	reqSet := map[string]struct{}{}
 	for _, id := range rev.RequirementIDs {
 		reqSet[strings.TrimSpace(id)] = struct{}{}
@@ -315,9 +326,11 @@ func (s *contractService) ValidateRevision(ctx context.Context, tenantID, revisi
 		}
 	}
 
-	bindingByReq := map[string]int{}
+	bindingByReq := map[string]entity.ContractBinding{}
+	bindingCount := map[string]int{}
 	for _, b := range rev.BindingRefs {
-		bindingByReq[b.RequirementID]++
+		bindingCount[b.RequirementID]++
+		bindingByReq[b.RequirementID] = b
 		m, err := s.mappings.GetMapping(ctx, tenantID, b.MappingID)
 		if err != nil || m.Status != entity.MappingStatusConfirmed {
 			issues = append(issues, entity.ValidationIssue{Code: "BINDING_MAPPING", Message: fmt.Sprintf("binding mapping %q must be confirmed", b.MappingID)})
@@ -350,15 +363,14 @@ func (s *contractService) ValidateRevision(ctx context.Context, tenantID, revisi
 		}
 	}
 	for reqID := range reqSet {
-		if bindingByReq[reqID] != 1 {
+		if bindingCount[reqID] != 1 {
 			issues = append(issues, entity.ValidationIssue{Code: "BINDING_COUNT", Message: fmt.Sprintf("requirement %q must have exactly one binding", reqID)})
 		}
 	}
-	for reqID, n := range bindingByReq {
+	for reqID := range bindingCount {
 		if _, ok := reqSet[reqID]; !ok {
 			issues = append(issues, entity.ValidationIssue{Code: "BINDING_ORPHAN", Message: fmt.Sprintf("binding requirement %q not in requirement_ids", reqID)})
 		}
-		_ = n
 	}
 
 	if err := ValidateLogicalSchema(rev.LogicalSchema, reqSet); err != nil {
@@ -391,6 +403,53 @@ func (s *contractService) ValidateRevision(ctx context.Context, tenantID, revisi
 	}
 	if err := ValidateClassification(rev.ClassificationPolicy, rev.LogicalSchema); err != nil {
 		issues = append(issues, entity.ValidationIssue{Code: "CLASSIFICATION", Message: err.Error()})
+	}
+
+	// Type + nullability guarantees against resolved mapping output.
+	for _, field := range rev.LogicalSchema.Fields {
+		binding, ok := bindingByReq[strings.TrimSpace(field.RequirementID)]
+		if !ok {
+			continue
+		}
+		m, err := s.mappings.GetMapping(ctx, tenantID, binding.MappingID)
+		if err != nil {
+			issues = append(issues, entity.ValidationIssue{Code: "BINDING_MAPPING", Message: err.Error()})
+			continue
+		}
+		snap, err := s.sources.GetSnapshot(ctx, tenantID, binding.SchemaSnapshotID)
+		if err != nil {
+			continue
+		}
+		var schema entity.PhysicalSchema
+		if json.Unmarshal([]byte(snap.SchemaJSON), &schema) != nil {
+			continue
+		}
+		resolved, err := ResolveMappingOutputContractType(m, &schema)
+		if err != nil {
+			issues = append(issues, entity.ValidationIssue{Code: "LOGICAL_TYPE_MISMATCH", Message: err.Error()})
+			continue
+		}
+		if resolved != normalizedType(field.LogicalType) {
+			issues = append(issues, entity.ValidationIssue{
+				Code:    "LOGICAL_TYPE_MISMATCH",
+				Message: fmt.Sprintf("field %q resolved type %q != logical %q", field.LogicalKey, resolved, field.LogicalType),
+			})
+		}
+		if !field.Nullable {
+			index := buildFieldPathIndex(&schema)
+			for _, path := range m.TargetFieldPaths {
+				pf, ok := index[strings.TrimSpace(path)]
+				if !ok {
+					continue
+				}
+				if pf.Nullable {
+					issues = append(issues, entity.ValidationIssue{
+						Code:    "NULLABILITY_GUARANTEE_LOST",
+						Message: fmt.Sprintf("field %q requires non-null but physical path %q is nullable", field.LogicalKey, path),
+					})
+				}
+			}
+		}
 	}
 
 	now := time.Now().UTC()
@@ -442,6 +501,15 @@ func (s *contractService) ActivateRevision(ctx context.Context, tenantID, revisi
 		if err != nil {
 			return err
 		}
+		// Serialize activates on the contract row lock first.
+		contract, err := tx.GetContractForUpdate(ctx, tenantID, rev.ContractID)
+		if err != nil {
+			return err
+		}
+		rev, err = tx.GetRevision(ctx, tenantID, revisionID)
+		if err != nil {
+			return err
+		}
 		if rev.Status != entity.ContractStatusValidated {
 			return entity.ErrContractInvalidState
 		}
@@ -449,10 +517,6 @@ func (s *contractService) ActivateRevision(ctx context.Context, tenantID, revisi
 			if errors.Is(err, entity.ErrContractInvalidState) {
 				return entity.ErrContractVersionConflict
 			}
-			return err
-		}
-		contract, err := tx.GetContract(ctx, tenantID, rev.ContractID)
-		if err != nil {
 			return err
 		}
 		now := time.Now().UTC()
@@ -503,11 +567,21 @@ func (s *contractService) DeprecateRevision(ctx context.Context, tenantID, revis
 		if err != nil {
 			return err
 		}
+		if _, err := tx.GetContractForUpdate(ctx, tenantID, rev.ContractID); err != nil {
+			return err
+		}
+		rev, err = tx.GetRevision(ctx, tenantID, revisionID)
+		if err != nil {
+			return err
+		}
 		from := rev.Status
 		if from != entity.ContractStatusActive && from != entity.ContractStatusStale {
 			return entity.ErrContractInvalidState
 		}
 		if err := tx.UpdateRevisionStatus(ctx, tenantID, revisionID, from, entity.ContractStatusDeprecated); err != nil {
+			return err
+		}
+		if err := tx.ClearContractActiveRevisionIfMatch(ctx, tenantID, rev.ContractID, revisionID); err != nil {
 			return err
 		}
 		now := time.Now().UTC()
@@ -592,19 +666,23 @@ func (s *contractService) EvaluateBusinessGap(ctx context.Context, in *EvaluateG
 	for _, id := range rev.RequirementIDs {
 		pinned[id] = struct{}{}
 	}
-	currentConfirmed := map[string]struct{}{}
+	confirmedMappings, err := s.mappings.ListMappings(ctx, in.TenantID, rev.BusinessID, currentRev, entity.MappingStatusConfirmed)
+	if err != nil {
+		return nil, err
+	}
+	mappedReqs := map[string]struct{}{}
+	for _, m := range confirmedMappings {
+		mappedReqs[m.RequirementID] = struct{}{}
+	}
 	for _, r := range reqs {
 		if r.Status != entity.StatusConfirmed {
 			continue
 		}
-		currentConfirmed[r.RequirementID] = struct{}{}
 		if _, ok := pinned[r.RequirementID]; !ok {
 			result.NewConfirmedRequirementIDs = append(result.NewConfirmedRequirementIDs, r.RequirementID)
 		}
-	}
-	for _, id := range rev.RequirementIDs {
-		if _, ok := currentConfirmed[id]; !ok {
-			result.UnmappedRequirementIDs = append(result.UnmappedRequirementIDs, id)
+		if _, ok := mappedReqs[r.RequirementID]; !ok {
+			result.UnmappedRequirementIDs = append(result.UnmappedRequirementIDs, r.RequirementID)
 		}
 	}
 	result.GapStatus = "GAP"
@@ -612,4 +690,55 @@ func (s *contractService) EvaluateBusinessGap(ctx context.Context, in *EvaluateG
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *contractService) BuildContractDescriptor(rev *entity.DataContractRevision) *entity.DataContractDescriptor {
+	if rev == nil {
+		return nil
+	}
+	classification := map[string]entity.DataClassification{}
+	for _, field := range rev.LogicalSchema.Fields {
+		key := strings.TrimSpace(field.LogicalKey)
+		if key == "" {
+			continue
+		}
+		classification[key] = field.Classification
+	}
+	for key, class := range rev.ClassificationPolicy {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		classification[key] = class
+	}
+	return &entity.DataContractDescriptor{
+		ContractID: rev.ContractID, RevisionID: rev.RevisionID, Version: rev.Version,
+		BusinessModelRevision: rev.BusinessModelRevision,
+		LogicalSchema: entity.ContractLogicalSchema{Fields: append([]entity.LogicalField(nil), rev.LogicalSchema.Fields...)},
+		QueryCapabilities: append([]entity.QueryCapability(nil), rev.QueryCapabilities...),
+		FilterSchema: rev.FilterSchema, SortSchema: rev.SortSchema, PaginationPolicy: rev.PaginationPolicy,
+		FreshnessPolicy: rev.FreshnessPolicy, Classification: classification,
+		AccessPolicyRef: rev.AccessPolicyRef, Status: rev.Status,
+	}
+}
+
+func (s *contractService) GetActiveContractDescriptor(ctx context.Context, tenantID, contractID string) (*entity.DataContractDescriptor, error) {
+	if !s.configured() {
+		return nil, entity.ErrNotConfigured
+	}
+	contract, err := s.contracts.GetContract(ctx, tenantID, contractID)
+	if err != nil {
+		return nil, err
+	}
+	if contract.ActiveRevisionID == "" {
+		return nil, entity.ErrContractNotActive
+	}
+	rev, err := s.contracts.GetRevision(ctx, tenantID, contract.ActiveRevisionID)
+	if err != nil {
+		return nil, err
+	}
+	if rev.Status != entity.ContractStatusActive {
+		return nil, entity.ErrContractNotActive
+	}
+	return s.BuildContractDescriptor(rev), nil
 }

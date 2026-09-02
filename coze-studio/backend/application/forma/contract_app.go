@@ -232,7 +232,28 @@ func (s *ApplicationService) GetDataContractRevision(ctx context.Context, busine
 	if err != nil {
 		return nil, err
 	}
+	// Admin detail — includes BindingRefs. Consumer Contract Interface — S5 must use descriptor, not Binding Detail.
 	return contractRevisionDTO(rev), nil
+}
+
+// GetActiveDataContractDescriptor returns the consumer-facing active contract descriptor only.
+// Consumer Contract Interface — S5 must use descriptor, not Binding Detail.
+func (s *ApplicationService) GetActiveDataContractDescriptor(ctx context.Context, businessID, contractID string) (*entity.DataContractDescriptor, error) {
+	tc, err := s.requireDataTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = s.requireContract(ctx, tc.TenantID, businessID, contractID); err != nil {
+		return nil, err
+	}
+	if s.ContractSVC == nil {
+		return nil, formaerrors.DataNotConfigured("contract service not initialized")
+	}
+	desc, err := s.ContractSVC.GetActiveContractDescriptor(ctx, tc.TenantID, contractID)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	return desc, nil
 }
 
 func (s *ApplicationService) ValidateDataContractRevision(ctx context.Context, businessID, contractID, revisionID string) (*ValidateRevisionResponse, error) {

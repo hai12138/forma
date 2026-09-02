@@ -18,8 +18,10 @@ type ContractRepository interface {
 
 	CreateContract(context.Context, *entity.DataContract) error
 	GetContract(context.Context, string, string) (*entity.DataContract, error)
+	GetContractForUpdate(context.Context, string, string) (*entity.DataContract, error)
 	ListContracts(context.Context, string, string) ([]*entity.DataContract, error)
 	UpdateContractActiveRevision(context.Context, string, string, string) error
+	ClearContractActiveRevisionIfMatch(context.Context, string, string, string) error
 
 	CreateRevision(context.Context, *entity.DataContractRevision) error
 	GetRevision(context.Context, string, string) (*entity.DataContractRevision, error)
@@ -63,11 +65,17 @@ func (r *gormContractRepo) CreateContract(c context.Context, v *entity.DataContr
 func (r *gormContractRepo) GetContract(c context.Context, t, id string) (*entity.DataContract, error) {
 	return r.dao.GetContract(c, t, id)
 }
+func (r *gormContractRepo) GetContractForUpdate(c context.Context, t, id string) (*entity.DataContract, error) {
+	return r.dao.GetContractForUpdate(c, t, id)
+}
 func (r *gormContractRepo) ListContracts(c context.Context, t, b string) ([]*entity.DataContract, error) {
 	return r.dao.ListContracts(c, t, b)
 }
 func (r *gormContractRepo) UpdateContractActiveRevision(c context.Context, t, contractID, revisionID string) error {
 	return r.dao.UpdateContractActiveRevision(c, t, contractID, revisionID)
+}
+func (r *gormContractRepo) ClearContractActiveRevisionIfMatch(c context.Context, t, contractID, expectedRevisionID string) error {
+	return r.dao.ClearContractActiveRevisionIfMatch(c, t, contractID, expectedRevisionID)
 }
 func (r *gormContractRepo) CreateRevision(c context.Context, v *entity.DataContractRevision) error {
 	return r.dao.CreateRevision(c, v)

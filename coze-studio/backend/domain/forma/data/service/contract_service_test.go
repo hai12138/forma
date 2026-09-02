@@ -550,6 +550,8 @@ func TestContractDriftBreakingCompatibleNoChangeJoinRef(t *testing.T) {
 	in := f2.defaultCreateInput()
 	in.MappingIDs = []string{m.MappingID}
 	in.LogicalSchema.Fields[0].LogicalKey = "sensor"
+	in.LogicalSchema.Fields[0].LogicalType = "STRING"
+	in.LogicalSchema.Fields[0].SemanticName = "sensor"
 	_, joinActive := func() (*entity.DataContract, *entity.DataContractRevision) {
 		c, rev, err := f2.svc.CreateContract(ctx, in)
 		if err != nil {

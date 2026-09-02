@@ -87,6 +87,7 @@ func Register(r *server.Hertz) {
 		v1.POST("/businesses/:id/data-contracts", formahandler.CreateDataContract)
 		v1.GET("/businesses/:id/data-contracts", formahandler.ListDataContracts)
 		v1.GET("/businesses/:id/data-contracts/:contractId", formahandler.GetDataContract)
+		v1.GET("/businesses/:id/data-contracts/:contractId/active-descriptor", formahandler.GetActiveDataContractDescriptor)
 		v1.GET("/businesses/:id/data-contracts/:contractId/revisions", formahandler.ListDataContractRevisions)
 		v1.POST("/businesses/:id/data-contracts/:contractId/revisions", formahandler.CreateDataContractRevision)
 		v1.GET("/businesses/:id/data-contracts/:contractId/revisions/:revisionId", formahandler.GetDataContractRevision)

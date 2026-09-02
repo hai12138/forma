@@ -286,15 +286,48 @@ func ValidatePaginationPolicy(policy entity.PaginationPolicy) error {
 }
 
 func ValidateClassification(policy map[string]entity.DataClassification, schema entity.ContractLogicalSchema) error {
+	logicalKeys := map[string]entity.LogicalField{}
+	for _, field := range schema.Fields {
+		logicalKeys[strings.TrimSpace(field.LogicalKey)] = field
+	}
 	for key, class := range policy {
+		key = strings.TrimSpace(key)
+		for _, forbidden := range ForbiddenPhysicalLogicalKeys {
+			if strings.EqualFold(key, forbidden) {
+				return fmt.Errorf("%w: classification policy key %q is physical", entity.ErrContractInvalidPayload, key)
+			}
+		}
+		field, ok := logicalKeys[key]
+		if !ok {
+			return fmt.Errorf("%w: classification policy key %q is not a logical_key", entity.ErrContractInvalidPayload, key)
+		}
 		if _, ok := allowedClassifications[class]; !ok {
 			return fmt.Errorf("%w: invalid classification %q for %q", entity.ErrContractInvalidPayload, class, key)
+		}
+		if field.Classification != "" && field.Classification != class {
+			return fmt.Errorf("%w: classification conflict on %q", entity.ErrContractInvalidPayload, key)
 		}
 	}
 	for _, field := range schema.Fields {
 		if _, ok := allowedClassifications[field.Classification]; !ok {
 			return fmt.Errorf("%w: invalid field classification %q", entity.ErrContractInvalidPayload, field.Classification)
 		}
+	}
+	return nil
+}
+
+// ValidateRequirementIDsUnique requires trimmed non-empty unique requirement IDs.
+func ValidateRequirementIDsUnique(ids []string) error {
+	seen := map[string]struct{}{}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return fmt.Errorf("%w: empty requirement_id", entity.ErrContractInvalidPayload)
+		}
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("%w: REQUIREMENT_IDS_DUPLICATE", entity.ErrContractInvalidPayload)
+		}
+		seen[id] = struct{}{}
 	}
 	return nil
 }

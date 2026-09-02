@@ -54,5 +54,6 @@ var (
 	ErrContractLogicalSchemaInvalid       = errors.New("data contract logical schema invalid")
 	ErrContractDriftInvalid               = errors.New("data contract drift invalid")
 	ErrContractGapInvalid                 = errors.New("data contract gap invalid")
+	ErrContractNotActive                  = errors.New("data contract not active")
 )
 

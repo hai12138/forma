@@ -16,6 +16,16 @@ import (
 	"github.com/coze-dev/coze-studio/backend/domain/forma/data/repository"
 )
 
+func snapshotMatchesBinding(snap *entity.SchemaSnapshot, binding entity.ContractBinding, tenantID string) bool {
+	if snap == nil {
+		return false
+	}
+	return snap.TenantID == tenantID &&
+		snap.SourceID == binding.SourceID &&
+		snap.ConnectionID == binding.ConnectionID &&
+		snap.AssetID == binding.AssetID
+}
+
 func (s *contractService) EvaluateDrift(ctx context.Context, in *EvaluateDriftInput) (*entity.DataDriftResult, *entity.DataContractRevision, error) {
 	if !s.configured() {
 		return nil, nil, entity.ErrNotConfigured
@@ -37,6 +47,11 @@ func (s *contractService) EvaluateDrift(ctx context.Context, in *EvaluateDriftIn
 	findings := []entity.DriftFinding{}
 	compared := map[string]string{}
 	overall := entity.DriftSeverityNoChange
+	fieldsByReq := map[string][]entity.LogicalField{}
+	for _, field := range rev.LogicalSchema.Fields {
+		reqID := strings.TrimSpace(field.RequirementID)
+		fieldsByReq[reqID] = append(fieldsByReq[reqID], field)
+	}
 
 	for _, binding := range rev.BindingRefs {
 		newSnapID, ok := in.NewSnapshotIDs[binding.SchemaSnapshotID]
@@ -53,6 +68,9 @@ func (s *contractService) EvaluateDrift(ctx context.Context, in *EvaluateDriftIn
 		if err != nil {
 			return nil, nil, err
 		}
+		if !snapshotMatchesBinding(pinned, binding, in.TenantID) || !snapshotMatchesBinding(fresh, binding, in.TenantID) {
+			return nil, nil, fmt.Errorf("%w: snapshot lineage mismatch for binding %q", entity.ErrContractDriftInvalid, binding.MappingID)
+		}
 		if pinned.Fingerprint != "" && pinned.Fingerprint == fresh.Fingerprint {
 			continue
 		}
@@ -61,37 +79,56 @@ func (s *contractService) EvaluateDrift(ctx context.Context, in *EvaluateDriftIn
 		if err != nil {
 			return nil, nil, err
 		}
-		var oldSchema, newSchema entity.PhysicalSchema
-		if json.Unmarshal([]byte(pinned.SchemaJSON), &oldSchema) != nil || json.Unmarshal([]byte(fresh.SchemaJSON), &newSchema) != nil {
+		var newSchema entity.PhysicalSchema
+		if json.Unmarshal([]byte(fresh.SchemaJSON), &newSchema) != nil {
 			return nil, nil, entity.ErrContractDriftInvalid
 		}
-		oldIndex := buildFieldPathIndex(&oldSchema)
 		newIndex := buildFieldPathIndex(&newSchema)
 		bindingSeverity := entity.DriftSeverityCompatible
+
 		for _, path := range m.TargetFieldPaths {
 			path = strings.TrimSpace(path)
-			newField, ok := newIndex[path]
-			if !ok {
+			if _, ok := newIndex[path]; !ok {
 				findings = append(findings, entity.DriftFinding{
 					Code: "FIELD_MISSING", Message: fmt.Sprintf("mapped path %q missing in new schema", path),
 					BindingMappingID: binding.MappingID, FieldPath: path,
 				})
 				bindingSeverity = entity.DriftSeverityBreaking
-				continue
 			}
-			oldField, hadOld := oldIndex[path]
-			if hadOld {
-				oldType := normalizedType(oldField.DataType)
-				newType := normalizedType(newField.DataType)
-				if oldType != newType && !(oldType == "" && newType == "") {
-					findings = append(findings, entity.DriftFinding{
-						Code: "TYPE_INCOMPATIBLE", Message: fmt.Sprintf("path %q type %q -> %q", path, oldField.DataType, newField.DataType),
-						BindingMappingID: binding.MappingID, FieldPath: path,
-					})
-					bindingSeverity = entity.DriftSeverityBreaking
+		}
+
+		for _, field := range fieldsByReq[binding.RequirementID] {
+			resolved, err := ResolveMappingOutputContractType(m, &newSchema)
+			if err != nil || resolved != normalizedType(field.LogicalType) {
+				msg := fmt.Sprintf("logical field %q type guarantee lost", field.LogicalKey)
+				if err != nil {
+					msg = err.Error()
+				} else {
+					msg = fmt.Sprintf("logical field %q type guarantee lost: resolved %q != %q", field.LogicalKey, resolved, field.LogicalType)
+				}
+				findings = append(findings, entity.DriftFinding{
+					Code: "TYPE_GUARANTEE_LOST", Message: msg,
+					BindingMappingID: binding.MappingID, FieldPath: field.LogicalKey,
+				})
+				bindingSeverity = entity.DriftSeverityBreaking
+			}
+			if !field.Nullable {
+				for _, path := range m.TargetFieldPaths {
+					pf, ok := newIndex[strings.TrimSpace(path)]
+					if !ok {
+						continue
+					}
+					if pf.Nullable {
+						findings = append(findings, entity.DriftFinding{
+							Code: "NULLABILITY_GUARANTEE_LOST", Message: fmt.Sprintf("logical field %q nullability guarantee lost on %q", field.LogicalKey, path),
+							BindingMappingID: binding.MappingID, FieldPath: path,
+						})
+						bindingSeverity = entity.DriftSeverityBreaking
+					}
 				}
 			}
 		}
+
 		if m.MappingType == entity.MappingTypeJoinRef {
 			if err := ValidateJoinRef(m.TransformSpec, &newSchema); err != nil {
 				findings = append(findings, entity.DriftFinding{
@@ -117,7 +154,13 @@ func (s *contractService) EvaluateDrift(ctx context.Context, in *EvaluateDriftIn
 			return err
 		}
 		if overall == entity.DriftSeverityBreaking && rev.Status == entity.ContractStatusActive {
+			if _, err := tx.GetContractForUpdate(ctx, in.TenantID, rev.ContractID); err != nil {
+				return err
+			}
 			if err := tx.UpdateRevisionStatus(ctx, in.TenantID, rev.RevisionID, entity.ContractStatusActive, entity.ContractStatusStale); err != nil {
+				return err
+			}
+			if err := tx.ClearContractActiveRevisionIfMatch(ctx, in.TenantID, rev.ContractID, rev.RevisionID); err != nil {
 				return err
 			}
 			if err := tx.CreateLifecycleEvent(ctx, &entity.DataContractLifecycleEvent{

@@ -239,6 +239,21 @@ func (d *ContractDAO) GetContract(c context.Context, t, id string) (*entity.Data
 	}
 	return contractTo(&row), nil
 }
+
+// GetContractForUpdate locks the contract row FOR UPDATE so activate/deprecate serialize.
+func (d *ContractDAO) GetContractForUpdate(c context.Context, t, id string) (*entity.DataContract, error) {
+	var row contractRow
+	err := d.db.WithContext(c).Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id = ? AND contract_id = ?", t, id).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, entity.ErrContractNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return contractTo(&row), nil
+}
+
 func (d *ContractDAO) ListContracts(c context.Context, t, b string) ([]*entity.DataContract, error) {
 	var rows []contractRow
 	if err := d.db.WithContext(c).Where("tenant_id = ? AND business_id = ?", t, b).Order("created_at ASC").Find(&rows).Error; err != nil {
@@ -261,6 +276,29 @@ func (d *ContractDAO) UpdateContractActiveRevision(c context.Context, t, contrac
 		return entity.ErrContractNotFound
 	}
 	return nil
+}
+
+// ClearContractActiveRevisionIfMatch clears active_revision_id when it matches expected,
+// or succeeds as a no-op when the pointer is already empty.
+func (d *ContractDAO) ClearContractActiveRevisionIfMatch(c context.Context, t, contractID, expectedRevisionID string) error {
+	now := time.Now().UTC()
+	res := d.db.WithContext(c).Model(&contractRow{}).
+		Where("tenant_id = ? AND contract_id = ? AND active_revision_id = ?", t, contractID, expectedRevisionID).
+		Updates(map[string]any{"active_revision_id": "", "updated_at": now})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 1 {
+		return nil
+	}
+	contract, err := d.GetContract(c, t, contractID)
+	if err != nil {
+		return err
+	}
+	if contract.ActiveRevisionID == "" {
+		return nil
+	}
+	return entity.ErrContractInvalidState
 }
 
 func (d *ContractDAO) CreateRevision(c context.Context, v *entity.DataContractRevision) error {

@@ -207,12 +207,21 @@ func (r *memoryContractRepo) GetContract(c context.Context, t, id string) (*enti
 	defer r.mu.Unlock()
 	return r.getContract(c, t, id)
 }
+func (r *memoryContractRepo) GetContractForUpdate(c context.Context, t, id string) (*entity.DataContract, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.getContractForUpdate(c, t, id)
+}
 func (r *memoryContractRepo) getContract(_ context.Context, t, id string) (*entity.DataContract, error) {
 	v := r.contracts[contractKey(t, id)]
 	if v == nil {
 		return nil, entity.ErrContractNotFound
 	}
 	return cloneContract(v), nil
+}
+// getContractForUpdate equals getContract under the memory txn mutex (serialize activates).
+func (r *memoryContractRepo) getContractForUpdate(c context.Context, t, id string) (*entity.DataContract, error) {
+	return r.getContract(c, t, id)
 }
 func (r *memoryContractRepo) ListContracts(c context.Context, t, b string) ([]*entity.DataContract, error) {
 	r.mu.Lock()
@@ -240,6 +249,26 @@ func (r *memoryContractRepo) updateActiveRevision(_ context.Context, t, contract
 		return entity.ErrContractNotFound
 	}
 	v.ActiveRevisionID = revisionID
+	v.UpdatedAt = time.Now().UTC()
+	return nil
+}
+func (r *memoryContractRepo) ClearContractActiveRevisionIfMatch(c context.Context, t, contractID, expectedRevisionID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.clearActiveRevisionIfMatch(c, t, contractID, expectedRevisionID)
+}
+func (r *memoryContractRepo) clearActiveRevisionIfMatch(_ context.Context, t, contractID, expectedRevisionID string) error {
+	v := r.contracts[contractKey(t, contractID)]
+	if v == nil {
+		return entity.ErrContractNotFound
+	}
+	if v.ActiveRevisionID == "" {
+		return nil
+	}
+	if v.ActiveRevisionID != expectedRevisionID {
+		return entity.ErrContractInvalidState
+	}
+	v.ActiveRevisionID = ""
 	v.UpdatedAt = time.Now().UTC()
 	return nil
 }
@@ -486,11 +515,17 @@ func (tx *memoryContractTx) CreateContract(c context.Context, v *entity.DataCont
 func (tx *memoryContractTx) GetContract(c context.Context, t, id string) (*entity.DataContract, error) {
 	return tx.repo.getContract(c, t, id)
 }
+func (tx *memoryContractTx) GetContractForUpdate(c context.Context, t, id string) (*entity.DataContract, error) {
+	return tx.repo.getContractForUpdate(c, t, id)
+}
 func (tx *memoryContractTx) ListContracts(c context.Context, t, b string) ([]*entity.DataContract, error) {
 	return tx.repo.listContracts(c, t, b)
 }
 func (tx *memoryContractTx) UpdateContractActiveRevision(c context.Context, t, contractID, revisionID string) error {
 	return tx.repo.updateActiveRevision(c, t, contractID, revisionID)
+}
+func (tx *memoryContractTx) ClearContractActiveRevisionIfMatch(c context.Context, t, contractID, expectedRevisionID string) error {
+	return tx.repo.clearActiveRevisionIfMatch(c, t, contractID, expectedRevisionID)
 }
 func (tx *memoryContractTx) CreateRevision(c context.Context, v *entity.DataContractRevision) error {
 	return tx.repo.createRevision(c, v)

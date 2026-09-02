@@ -92,6 +92,12 @@ func (*contractAppStub) ListGapResults(context.Context, string, string) ([]*data
 func (*contractAppStub) ListLifecycleEvents(context.Context, string, string) ([]*dataentity.DataContractLifecycleEvent, error) {
 	return nil, nil
 }
+func (*contractAppStub) BuildContractDescriptor(*dataentity.DataContractRevision) *dataentity.DataContractDescriptor {
+	return nil
+}
+func (*contractAppStub) GetActiveContractDescriptor(context.Context, string, string) (*dataentity.DataContractDescriptor, error) {
+	return nil, dataentity.ErrContractNotActive
+}
 
 func TestContractApplicationAuthorizationAndTenantIsolation(t *testing.T) {
 	app := newAppService()

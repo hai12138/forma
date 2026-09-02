@@ -44,6 +44,15 @@ func GetDataContract(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+func GetActiveDataContractDescriptor(ctx context.Context, c *app.RequestContext) {
+	v, err := formaapp.ApplicationSVC.GetActiveDataContractDescriptor(ctx, c.Param("id"), c.Param("contractId"))
+	if err != nil {
+		writeError(ctx, c, err)
+		return
+	}
+	writeOK(ctx, c, v)
+}
+
 func ListDataContractRevisions(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.ListDataContractRevisions(ctx, c.Param("id"), c.Param("contractId"))
 	if err != nil {

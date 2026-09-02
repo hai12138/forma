@@ -247,3 +247,20 @@ type DataContractGapResult struct {
 	EvaluatedAt               time.Time
 	CreatedAt                 time.Time
 }
+
+// DataContractDescriptor is the consumer-facing contract surface (no physical bindings).
+type DataContractDescriptor struct {
+	ContractID            string                       `json:"contract_id"`
+	RevisionID            string                       `json:"revision_id"`
+	Version               int32                        `json:"version"`
+	BusinessModelRevision int32                        `json:"business_model_revision"`
+	LogicalSchema         ContractLogicalSchema        `json:"logical_schema"`
+	QueryCapabilities     []QueryCapability            `json:"query_capabilities"`
+	FilterSchema          FilterSchema                 `json:"filter_schema"`
+	SortSchema            SortSchema                   `json:"sort_schema"`
+	PaginationPolicy      PaginationPolicy             `json:"pagination_policy"`
+	FreshnessPolicy       FreshnessPolicy              `json:"freshness_policy"`
+	Classification        map[string]DataClassification `json:"classification"`
+	AccessPolicyRef       string                       `json:"access_policy_ref,omitempty"`
+	Status                ContractStatus               `json:"status"`
+}
