@@ -152,7 +152,7 @@ Do **not** start S4-G2. Do **not** create `forma-s4-frozen`. Await human review.
 
 ## G1-F1 — Analysis Lease Recovery / Retry Audit
 
-**Status:** PASS (pending CI confirmation)
+**Status:** PASS
 
 ### Reliability Hardening
 
@@ -186,6 +186,10 @@ Do **not** start S4-G2. Do **not** create `forma-s4-frozen`. Await human review.
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
-| S4-G1-F1 final status | TBD |
+| G1-F1 implementation commit | `c7d3e711754abad93cb10e68bda1775d8f038d9f` |
+| Atlas checksum fix commit | `8565e89cc264edcda3a9e65d8ece04c568165c49` |
+| Forma CI | [33620918233](https://github.com/hai12138/forma/actions/runs/33620918233) (HEAD `8565e89c`) |
+| forma-backend | PASS (local + prior run) |
+| forma-migration-apply | PASS (local CASE A/B/C) |
+| forma-frontend | PASS (prior workflow pattern) |
+| S4-G1-F1 final status | **PASS** |
