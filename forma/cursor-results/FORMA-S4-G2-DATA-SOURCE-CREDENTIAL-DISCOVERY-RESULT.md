@@ -2,7 +2,7 @@
 
 ## Status
 
-**S4-G2 = PASS (pending CI confirmation)**
+**S4-G2 = PASS**
 
 ## Baseline
 
@@ -110,9 +110,12 @@ Domain/service tests cover: source/connection separation, multi-env, credential 
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
-| S4-G2 final status | TBD |
+| Commit SHA | `33e4bb8f4fc2dde49862f98e1603733bbcf1e639` |
+| Forma CI | [33629604516](https://github.com/hai12138/forma/actions/runs/33629604516) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| S4-G2 final status | **PASS** |
 
 ## STOP
 
