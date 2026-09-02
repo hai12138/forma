@@ -2,10 +2,12 @@
 # STAGE CONTRACT (Architecture Freeze)
 
 **Gate:** S4-G0 — Architecture & Stage Contract Freeze  
-**Status:** CONTRACT_READY (awaiting human architecture review)  
+**Amendment:** S4-G0-F1 — Data Requirement Audit / Idempotency Contract  
+**Status:** CONTRACT_READY (awaiting final human architecture review after G0-F1)  
 **Baseline:** `forma-s3-frozen` → `a13fbfc606f873be8e0f88e30baa1709ff32c9dd`  
+**G0 contract commit:** `c6057ce059ecd3fe4fdf9940889916a76864302a`  
 **Scope of this document:** Architecture invariants, domain model, boundaries, gates, and G1–G6 roadmap.  
-**Code change rule for G0:** Documentation only. No domain code, migrations, adapters, APIs, or model calls.
+**Code change rule for G0 / G0-F1:** Documentation only. No domain code, migrations, adapters, APIs, or model calls.
 
 ---
 
@@ -181,6 +183,15 @@ S4 packages **follow existing Forma conventions** (do not invent a parallel layo
 | 10 | DataValidationResult | Technical validation outcome |
 | 11 | DataDriftResult | Drift detection outcome |
 
+**G0-F1 clarification:** The 11 assets above remain the only S4 **Business / Data Semantic Canonical Assets**.
+
+The following are **Operational / Workflow / Audit Records** (not new semantic SoT assets):
+
+- `DataRequirementAnalysisRun`
+- `DataRequirementDecision`
+
+They must not redefine Business Model semantics.
+
 ---
 
 ## 6. DataRequirement
@@ -195,7 +206,10 @@ No industry enums.
 
 ### 6.2 Suggested fields
 
-`requirement_id`, `tenant_id`, `business_id`, `business_model_revision`, `requirement_kind`, `semantic_name`, `description`, `business_element_refs[]`, `requiredness`, `freshness_requirement`, `access_need`, `status`, `source`, `derived_from_requirement_id`, `created_by`, `created_at`, `updated_at`
+`requirement_id`, `tenant_id`, `business_id`, `business_model_revision`, `requirement_kind`, `semantic_name`, `description`, `business_element_refs[]`, `requiredness`, `freshness_requirement`, `access_need`, `status`, `source`, `derived_from_requirement_id`, `analysis_run_id` (nullable), `created_by`, `created_at`, `updated_at`
+
+- `AI_GENERATED` requirements **must** reference `analysis_run_id`
+- `MANUAL_CREATED` requirements may have `analysis_run_id = null`
 
 ### 6.3 Status / Source
 
@@ -210,19 +224,100 @@ No industry enums.
 |--------|---------|
 | AI_GENERATED | Produced by AI |
 | MANUAL_CREATED | Human created |
-| MANUAL_MODIFIED | Human edited |
+| MANUAL_MODIFIED | Human edited replacement (Edit & Confirm lineage) |
 
 **AI must never produce `CONFIRMED`.**
 
-### 6.4 Provenance
+### 6.4 Semantic immutability (G0-F1)
+
+After a DataRequirement is created, these core semantic fields **must not be overwritten in place**:
+
+`business_model_revision`, `requirement_kind`, `semantic_name`, `description`, `business_element_refs`, `source`, `derived_from_requirement_id`, `analysis_run_id`
+
+Human edit requires a **replacement** requirement (see §6.7).  
+`status` may change only via the legal state machine / decision actions.
+
+### 6.5 Provenance
 
 Every requirement must answer: **“Why is this data needed?”**
 
 ```
-DataRequirement
-  → BusinessModelRevision
-  → Business Element / Rule / Process / Object
+BusinessModelRevision
+  → DataRequirementAnalysisRun
+  → AI_GENERATED DataRequirement
+  → DataRequirementDecision
+  → CONFIRMED / MANUAL_MODIFIED / REJECTED DataRequirement
 ```
+
+S4 does **not** duplicate S3 Evidence. Upstream Business Model provenance (Proposal → Assertion → Evidence → User Turn) remains in S2/S3.
+
+### 6.6 DataRequirementAnalysisRun (workflow / audit)
+
+Not a Business Semantic SoT. Binds one analysis execution:
+
+```
+Business Model Revision
+  → AnalyzeDataRequirements
+  → N DataRequirements
+```
+
+Suggested fields:
+
+`analysis_run_id`, `tenant_id`, `business_id`, `business_model_revision`, `client_request_id`, `request_digest`, `status`, `model_ref`, `error_key`, `error_message_sanitized`, `created_by`, `started_at`, `completed_at`, `created_at`
+
+Status (G0-F1 minimum): `PENDING` · `SUCCEEDED` · `FAILED`  
+Do not invent extra statuses unless a later gate proves need.
+
+#### Idempotency (LOCKED)
+
+Same logical key:
+
+`tenant_id` + `business_id` + `business_model_revision` + `client_request_id`
+
+→ **exactly one** logical Analysis Run.
+
+- Duplicate requests **must return the existing result**
+- Must **not** re-invoke the model
+- Concurrent identical `client_request_id`: **only one** execution may acquire the run
+
+Must prevent double-click / network retry / browser retry / concurrent request from causing duplicate model calls or duplicate DataRequirements.
+
+#### Retry contract
+
+`FAILED` AnalysisRun may be **explicitly** retried (auditable). Implementation deferred to G1.
+
+**Forbidden:** HTTP/client retry → unconditional new model call / silent second logical request.
+
+#### Security
+
+AnalysisRun must not store raw credentials, API keys, secrets, Authorization headers, or cookies.  
+`error_message_sanitized` only. Credential secret values must never enter AI input.
+
+#### Domain-agnostic
+
+AnalysisRun / Decision records must not embed industry fields/enums (工单 / 退款 / 能源 / 设备 / 审批 / 订单, …). Only generic revision / requirement / decision / principal / run metadata.
+
+### 6.7 DataRequirementDecision (immutable audit event)
+
+Not a Business Semantic SoT. Records **human** decisions on requirements.
+
+Actions: `CONFIRM` · `REJECT` · `EDIT_CONFIRM`
+
+Suggested fields:
+
+`decision_id`, `tenant_id`, `business_id`, `source_requirement_id`, `target_requirement_id` (nullable), `action`, `actor_principal_id`, `reason` (nullable), `business_model_revision`, `created_at`
+
+Decisions are **immutable** after create.  
+AI / Model / Tool **must not** create Human Decisions.  
+Permissions reuse Forma identity (S1).
+
+| Action | Effect |
+|--------|--------|
+| **CONFIRM** | `PROPOSED` → `CONFIRMED`; create Decision(`CONFIRM`) |
+| **REJECT** | `PROPOSED` → `REJECTED`; create Decision(`REJECT`); reason optional. **Forbidden:** physical delete of AI proposal as Reject |
+| **EDIT_CONFIRM** | Original → `SUPERSEDED`; new requirement `source=MANUAL_MODIFIED`, `derived_from_requirement_id=original`, `status=CONFIRMED`; Decision(`EDIT_CONFIRM`) with `source_requirement_id=original`, `target_requirement_id=new`. Preserve original AI content, Business Model refs, and AnalysisRun provenance |
+
+**Forbidden:** overwrite AI_GENERATED semantic content in place and keep the same record as “edited”.
 
 ---
 
@@ -478,7 +573,7 @@ Business Capability · Capability Binding · Agent Composer / Projection · Coze
 |------|------|------|
 | 1 | Domain Agnostic | Unknown business → Forma Core change = 0 |
 | 2 | AI No Silent Mutation | AI cannot Confirm / Activate |
-| 3 | Requirement Provenance | Requirement traces to Business Model Revision |
+| 3 | Requirement Provenance | Requirement traces to Business Model Revision (+ AnalysisRun when AI-generated) |
 | 4 | Credential Isolation | No secret leakage |
 | 5 | Source Independence | Logical contract independent of physical naming |
 | 6 | Immutable Revision | Contract revision not updated in place |
@@ -486,6 +581,8 @@ Business Capability · Capability Binding · Agent Composer / Projection · Coze
 | 8 | Business Revision Gap | Model revision does not silently mutate contract |
 | 9 | Tenant Isolation | Tenant A/B fully isolated |
 | 10 | Read-only Boundary | Contract does not execute business writes |
+| 11 | Requirement Analysis Idempotency | Same `client_request_id` must not re-call model or duplicate requirements |
+| 12 | Requirement Decision Provenance | Any CONFIRMED / REJECTED / MANUAL_MODIFIED requirement must trace to a human Decision |
 
 ---
 
@@ -493,8 +590,8 @@ Business Capability · Capability Binding · Agent Composer / Projection · Coze
 
 | Gate | Focus |
 |------|-------|
-| **S4-G0** | Architecture / Contract Freeze ← **this document** |
-| **S4-G1** | Data Requirement Domain |
+| **S4-G0** | Architecture / Contract Freeze (+ G0-F1 audit/idempotency amendment) |
+| **S4-G1** | Data Requirement Domain — includes `DataRequirement`, `DataRequirementAnalysisRun`, `DataRequirementDecision`, requirement provenance, AI proposal boundary, human confirmation, edit lineage, idempotency, tenant isolation (**not implemented in G0-F1**) |
 | **S4-G2** | Data Source / Credential / Discovery |
 | **S4-G3** | Semantic Mapping |
 | **S4-G4** | Data Contract / Revision / Drift |
@@ -506,15 +603,15 @@ Each gate: Implement → Test → Review → PASS.
 
 ---
 
-## 20. G0 Exit Criteria
+## 20. G0 / G0-F1 Exit Criteria
 
-- Stage Contract published
-- G0 Result published
+- Stage Contract published (including G0-F1 audit / idempotency amendment)
+- G0 Result published and updated for G0-F1
 - Docs-only commit; Forma CI ALL GREEN
 - No S4 domain/migration/adapter/UI implementation
 - `REAL_MODEL_CALLS = 0`
-- Human architecture review pending
-- **DO NOT START S4-G1** until review PASS
+- Human architecture review: G0 core PASS; G0-F1 awaiting final PASS
+- **DO NOT START S4-G1** until final review PASS
 
 ---
 
@@ -524,5 +621,5 @@ Each gate: Implement → Test → Review → PASS.
 |------|-------|
 | Contract file | `forma/docs/stages/FORMA-S4-DATA-PLANE-DATA-CONTRACT-STAGE-CONTRACT.md` |
 | Result file | `forma/cursor-results/FORMA-S4-G0-ARCHITECTURE-CONTRACT-RESULT.md` |
-| Owner stage | S4-G0 |
-| Next stage | S4-G1 (blocked until human architecture review) |
+| Owner stage | S4-G0 / S4-G0-F1 |
+| Next stage | S4-G1 (blocked until final human architecture review) |
