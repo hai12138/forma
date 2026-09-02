@@ -13,6 +13,7 @@ import (
 	analystentity "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	dataentity "github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
+	datasourceentity "github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
 	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 )
 
@@ -68,6 +69,18 @@ const (
 	CodeDataForbidden                   int32 = 40330
 	CodeDataNotConfigured               int32 = 50030
 	CodeDataModelFailed                 int32 = 50031
+
+	CodeDataSourceNotFound            int32 = 40440
+	CodeDataConnectionNotFound        int32 = 40441
+	CodeDataCredentialNotFound        int32 = 40442
+	CodeDataAdapterNotSupported       int32 = 40040
+	CodeDataConnectionFailed          int32 = 50240
+	CodeDataDiscoveryFailed           int32 = 50241
+	CodeDataAssetNotFound             int32 = 40443
+	CodeDataSchemaSnapshotNotFound    int32 = 40444
+	CodeDataSecretProviderUnavailable int32 = 50340
+	CodeDataSecretInvalid             int32 = 40041
+	CodeDataPublicConfigInvalid       int32 = 40042
 )
 
 const (
@@ -120,6 +133,18 @@ const (
 	KeyDataForbidden                   = "FORMA_DATA_FORBIDDEN"
 	KeyDataNotConfigured               = "FORMA_DATA_NOT_CONFIGURED"
 	KeyDataModelFailed                 = "FORMA_DATA_MODEL_FAILED"
+
+	KeyDataSourceNotFound            = "FORMA_DATA_SOURCE_NOT_FOUND"
+	KeyDataConnectionNotFound        = "FORMA_DATA_CONNECTION_NOT_FOUND"
+	KeyDataCredentialNotFound        = "FORMA_DATA_CREDENTIAL_NOT_FOUND"
+	KeyDataAdapterNotSupported       = "FORMA_DATA_ADAPTER_NOT_SUPPORTED"
+	KeyDataConnectionFailed          = "FORMA_DATA_CONNECTION_FAILED"
+	KeyDataDiscoveryFailed           = "FORMA_DATA_DISCOVERY_FAILED"
+	KeyDataAssetNotFound             = "FORMA_DATA_ASSET_NOT_FOUND"
+	KeyDataSchemaSnapshotNotFound    = "FORMA_DATA_SCHEMA_SNAPSHOT_NOT_FOUND"
+	KeyDataSecretProviderUnavailable = "FORMA_DATA_SECRET_PROVIDER_UNAVAILABLE"
+	KeyDataSecretInvalid             = "FORMA_DATA_SECRET_INVALID"
+	KeyDataPublicConfigInvalid       = "FORMA_DATA_PUBLIC_CONFIG_INVALID"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -430,6 +455,40 @@ func DataModelFailed(msg string) *FormaError {
 	return New(CodeDataModelFailed, http.StatusInternalServerError, KeyDataModelFailed, defaultMessage(msg, "data model failed"))
 }
 
+func DataSourceNotFound(msg string) *FormaError {
+	return New(CodeDataSourceNotFound, http.StatusNotFound, KeyDataSourceNotFound, defaultMessage(msg, "data source not found"))
+}
+func DataConnectionNotFound(msg string) *FormaError {
+	return New(CodeDataConnectionNotFound, http.StatusNotFound, KeyDataConnectionNotFound, defaultMessage(msg, "data connection not found"))
+}
+func DataCredentialNotFound(msg string) *FormaError {
+	return New(CodeDataCredentialNotFound, http.StatusNotFound, KeyDataCredentialNotFound, defaultMessage(msg, "data credential not found"))
+}
+func DataAdapterNotSupported(msg string) *FormaError {
+	return New(CodeDataAdapterNotSupported, http.StatusBadRequest, KeyDataAdapterNotSupported, defaultMessage(msg, "data adapter not supported"))
+}
+func DataConnectionFailed(msg string) *FormaError {
+	return New(CodeDataConnectionFailed, http.StatusBadGateway, KeyDataConnectionFailed, defaultMessage(msg, "data connection failed"))
+}
+func DataDiscoveryFailed(msg string) *FormaError {
+	return New(CodeDataDiscoveryFailed, http.StatusBadGateway, KeyDataDiscoveryFailed, defaultMessage(msg, "data discovery failed"))
+}
+func DataAssetNotFound(msg string) *FormaError {
+	return New(CodeDataAssetNotFound, http.StatusNotFound, KeyDataAssetNotFound, defaultMessage(msg, "data asset not found"))
+}
+func DataSchemaSnapshotNotFound(msg string) *FormaError {
+	return New(CodeDataSchemaSnapshotNotFound, http.StatusNotFound, KeyDataSchemaSnapshotNotFound, defaultMessage(msg, "data schema snapshot not found"))
+}
+func DataSecretProviderUnavailable(msg string) *FormaError {
+	return New(CodeDataSecretProviderUnavailable, http.StatusServiceUnavailable, KeyDataSecretProviderUnavailable, defaultMessage(msg, "data secret provider unavailable"))
+}
+func DataSecretInvalid(msg string) *FormaError {
+	return New(CodeDataSecretInvalid, http.StatusBadRequest, KeyDataSecretInvalid, defaultMessage(msg, "data secret invalid"))
+}
+func DataPublicConfigInvalid(msg string) *FormaError {
+	return New(CodeDataPublicConfigInvalid, http.StatusBadRequest, KeyDataPublicConfigInvalid, defaultMessage(msg, "data public config invalid"))
+}
+
 func defaultMessage(msg, fallback string) string {
 	if msg == "" {
 		return fallback
@@ -569,6 +628,39 @@ func MapDomainError(err error) *FormaError {
 	}
 	if errors.Is(err, dataentity.ErrModelFailed) {
 		return DataModelFailed(err.Error())
+	}
+	if errors.Is(err, datasourceentity.ErrDataSourceNotFound) {
+		return DataSourceNotFound("")
+	}
+	if errors.Is(err, datasourceentity.ErrDataConnectionNotFound) {
+		return DataConnectionNotFound("")
+	}
+	if errors.Is(err, datasourceentity.ErrDataCredentialNotFound) {
+		return DataCredentialNotFound("")
+	}
+	if errors.Is(err, datasourceentity.ErrDataAdapterNotSupported) {
+		return DataAdapterNotSupported("")
+	}
+	if errors.Is(err, datasourceentity.ErrDataConnectionFailed) {
+		return DataConnectionFailed("")
+	}
+	if errors.Is(err, datasourceentity.ErrDataDiscoveryFailed) {
+		return DataDiscoveryFailed("")
+	}
+	if errors.Is(err, datasourceentity.ErrDataAssetNotFound) {
+		return DataAssetNotFound("")
+	}
+	if errors.Is(err, datasourceentity.ErrDataSchemaSnapshotNotFound) {
+		return DataSchemaSnapshotNotFound("")
+	}
+	if errors.Is(err, datasourceentity.ErrSecretProviderUnavailable) {
+		return DataSecretProviderUnavailable("")
+	}
+	if errors.Is(err, datasourceentity.ErrSecretInvalid) {
+		return DataSecretInvalid("")
+	}
+	if errors.Is(err, datasourceentity.ErrPublicConfigInvalid) {
+		return DataPublicConfigInvalid("")
 	}
 	return Internal(err.Error())
 }

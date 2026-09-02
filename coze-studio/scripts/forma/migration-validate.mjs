@@ -94,6 +94,25 @@ test('S4-G1-F1 analysis lease audit migration present', () => {
   assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
 });
 
+test('S4-G2 data source discovery migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250902110000_s4_g2_data_source_discovery.sql'),
+    'utf8',
+  );
+  for (const table of [
+    'forma_data_source',
+    'forma_data_connection',
+    'forma_data_credential_ref',
+    'forma_data_secret_local',
+    'forma_data_asset',
+    'forma_data_schema_snapshot',
+  ]) {
+    assert.ok(sql.includes(table));
+  }
+  assert.ok(sql.includes('uk_forma_data_asset_locator'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
+});
+
 test('atlas sum references migrations', () => {
   const sum = readFileSync(join(root, 'migrations', 'atlas.sum'), 'utf8');
   assert.ok(sum.includes('20250831100000_initial.sql'));
@@ -104,4 +123,5 @@ test('atlas sum references migrations', () => {
   assert.ok(sum.includes('20250902010000_s3_g1_integrity.sql'));
   assert.ok(sum.includes('20250902100000_s4_g1_data_requirement.sql'));
   assert.ok(sum.includes('20250902103000_s4_g1_analysis_lease_audit.sql'));
+  assert.ok(sum.includes('20250902110000_s4_g2_data_source_discovery.sql'));
 });

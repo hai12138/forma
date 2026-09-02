@@ -76,6 +76,8 @@ type DataAnalysisRunDTO struct {
 	ErrorKey              string `json:"error_key,omitempty"`
 	ErrorMessage          string `json:"error_message_sanitized,omitempty"`
 	RetryCount            int32  `json:"retry_count"`
+	LastRetryBy           string `json:"last_retry_by,omitempty"`
+	LastRetryAt           string `json:"last_retry_at,omitempty"`
 	CreatedBy             string `json:"created_by"`
 	StartedAt             string `json:"started_at,omitempty"`
 	CompletedAt           string `json:"completed_at,omitempty"`
@@ -396,6 +398,8 @@ func toDataAnalysisRunDTO(run *dataentity.DataRequirementAnalysisRun) *DataAnaly
 		ErrorKey:              run.ErrorKey,
 		ErrorMessage:          run.ErrorMessageSanitized,
 		RetryCount:            run.RetryCount,
+		LastRetryBy:           run.LastRetryBy,
+		LastRetryAt:           formatOptionalTime(run.LastRetryAt),
 		CreatedBy:             run.CreatedBy,
 		StartedAt:             formatOptionalTime(run.StartedAt),
 		CompletedAt:           formatOptionalTime(run.CompletedAt),
