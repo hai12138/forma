@@ -164,7 +164,7 @@ Do **not** start S4-G5. Do **not** implement Data Plane UI / Business Capability
 
 ## Status
 
-**S4-G4-F2 = PASS** (pending CI record)
+**S4-G4-F2 = PASS**
 
 ## Bug Fixed
 
@@ -199,8 +199,11 @@ ACTIVE→DEPRECATED still requires pointer match and clears via CAS.
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
+| Commit SHA | `09ac3d37a1bef6b9dca3f6f89f2020f712efbf91` |
+| Forma CI | [33662545669](https://github.com/hai12138/forma/actions/runs/33662545669) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
 
 ## STOP
 
