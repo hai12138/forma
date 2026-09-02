@@ -3,7 +3,7 @@
 ## Status
 
 **S4-G3 = PASS**  
-**FORMA-S4-G3-F1 = PASS** (pending CI record)
+**FORMA-S4-G3-F1 = PASS**
 
 ## Baseline
 
@@ -82,7 +82,7 @@ DIRECT, CAST, ENUM_MAP, UNIT_CONVERT, TIME_NORMALIZE, FIELD_PATH, JOIN_REF — v
 
 ## G3-F1 Contract Hardening
 
-**FORMA-S4-G3-F1 = PASS** (local suites green; CI SHA below after push)
+**FORMA-S4-G3-F1 = PASS**
 
 | Invariant | Result |
 |-----------|--------|
@@ -120,8 +120,11 @@ DIRECT, CAST, ENUM_MAP, UNIT_CONVERT, TIME_NORMALIZE, FIELD_PATH, JOIN_REF — v
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
+| Commit SHA | `983d2796ddf9b29ddf3b048f486ce59ea2b2efe1` |
+| Forma CI | [33650518397](https://github.com/hai12138/forma/actions/runs/33650518397) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
 
 ## STOP
 
