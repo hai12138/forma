@@ -16,7 +16,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 )
 
 func TestHTTPAdapterPreviewAndDiscovery(t *testing.T) {
@@ -115,9 +115,9 @@ func TestPostgreSQLSchemaIsNormalized(t *testing.T) {
 	mock.ExpectPing()
 	mock.ExpectQuery("FROM information_schema.columns").
 		WithArgs("public", "customers").
-		WillReturnRows(sqlmock.NewRows([]string{"column_name", "data_type", "is_nullable", "ordinal_position", "is_primary"}).
-			AddRow("id", "bigint", "NO", 1, 1).
-			AddRow("account_id", "bigint", "YES", 2, 0))
+		WillReturnRows(sqlmock.NewRows([]string{"column_name", "data_type", "native_type", "is_nullable", "ordinal_position", "description", "is_primary"}).
+			AddRow("id", "bigint", "int8", "NO", 1, "identifier", 1).
+			AddRow("account_id", "bigint", "int8", "YES", 2, "", 0))
 	mock.ExpectQuery("FROM information_schema.table_constraints").
 		WithArgs("public", "customers").
 		WillReturnRows(sqlmock.NewRows([]string{"constraint_name", "column_name", "table_schema", "table_name", "column_name"}).
@@ -136,4 +136,54 @@ func TestPostgreSQLSchemaIsNormalized(t *testing.T) {
 	require.Equal(t, "public.accounts", schema.Relationships[0].ToSchema)
 	require.Equal(t, []string{"account_id"}, schema.Relationships[0].FromFields)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRelationalDiscoveryIncludesTablesAndViews(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		driver  string
+		adapter func(DBOpener) DataSourceAdapter
+	}{
+		{name: "mysql", driver: "mysql", adapter: NewMySQLAdapter},
+		{name: "postgres", driver: "pgx", adapter: NewPostgreSQLAdapter},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+			require.NoError(t, err)
+			mock.ExpectPing()
+			mock.ExpectQuery("FROM information_schema.tables").WillReturnRows(
+				sqlmock.NewRows([]string{"table_schema", "table_name", "object_type"}).
+					AddRow("public", "customers", "TABLE").
+					AddRow("public", "active_customers", "VIEW"),
+			)
+			adapter := tc.adapter(func(driver, _ string) (*sql.DB, error) {
+				require.Equal(t, tc.driver, driver)
+				return db, nil
+			})
+			assets, err := adapter.DiscoverAssets(context.Background(), &AdapterRequest{
+				PublicConfigJSON: `{"host":"db","database":"warehouse","username":"reader"}`,
+				Secret:           []byte(`{"password":"x"}`),
+			})
+			require.NoError(t, err)
+			require.Equal(t, "TABLE", assets[0].PhysicalLocator["object_type"])
+			require.Equal(t, "VIEW", assets[1].PhysicalLocator["object_type"])
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestHTTPTestConnectionFallsBackFromHeadToGet(t *testing.T) {
+	methods := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	adapter := NewHTTPAdapter(nil)
+	require.NoError(t, adapter.TestConnection(context.Background(), &AdapterRequest{PublicConfigJSON: `{"base_url":"` + server.URL + `"}`}))
+	require.Equal(t, []string{http.MethodHead, http.MethodGet}, methods)
 }

@@ -10,7 +10,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -30,6 +30,8 @@ func (sourceRow) TableName() string { return "forma_data_source" }
 type connectionRow struct {
 	ID                                                                                                             int64 `gorm:"primaryKey"`
 	ConnectionID, TenantID, SourceID, Name, Environment, AdapterType, PublicConfigJSON, CredentialRefID, CreatedBy string
+	Status, LastTestStatus, LastTestErrorKey                                                                       string
+	LastTestAt                                                                                                     *time.Time
 	CreatedAt, UpdatedAt                                                                                           time.Time
 }
 
@@ -78,10 +80,10 @@ func sourceTo(v *sourceRow) *entity.DataSource {
 	return &entity.DataSource{SourceID: v.SourceID, TenantID: v.TenantID, Name: v.Name, SourceType: entity.SourceType(v.SourceType), Status: entity.DataSourceStatus(v.Status), CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func connectionFrom(v *entity.DataConnection) *connectionRow {
-	return &connectionRow{ConnectionID: v.ConnectionID, TenantID: v.TenantID, SourceID: v.SourceID, Name: v.Name, Environment: string(v.Environment), AdapterType: string(v.AdapterType), PublicConfigJSON: v.PublicConfigJSON, CredentialRefID: v.CredentialRefID, CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return &connectionRow{ConnectionID: v.ConnectionID, TenantID: v.TenantID, SourceID: v.SourceID, Name: v.Name, Environment: string(v.Environment), AdapterType: string(v.AdapterType), PublicConfigJSON: v.PublicConfigJSON, CredentialRefID: v.CredentialRefID, Status: string(v.Status), LastTestStatus: string(v.LastTestStatus), LastTestAt: v.LastTestAt, LastTestErrorKey: v.LastTestErrorKey, CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func connectionTo(v *connectionRow) *entity.DataConnection {
-	return &entity.DataConnection{ConnectionID: v.ConnectionID, TenantID: v.TenantID, SourceID: v.SourceID, Name: v.Name, Environment: entity.Environment(v.Environment), AdapterType: entity.AdapterType(v.AdapterType), PublicConfigJSON: v.PublicConfigJSON, CredentialRefID: v.CredentialRefID, CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return &entity.DataConnection{ConnectionID: v.ConnectionID, TenantID: v.TenantID, SourceID: v.SourceID, Name: v.Name, Environment: entity.Environment(v.Environment), AdapterType: entity.AdapterType(v.AdapterType), PublicConfigJSON: v.PublicConfigJSON, CredentialRefID: v.CredentialRefID, Status: entity.DataConnectionStatus(v.Status), LastTestStatus: entity.ConnectionTestStatus(v.LastTestStatus), LastTestAt: v.LastTestAt, LastTestErrorKey: v.LastTestErrorKey, CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func credentialFrom(v *entity.CredentialRef) *credentialRow {
 	return &credentialRow{CredentialRefID: v.CredentialRefID, TenantID: v.TenantID, Provider: string(v.Provider), SecretType: v.SecretType, KeyVersion: v.KeyVersion, Status: string(v.Status), CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt, RotatedAt: v.RotatedAt, RevokedAt: v.RevokedAt}
@@ -155,7 +157,7 @@ func (d *DataSourceDAO) ListConnections(c context.Context, t, s string) ([]*enti
 }
 func (d *DataSourceDAO) UpdateConnection(c context.Context, v *entity.DataConnection) error {
 	r := connectionFrom(v)
-	res := d.db.WithContext(c).Model(&connectionRow{}).Where("tenant_id=? AND connection_id=?", v.TenantID, v.ConnectionID).Updates(map[string]any{"name": r.Name, "environment": r.Environment, "public_config_json": r.PublicConfigJSON, "credential_ref_id": r.CredentialRefID, "updated_at": r.UpdatedAt})
+	res := d.db.WithContext(c).Model(&connectionRow{}).Where("tenant_id=? AND connection_id=?", v.TenantID, v.ConnectionID).Updates(map[string]any{"name": r.Name, "environment": r.Environment, "public_config_json": r.PublicConfigJSON, "credential_ref_id": r.CredentialRefID, "status": r.Status, "last_test_status": r.LastTestStatus, "last_test_at": r.LastTestAt, "last_test_error_key": r.LastTestErrorKey, "updated_at": r.UpdatedAt})
 	if res.Error != nil {
 		return res.Error
 	}

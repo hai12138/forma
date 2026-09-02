@@ -1,4 +1,4 @@
-h1:xCyRS4i2qsYPI1Un5uzAXjvQekehn+9U2ScItagv1Mw=
+h1:gaWCoibKlJwwz+tS75ZBxx2xyl0sJAwa7AwO1ZY/MVE=
 20250831100000_initial.sql h1:9b0az5JjQaJjx2kfkA41c/ly4lywgsNtTzyTcATpj8o=
 20250831120000_s1_tenancy.sql h1:dT43HbCJd5Rx7D2y9u9mX6d/2PLut6nhckAlWfcipDM=
 20250831140000_s1_g1_space_mapping.sql h1:UfzhBL0yV0KPhy2b46c7d6L1sPaByq5yqiv8loyk/Bg=
@@ -9,3 +9,4 @@ h1:xCyRS4i2qsYPI1Un5uzAXjvQekehn+9U2ScItagv1Mw=
 20250902100000_s4_g1_data_requirement.sql h1:hyqjXOx+bkDbL6z36EtoShioBxp+5jthqM0eZ9c5M3E=
 20250902103000_s4_g1_analysis_lease_audit.sql h1:K2PJ1abSU9blTC8k4dZVxsZjeshEGEcVN0PF2yQIJGI=
 20250902110000_s4_g2_data_source_discovery.sql h1:5sdDr61STo8DNFhwTPhE6sAoqbbogOPN0Sldb2SBQ74=
+20250902113000_s4_g2_contract_alignment.sql h1:xzrSLg8IVCfa1I+3SNQP8TtA/VdqgkEwEKbENAGGQBc=

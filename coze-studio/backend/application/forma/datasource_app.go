@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"time"
 
-	datasourceentity "github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
-	datasourcesvc "github.com/coze-dev/coze-studio/backend/domain/forma/datasource/service"
+	datasourceentity "github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
+	datasourcesvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
 	tenantctx "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/context"
 )
@@ -55,16 +55,20 @@ type DataSourceDTO struct {
 	UpdatedAt  string `json:"updated_at"`
 }
 type DataConnectionDTO struct {
-	ConnectionID    string          `json:"connection_id"`
-	SourceID        string          `json:"source_id"`
-	Name            string          `json:"name"`
-	Environment     string          `json:"environment"`
-	AdapterType     string          `json:"adapter_type"`
-	PublicConfig    json.RawMessage `json:"public_config"`
-	CredentialRefID string          `json:"credential_ref_id,omitempty"`
-	CreatedBy       string          `json:"created_by"`
-	CreatedAt       string          `json:"created_at"`
-	UpdatedAt       string          `json:"updated_at"`
+	ConnectionID     string          `json:"connection_id"`
+	SourceID         string          `json:"source_id"`
+	Name             string          `json:"name"`
+	Environment      string          `json:"environment"`
+	AdapterType      string          `json:"adapter_type"`
+	PublicConfig     json.RawMessage `json:"public_config"`
+	CredentialRefID  string          `json:"credential_ref_id,omitempty"`
+	Status           string          `json:"status"`
+	LastTestStatus   string          `json:"last_test_status,omitempty"`
+	LastTestAt       string          `json:"last_test_at,omitempty"`
+	LastTestErrorKey string          `json:"last_test_error_key,omitempty"`
+	CreatedBy        string          `json:"created_by"`
+	CreatedAt        string          `json:"created_at"`
+	UpdatedAt        string          `json:"updated_at"`
 }
 type CredentialRefDTO struct {
 	CredentialRefID string `json:"credential_ref_id"`
@@ -343,7 +347,7 @@ func dataSourceDTO(v *datasourceentity.DataSource) *DataSourceDTO {
 	return &DataSourceDTO{SourceID: v.SourceID, Name: v.Name, SourceType: string(v.SourceType), Status: string(v.Status), CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: v.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 }
 func dataConnectionDTO(v *datasourceentity.DataConnection) *DataConnectionDTO {
-	return &DataConnectionDTO{ConnectionID: v.ConnectionID, SourceID: v.SourceID, Name: v.Name, Environment: string(v.Environment), AdapterType: string(v.AdapterType), PublicConfig: json.RawMessage(v.PublicConfigJSON), CredentialRefID: v.CredentialRefID, CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: v.UpdatedAt.UTC().Format(time.RFC3339Nano)}
+	return &DataConnectionDTO{ConnectionID: v.ConnectionID, SourceID: v.SourceID, Name: v.Name, Environment: string(v.Environment), AdapterType: string(v.AdapterType), PublicConfig: json.RawMessage(v.PublicConfigJSON), CredentialRefID: v.CredentialRefID, Status: string(v.Status), LastTestStatus: string(v.LastTestStatus), LastTestAt: formatOptionalTime(v.LastTestAt), LastTestErrorKey: v.LastTestErrorKey, CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: v.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 }
 func credentialDTO(v *datasourceentity.CredentialRef) *CredentialRefDTO {
 	return &CredentialRefDTO{CredentialRefID: v.CredentialRefID, Status: string(v.Status), Provider: string(v.Provider), CreatedAt: v.CreatedAt.UTC().Format(time.RFC3339Nano), RotatedAt: formatOptionalTime(v.RotatedAt)}

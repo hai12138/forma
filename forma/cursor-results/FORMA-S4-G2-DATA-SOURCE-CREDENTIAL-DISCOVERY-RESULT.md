@@ -49,11 +49,11 @@ SemanticMapping, Mapping DSL, DataContract, ContractRevision, Drift, Capability,
 ## Package Layout
 
 ```
-coze-studio/backend/domain/forma/datasource/
-  entity/
-  service/       (adapters, secret provider, orchestration)
-  repository/
-  internal/dal/
+coze-studio/backend/domain/forma/data/
+  entity/         (requirements + sources + physical schema)
+  service/        (requirements + adapters + network policy + OpenAPI)
+  repository/     (requirements + sources)
+  internal/dal/   (requirements + sources)
 ```
 
 ## Migration
@@ -116,6 +116,44 @@ Domain/service tests cover: source/connection separation, multi-env, credential 
 | forma-migration-apply | PASS |
 | forma-frontend | PASS |
 | S4-G2 final status | **PASS** |
+
+## G2-F1 Contract Alignment
+
+- Consolidated all production source-discovery code into the single
+  `domain/forma/data` bounded context; `domain/forma/datasource` is removed.
+- Canonical API source types are `RELATIONAL_DATABASE` and `HTTP_API`;
+  extension types fail closed with `FORMA_DATA_SOURCE_TYPE_NOT_SUPPORTED`.
+- Added TABLE/VIEW discovery, enriched relational schemas, OpenAPI 3.x response
+  schema parsing, SSRF policy enforcement, and HEAD-to-GET connection probing.
+- Connection health persists only stable status/error keys; driver and secret
+  material are never stored in health errors.
+- Added `20250902113000_s4_g2_contract_alignment.sql` and regenerated Atlas
+  checksums with Atlas 0.32.1.
+- `REAL_MODEL_CALLS=0`.
+
+### G2-F1 Invariants
+
+| Invariant | Result |
+|-----------|--------|
+| DOMAIN_BOUNDARY | ALIGNED |
+| SOURCE_TYPE_CONTRACT | ALIGNED |
+| ADAPTER_CONTRACT | ALIGNED |
+| RELATIONAL_VIEW_DISCOVERY | PASS |
+| PHYSICAL_SCHEMA_ENRICHED | PASS |
+| HTTP_OPENAPI_SCHEMA | PASS |
+| HTTP_SSRF_PROTECTION | PASS |
+| CONNECTION_HEALTH | PASS |
+| SECRET_ENVELOPE | NONCE_PREFIXED_AES_GCM |
+| G1_REGRESSION | PASS |
+| REAL_MODEL_CALLS | 0 |
+
+### G2-F1 Delivery
+
+| Item | Value |
+|------|-------|
+| Commit SHA | TBD |
+| Forma CI | TBD |
+| S4-G2-F1 final status | TBD |
 
 ## STOP
 

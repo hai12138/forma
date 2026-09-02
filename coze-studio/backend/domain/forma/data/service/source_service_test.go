@@ -15,8 +15,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/repository"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/repository"
 )
 
 const testSecretPrefix = "FORMA_TEST_SUPER_SECRET_"
@@ -44,13 +44,16 @@ func (f *fakeAdapter) GetSchema(context.Context, *AdapterRequest, map[string]any
 func (f *fakeAdapter) Preview(context.Context, *PreviewRequest) ([]map[string]any, error) {
 	return nil, nil
 }
+func (f *fakeAdapter) ValidateContract(context.Context, *AdapterRequest, map[string]any) error {
+	return entity.ErrDataContractNotAvailable
+}
 
 func testService(t *testing.T, adapter DataSourceAdapter) DataSourceService {
 	t.Helper()
 	SetTestMasterKeyForTests(t)
 	secrets, err := NewLocalSecretProviderFromEnv()
 	require.NoError(t, err)
-	return NewDataSourceService(&Components{
+	return NewDataSourceService(&SourceComponents{
 		Repo:     repository.NewMemoryDataSourceRepository(),
 		Secrets:  secrets,
 		Adapters: NewAdapterRegistry(map[entity.AdapterType]DataSourceAdapter{entity.AdapterMySQL: adapter}),
@@ -95,7 +98,7 @@ func TestDiscoveryIsTenantScopedAndIdempotent(t *testing.T) {
 	a := &fakeAdapter{assets: []DiscoveredAsset{{AssetType: entity.AssetDataset, Name: "orders", PhysicalLocator: map[string]any{"table": "orders", "schema": "public"}}}}
 	s := testService(t, a)
 	ctx := context.Background()
-	source, err := s.CreateSource(ctx, &CreateSourceInput{TenantID: "tenant-a", Name: "warehouse", SourceType: entity.SourceTypeDatabase, ActorID: "admin"})
+	source, err := s.CreateSource(ctx, &CreateSourceInput{TenantID: "tenant-a", Name: "warehouse", SourceType: entity.SourceTypeRelationalDatabase, ActorID: "admin"})
 	require.NoError(t, err)
 	conn, err := s.CreateConnection(ctx, &CreateConnectionInput{TenantID: "tenant-a", SourceID: source.SourceID, Name: "dev", Environment: entity.EnvironmentDev, AdapterType: entity.AdapterMySQL, PublicConfigJSON: `{"host":"db"}`, ActorID: "admin"})
 	require.NoError(t, err)
@@ -116,7 +119,7 @@ func TestSchemaFingerprintStableAndSnapshotsImmutable(t *testing.T) {
 	}
 	s := testService(t, a)
 	ctx := context.Background()
-	source, _ := s.CreateSource(ctx, &CreateSourceInput{TenantID: "t", Name: "db", SourceType: entity.SourceTypeDatabase})
+	source, _ := s.CreateSource(ctx, &CreateSourceInput{TenantID: "t", Name: "db", SourceType: entity.SourceTypeRelationalDatabase})
 	conn, _ := s.CreateConnection(ctx, &CreateConnectionInput{TenantID: "t", SourceID: source.SourceID, Name: "dev", Environment: entity.EnvironmentDev, AdapterType: entity.AdapterMySQL, PublicConfigJSON: `{"host":"db"}`})
 	assets, err := s.Discover(ctx, "t", source.SourceID, conn.ConnectionID)
 	require.NoError(t, err)
@@ -126,6 +129,10 @@ func TestSchemaFingerprintStableAndSnapshotsImmutable(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, one.SnapshotID, two.SnapshotID)
 	require.Equal(t, one.Fingerprint, two.Fingerprint)
+	a.schema.Fields = append(a.schema.Fields, entity.PhysicalField{Name: "total", DataType: "decimal", Ordinal: 2})
+	three, err := s.CaptureSchema(ctx, "t", source.SourceID, conn.ConnectionID, assets[0].AssetID, "admin")
+	require.NoError(t, err)
+	require.NotEqual(t, one.Fingerprint, three.Fingerprint)
 	one.SchemaJSON = "mutated"
 	stored, err := s.GetSnapshot(ctx, "t", one.SnapshotID)
 	require.NoError(t, err)
@@ -144,4 +151,44 @@ func TestCredentialErrorsAndJSONNeverContainSecret(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, strings.Contains(err.Error(), string(secret)))
 	require.True(t, errors.Is(err, entity.ErrDataCredentialNotFound))
+}
+
+func TestCreateSourceUsesCanonicalSupportedTypes(t *testing.T) {
+	s := testService(t, &fakeAdapter{})
+	ctx := context.Background()
+	for _, sourceType := range []entity.SourceType{entity.SourceTypeRelationalDatabase, entity.SourceTypeHTTPAPI} {
+		_, err := s.CreateSource(ctx, &CreateSourceInput{TenantID: "t", Name: string(sourceType), SourceType: sourceType})
+		require.NoError(t, err)
+	}
+	for _, sourceType := range []entity.SourceType{entity.SourceTypeFileStorage, "DATABASE", "HTTP"} {
+		_, err := s.CreateSource(ctx, &CreateSourceInput{TenantID: "t", Name: string(sourceType), SourceType: sourceType})
+		require.ErrorIs(t, err, entity.ErrSourceTypeNotSupported)
+	}
+}
+
+func TestConnectionHealthIsPersistedWithoutRawErrors(t *testing.T) {
+	repo := repository.NewMemoryDataSourceRepository()
+	adapter := &fakeAdapter{}
+	s := NewDataSourceService(&SourceComponents{
+		Repo: repo, Adapters: NewAdapterRegistry(map[entity.AdapterType]DataSourceAdapter{entity.AdapterMySQL: adapter}),
+	})
+	ctx := context.Background()
+	source, err := s.CreateSource(ctx, &CreateSourceInput{TenantID: "t", Name: "warehouse", SourceType: entity.SourceTypeRelationalDatabase})
+	require.NoError(t, err)
+	connection, err := s.CreateConnection(ctx, &CreateConnectionInput{TenantID: "t", SourceID: source.SourceID, Name: "dev", Environment: entity.EnvironmentDev, AdapterType: entity.AdapterMySQL, PublicConfigJSON: `{}`})
+	require.NoError(t, err)
+	require.NoError(t, s.TestConnection(ctx, "t", source.SourceID, connection.ConnectionID))
+	stored, err := s.GetConnection(ctx, "t", source.SourceID, connection.ConnectionID)
+	require.NoError(t, err)
+	require.Equal(t, entity.DataConnectionActive, stored.Status)
+	require.Equal(t, entity.ConnectionTestHealthy, stored.LastTestStatus)
+	require.NotNil(t, stored.LastTestAt)
+
+	adapter.testErr = errors.New(testSecretPrefix + "driver")
+	require.ErrorIs(t, s.TestConnection(ctx, "t", source.SourceID, connection.ConnectionID), entity.ErrDataConnectionFailed)
+	stored, err = s.GetConnection(ctx, "t", source.SourceID, connection.ConnectionID)
+	require.NoError(t, err)
+	require.Equal(t, entity.ConnectionTestFailed, stored.LastTestStatus)
+	require.Equal(t, "FORMA_DATA_CONNECTION_FAILED", stored.LastTestErrorKey)
+	require.NotContains(t, stored.LastTestErrorKey, testSecretPrefix)
 }

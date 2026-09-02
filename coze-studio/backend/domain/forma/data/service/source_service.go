@@ -15,8 +15,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/repository"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/repository"
 )
 
 type DataSourceService interface {
@@ -40,7 +40,7 @@ type DataSourceService interface {
 	GetSnapshot(context.Context, string, string) (*entity.SchemaSnapshot, error)
 }
 
-type Components struct {
+type SourceComponents struct {
 	Repo     repository.DataSourceRepository
 	Secrets  SecretProvider
 	Adapters *AdapterRegistry
@@ -51,7 +51,7 @@ type dataSourceService struct {
 	adapters *AdapterRegistry
 }
 
-func NewDataSourceService(c *Components) DataSourceService {
+func NewDataSourceService(c *SourceComponents) DataSourceService {
 	if c == nil {
 		return &dataSourceService{}
 	}
@@ -82,7 +82,7 @@ type CreateCredentialInput struct {
 
 func (s *dataSourceService) ready() bool { return s != nil && s.repo != nil }
 func validSourceType(v entity.SourceType) bool {
-	return v == entity.SourceTypeDatabase || v == entity.SourceTypeHTTP
+	return v == entity.SourceTypeRelationalDatabase || v == entity.SourceTypeHTTPAPI
 }
 func validEnvironment(v entity.Environment) bool {
 	return v == entity.EnvironmentDev || v == entity.EnvironmentTest || v == entity.EnvironmentProd
@@ -96,8 +96,11 @@ func validSecret(secret []byte) bool {
 }
 
 func (s *dataSourceService) CreateSource(ctx context.Context, in *CreateSourceInput) (*entity.DataSource, error) {
-	if !s.ready() || in == nil || in.TenantID == "" || strings.TrimSpace(in.Name) == "" || !validSourceType(in.SourceType) {
+	if !s.ready() || in == nil || in.TenantID == "" || strings.TrimSpace(in.Name) == "" {
 		return nil, entity.ErrPublicConfigInvalid
+	}
+	if !validSourceType(in.SourceType) {
+		return nil, entity.ErrSourceTypeNotSupported
 	}
 	now := time.Now().UTC()
 	v := &entity.DataSource{SourceID: uuid.NewString(), TenantID: in.TenantID, Name: strings.TrimSpace(in.Name), SourceType: in.SourceType, Status: entity.DataSourceActive, CreatedBy: in.ActorID, CreatedAt: now, UpdatedAt: now}
@@ -162,8 +165,8 @@ func (s *dataSourceService) CreateConnection(ctx context.Context, in *CreateConn
 	if e = ValidatePublicConfig(in.PublicConfigJSON); e != nil {
 		return nil, e
 	}
-	if (src.SourceType == entity.SourceTypeHTTP && in.AdapterType != entity.AdapterHTTP) ||
-		(src.SourceType == entity.SourceTypeDatabase && in.AdapterType == entity.AdapterHTTP) {
+	if (src.SourceType == entity.SourceTypeHTTPAPI && in.AdapterType != entity.AdapterHTTP) ||
+		(src.SourceType == entity.SourceTypeRelationalDatabase && in.AdapterType == entity.AdapterHTTP) {
 		return nil, entity.ErrDataAdapterNotSupported
 	}
 	if _, e = s.adapters.Get(in.AdapterType); e != nil {
@@ -179,7 +182,7 @@ func (s *dataSourceService) CreateConnection(ctx context.Context, in *CreateConn
 		}
 	}
 	now := time.Now().UTC()
-	v := &entity.DataConnection{ConnectionID: uuid.NewString(), TenantID: in.TenantID, SourceID: in.SourceID, Name: strings.TrimSpace(in.Name), Environment: in.Environment, AdapterType: in.AdapterType, PublicConfigJSON: in.PublicConfigJSON, CredentialRefID: in.CredentialRefID, CreatedBy: in.ActorID, CreatedAt: now, UpdatedAt: now}
+	v := &entity.DataConnection{ConnectionID: uuid.NewString(), TenantID: in.TenantID, SourceID: in.SourceID, Name: strings.TrimSpace(in.Name), Environment: in.Environment, AdapterType: in.AdapterType, PublicConfigJSON: in.PublicConfigJSON, CredentialRefID: in.CredentialRefID, Status: entity.DataConnectionInactive, CreatedBy: in.ActorID, CreatedAt: now, UpdatedAt: now}
 	if e = s.repo.CreateConnection(ctx, v); e != nil {
 		return nil, e
 	}
@@ -338,13 +341,27 @@ func (s *dataSourceService) adapterRequest(ctx context.Context, t, sourceID, con
 	return adapter, req, conn, nil
 }
 func (s *dataSourceService) TestConnection(ctx context.Context, t, sourceID, connectionID string) error {
-	a, r, _, e := s.adapterRequest(ctx, t, sourceID, connectionID)
+	a, r, conn, e := s.adapterRequest(ctx, t, sourceID, connectionID)
 	if e != nil {
 		return e
 	}
 	defer wipe(r.Secret)
+	now := time.Now().UTC()
 	if e = a.TestConnection(ctx, r); e != nil {
+		conn.LastTestStatus = entity.ConnectionTestFailed
+		conn.LastTestAt = &now
+		conn.LastTestErrorKey = "FORMA_DATA_CONNECTION_FAILED"
+		conn.UpdatedAt = now
+		_ = s.repo.UpdateConnection(ctx, conn)
 		return entity.ErrDataConnectionFailed
+	}
+	conn.Status = entity.DataConnectionActive
+	conn.LastTestStatus = entity.ConnectionTestHealthy
+	conn.LastTestAt = &now
+	conn.LastTestErrorKey = ""
+	conn.UpdatedAt = now
+	if e = s.repo.UpdateConnection(ctx, conn); e != nil {
+		return e
 	}
 	return nil
 }

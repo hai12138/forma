@@ -10,8 +10,13 @@ import "time"
 type SourceType string
 
 const (
-	SourceTypeDatabase SourceType = "DATABASE"
-	SourceTypeHTTP     SourceType = "HTTP"
+	SourceTypeRelationalDatabase SourceType = "RELATIONAL_DATABASE"
+	SourceTypeHTTPAPI            SourceType = "HTTP_API"
+	SourceTypeFileStorage        SourceType = "FILE_STORAGE"
+	SourceTypeObjectStorage      SourceType = "OBJECT_STORAGE"
+	SourceTypeManagedData        SourceType = "MANAGED_DATA"
+	SourceTypeEventStream        SourceType = "EVENT_STREAM"
+	SourceTypeCustomAdapter      SourceType = "CUSTOM_ADAPTER"
 )
 
 type DataSourceStatus string
@@ -77,10 +82,28 @@ type DataConnection struct {
 	AdapterType      AdapterType
 	PublicConfigJSON string
 	CredentialRefID  string
+	Status           DataConnectionStatus
+	LastTestStatus   ConnectionTestStatus
+	LastTestAt       *time.Time
+	LastTestErrorKey string
 	CreatedBy        string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
+
+type DataConnectionStatus string
+
+const (
+	DataConnectionActive   DataConnectionStatus = "ACTIVE"
+	DataConnectionInactive DataConnectionStatus = "INACTIVE"
+)
+
+type ConnectionTestStatus string
+
+const (
+	ConnectionTestHealthy ConnectionTestStatus = "HEALTHY"
+	ConnectionTestFailed  ConnectionTestStatus = "FAILED"
+)
 
 // CredentialRef is metadata only. Secret material is deliberately stored
 // separately and is never represented by this entity.

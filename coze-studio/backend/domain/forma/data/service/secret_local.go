@@ -16,7 +16,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 )
 
 type SecretProvider interface {
@@ -72,7 +72,8 @@ func (p *LocalSecretProvider) StoreSecret(_ context.Context, tenantID, credentia
 	if _, err = io.ReadFull(p.rand, nonce); err != nil {
 		return nil, entity.ErrSecretProviderUnavailable
 	}
-	// Prefixing the nonce keeps the persisted representation self-contained.
+	// Ciphertext column envelope: nonce (12 bytes) || AES-GCM ciphertext.
+	// AAD is tenant_id|credential_ref_id|key_version.
 	return gcm.Seal(nonce, nonce, plaintext, secretAAD(tenantID, credentialRefID, keyVersion)), nil
 }
 

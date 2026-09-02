@@ -19,8 +19,6 @@ import (
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
 	datarepo "github.com/coze-dev/coze-studio/backend/domain/forma/data/repository"
 	datasvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
-	datasourcerepo "github.com/coze-dev/coze-studio/backend/domain/forma/datasource/repository"
-	datasourcesvc "github.com/coze-dev/coze-studio/backend/domain/forma/datasource/service"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/meta"
 	tenancyrepo "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/repository"
 	tenancysvc "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/service"
@@ -40,7 +38,7 @@ type ApplicationService struct {
 	BusinessSVC   businesssvc.BusinessService
 	AnalystSVC    analystsvc.AnalystService
 	DataSVC       datasvc.DataService
-	DatasourceSVC datasourcesvc.DataSourceService
+	DatasourceSVC datasvc.DataSourceService
 }
 
 var ApplicationSVC = &ApplicationService{}
@@ -77,11 +75,11 @@ func InitService(_ context.Context, components *ServiceComponents) *ApplicationS
 		BusinessSVC: ApplicationSVC.BusinessSVC,
 		Model:       integration.NewCozeEinoDataModel("FORMA_DATA"),
 	})
-	secretProvider, _ := datasourcesvc.NewLocalSecretProviderFromEnv()
-	ApplicationSVC.DatasourceSVC = datasourcesvc.NewDataSourceService(&datasourcesvc.Components{
-		Repo:     datasourcerepo.NewDataSourceRepository(components.DB),
+	secretProvider, _ := datasvc.NewLocalSecretProviderFromEnv()
+	ApplicationSVC.DatasourceSVC = datasvc.NewDataSourceService(&datasvc.SourceComponents{
+		Repo:     datarepo.NewDataSourceRepository(components.DB),
 		Secrets:  secretProvider,
-		Adapters: datasourcesvc.NewDefaultAdapterRegistry(),
+		Adapters: datasvc.NewDefaultAdapterRegistry(),
 	})
 	return ApplicationSVC
 }

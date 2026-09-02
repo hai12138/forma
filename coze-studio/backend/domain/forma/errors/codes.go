@@ -13,7 +13,6 @@ import (
 	analystentity "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	dataentity "github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
-	datasourceentity "github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
 	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 )
 
@@ -81,6 +80,8 @@ const (
 	CodeDataSecretProviderUnavailable int32 = 50340
 	CodeDataSecretInvalid             int32 = 40041
 	CodeDataPublicConfigInvalid       int32 = 40042
+	CodeSourceTypeNotSupported        int32 = 40043
+	CodeDataContractNotAvailable      int32 = 40940
 )
 
 const (
@@ -145,6 +146,8 @@ const (
 	KeyDataSecretProviderUnavailable = "FORMA_DATA_SECRET_PROVIDER_UNAVAILABLE"
 	KeyDataSecretInvalid             = "FORMA_DATA_SECRET_INVALID"
 	KeyDataPublicConfigInvalid       = "FORMA_DATA_PUBLIC_CONFIG_INVALID"
+	KeySourceTypeNotSupported        = "FORMA_DATA_SOURCE_TYPE_NOT_SUPPORTED"
+	KeyDataContractNotAvailable      = "FORMA_DATA_CONTRACT_NOT_AVAILABLE"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -488,6 +491,12 @@ func DataSecretInvalid(msg string) *FormaError {
 func DataPublicConfigInvalid(msg string) *FormaError {
 	return New(CodeDataPublicConfigInvalid, http.StatusBadRequest, KeyDataPublicConfigInvalid, defaultMessage(msg, "data public config invalid"))
 }
+func SourceTypeNotSupported(msg string) *FormaError {
+	return New(CodeSourceTypeNotSupported, http.StatusBadRequest, KeySourceTypeNotSupported, defaultMessage(msg, "data source type not supported"))
+}
+func DataContractNotAvailable(msg string) *FormaError {
+	return New(CodeDataContractNotAvailable, http.StatusConflict, KeyDataContractNotAvailable, defaultMessage(msg, "data contract not available"))
+}
 
 func defaultMessage(msg, fallback string) string {
 	if msg == "" {
@@ -629,38 +638,44 @@ func MapDomainError(err error) *FormaError {
 	if errors.Is(err, dataentity.ErrModelFailed) {
 		return DataModelFailed(err.Error())
 	}
-	if errors.Is(err, datasourceentity.ErrDataSourceNotFound) {
+	if errors.Is(err, dataentity.ErrDataSourceNotFound) {
 		return DataSourceNotFound("")
 	}
-	if errors.Is(err, datasourceentity.ErrDataConnectionNotFound) {
+	if errors.Is(err, dataentity.ErrDataConnectionNotFound) {
 		return DataConnectionNotFound("")
 	}
-	if errors.Is(err, datasourceentity.ErrDataCredentialNotFound) {
+	if errors.Is(err, dataentity.ErrDataCredentialNotFound) {
 		return DataCredentialNotFound("")
 	}
-	if errors.Is(err, datasourceentity.ErrDataAdapterNotSupported) {
+	if errors.Is(err, dataentity.ErrDataAdapterNotSupported) {
 		return DataAdapterNotSupported("")
 	}
-	if errors.Is(err, datasourceentity.ErrDataConnectionFailed) {
+	if errors.Is(err, dataentity.ErrDataConnectionFailed) {
 		return DataConnectionFailed("")
 	}
-	if errors.Is(err, datasourceentity.ErrDataDiscoveryFailed) {
+	if errors.Is(err, dataentity.ErrDataDiscoveryFailed) {
 		return DataDiscoveryFailed("")
 	}
-	if errors.Is(err, datasourceentity.ErrDataAssetNotFound) {
+	if errors.Is(err, dataentity.ErrDataAssetNotFound) {
 		return DataAssetNotFound("")
 	}
-	if errors.Is(err, datasourceentity.ErrDataSchemaSnapshotNotFound) {
+	if errors.Is(err, dataentity.ErrDataSchemaSnapshotNotFound) {
 		return DataSchemaSnapshotNotFound("")
 	}
-	if errors.Is(err, datasourceentity.ErrSecretProviderUnavailable) {
+	if errors.Is(err, dataentity.ErrSecretProviderUnavailable) {
 		return DataSecretProviderUnavailable("")
 	}
-	if errors.Is(err, datasourceentity.ErrSecretInvalid) {
+	if errors.Is(err, dataentity.ErrSecretInvalid) {
 		return DataSecretInvalid("")
 	}
-	if errors.Is(err, datasourceentity.ErrPublicConfigInvalid) {
+	if errors.Is(err, dataentity.ErrPublicConfigInvalid) {
 		return DataPublicConfigInvalid("")
+	}
+	if errors.Is(err, dataentity.ErrSourceTypeNotSupported) {
+		return SourceTypeNotSupported("")
+	}
+	if errors.Is(err, dataentity.ErrDataContractNotAvailable) {
+		return DataContractNotAvailable("")
 	}
 	return Internal(err.Error())
 }

@@ -8,8 +8,8 @@ package repository
 import (
 	"context"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/internal/dal"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/internal/dal"
 	"gorm.io/gorm"
 )
 

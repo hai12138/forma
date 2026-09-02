@@ -113,6 +113,18 @@ test('S4-G2 data source discovery migration present', () => {
   assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
 });
 
+test('S4-G2-F1 contract alignment migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250902113000_s4_g2_contract_alignment.sql'),
+    'utf8',
+  );
+  assert.ok(sql.includes("source_type` = 'RELATIONAL_DATABASE'"));
+  assert.ok(sql.includes("source_type` = 'HTTP_API'"));
+  assert.ok(sql.includes('last_test_status'));
+  assert.ok(sql.includes('last_test_at'));
+  assert.ok(sql.includes('last_test_error_key'));
+});
+
 test('atlas sum references migrations', () => {
   const sum = readFileSync(join(root, 'migrations', 'atlas.sum'), 'utf8');
   assert.ok(sum.includes('20250831100000_initial.sql'));
@@ -124,4 +136,5 @@ test('atlas sum references migrations', () => {
   assert.ok(sum.includes('20250902100000_s4_g1_data_requirement.sql'));
   assert.ok(sum.includes('20250902103000_s4_g1_analysis_lease_audit.sql'));
   assert.ok(sum.includes('20250902110000_s4_g2_data_source_discovery.sql'));
+  assert.ok(sum.includes('20250902113000_s4_g2_contract_alignment.sql'));
 });

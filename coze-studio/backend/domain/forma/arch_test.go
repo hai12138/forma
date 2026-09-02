@@ -130,32 +130,24 @@ func TestDataDomainDoesNotImportCozeRepositoriesOrProviderSDKs(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDatasourceDomainDoesNotImportCozeRepositoriesOrProviderSDKs(t *testing.T) {
+func TestDatasourceProductionPackageDoesNotExist(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	root := filepath.Join(filepath.Dir(filename), "datasource")
-	forbidden := []string{
-		"github.com/coze-dev/coze-studio/backend/domain/agent",
-		"github.com/coze-dev/coze-studio/backend/domain/user/internal",
-		"github.com/coze-dev/coze-studio/backend/domain/user/repository",
-		"openai", "deepseek", "qwen", "volcengine/ark", "volcengine-go-sdk",
-	}
+	productionFiles := make([]string, 0)
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
 		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		content, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		for _, imp := range forbidden {
-			require.NotContains(t, strings.ToLower(string(content)), strings.ToLower(imp),
-				"datasource domain contains forbidden dependency in %s", path)
-		}
+		productionFiles = append(productionFiles, path)
 		return nil
 	})
 	require.NoError(t, err)
+	require.Empty(t, productionFiles, "domain/forma/datasource must not contain production packages")
 }

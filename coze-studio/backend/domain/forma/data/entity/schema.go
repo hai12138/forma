@@ -12,11 +12,15 @@ type PhysicalSchema struct {
 }
 
 type PhysicalField struct {
-	Name       string `json:"name"`
-	DataType   string `json:"data_type"`
-	Nullable   bool   `json:"nullable"`
-	PrimaryKey bool   `json:"primary_key"`
-	Ordinal    int    `json:"ordinal"`
+	Name        string         `json:"name"`
+	DataType    string         `json:"data_type"`
+	NativeType  string         `json:"native_type,omitempty"`
+	Nullable    bool           `json:"nullable"`
+	PrimaryKey  bool           `json:"primary_key"`
+	Description string         `json:"description,omitempty"`
+	Path        string         `json:"path,omitempty"`
+	Ordinal     int            `json:"ordinal"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 type PhysicalRelationship struct {

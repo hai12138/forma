@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 	_ "gorm.io/driver/mysql"
 	_ "gorm.io/driver/postgres"
 )
@@ -47,6 +47,7 @@ type DataSourceAdapter interface {
 	DiscoverAssets(context.Context, *AdapterRequest) ([]DiscoveredAsset, error)
 	GetSchema(context.Context, *AdapterRequest, map[string]any) (*entity.PhysicalSchema, error)
 	Preview(context.Context, *PreviewRequest) ([]map[string]any, error)
+	ValidateContract(context.Context, *AdapterRequest, map[string]any) error
 }
 
 type AdapterRegistry struct {
@@ -170,7 +171,7 @@ func (a *sqlAdapter) DiscoverAssets(ctx context.Context, req *AdapterRequest) ([
 		return nil, err
 	}
 	defer db.Close()
-	query := `SELECT table_schema, table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('information_schema','mysql','performance_schema','sys','pg_catalog') ORDER BY table_schema, table_name`
+	query := `SELECT table_schema, table_name, CASE WHEN table_type = 'VIEW' THEN 'VIEW' ELSE 'TABLE' END AS object_type FROM information_schema.tables WHERE table_type IN ('BASE TABLE','VIEW') AND table_schema NOT IN ('information_schema','mysql','performance_schema','sys','pg_catalog') ORDER BY table_schema, table_name`
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, entity.ErrDataDiscoveryFailed
@@ -178,11 +179,11 @@ func (a *sqlAdapter) DiscoverAssets(ctx context.Context, req *AdapterRequest) ([
 	defer rows.Close()
 	out := []DiscoveredAsset{}
 	for rows.Next() {
-		var schema, table string
-		if rows.Scan(&schema, &table) != nil {
+		var schema, table, objectType string
+		if rows.Scan(&schema, &table, &objectType) != nil {
 			return nil, entity.ErrDataDiscoveryFailed
 		}
-		out = append(out, DiscoveredAsset{AssetType: entity.AssetDataset, Name: table, PhysicalLocator: map[string]any{"schema": schema, "table": table}})
+		out = append(out, DiscoveredAsset{AssetType: entity.AssetDataset, Name: table, PhysicalLocator: map[string]any{"schema": schema, "table": table, "object_type": objectType}})
 	}
 	if rows.Err() != nil {
 		return nil, entity.ErrDataDiscoveryFailed
@@ -216,13 +217,21 @@ func (a *sqlAdapter) GetSchema(ctx context.Context, req *AdapterRequest, locator
 		return nil, err
 	}
 	defer db.Close()
-	query := `SELECT c.column_name, c.data_type, c.is_nullable, c.ordinal_position,
+	query := `SELECT c.column_name, c.data_type, c.column_type, c.is_nullable, c.ordinal_position,
+		c.column_comment,
 		CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 1 ELSE 0 END
 		FROM information_schema.columns c
 		LEFT JOIN information_schema.key_column_usage kcu ON c.table_schema=kcu.table_schema AND c.table_name=kcu.table_name AND c.column_name=kcu.column_name
 		LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name=tc.constraint_name AND kcu.table_schema=tc.table_schema
 		WHERE c.table_schema=? AND c.table_name=? ORDER BY c.ordinal_position`
 	if a.driver != "mysql" {
+		query = `SELECT c.column_name, c.data_type, c.udt_name, c.is_nullable, c.ordinal_position,
+			COALESCE(pg_catalog.col_description(pg_catalog.to_regclass(c.table_schema || '.' || c.table_name), c.ordinal_position), ''),
+			CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 1 ELSE 0 END
+			FROM information_schema.columns c
+			LEFT JOIN information_schema.key_column_usage kcu ON c.table_schema=kcu.table_schema AND c.table_name=kcu.table_name AND c.column_name=kcu.column_name
+			LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name=tc.constraint_name AND kcu.table_schema=tc.table_schema
+			WHERE c.table_schema=? AND c.table_name=? ORDER BY c.ordinal_position`
 		query = strings.Replace(query, "?", "$1", 1)
 		query = strings.Replace(query, "?", "$2", 1)
 	}
@@ -236,11 +245,12 @@ func (a *sqlAdapter) GetSchema(ctx context.Context, req *AdapterRequest, locator
 		var f entity.PhysicalField
 		var nullable string
 		var pk int
-		if rows.Scan(&f.Name, &f.DataType, &nullable, &f.Ordinal, &pk) != nil {
+		if rows.Scan(&f.Name, &f.DataType, &f.NativeType, &nullable, &f.Ordinal, &f.Description, &pk) != nil {
 			return nil, entity.ErrDataDiscoveryFailed
 		}
 		f.Nullable = strings.EqualFold(nullable, "YES")
 		f.PrimaryKey = pk == 1
+		f.Path = schema + "." + table + "." + f.Name
 		out.Fields = append(out.Fields, f)
 	}
 	if rows.Err() != nil {
@@ -348,24 +358,38 @@ func (a *sqlAdapter) Preview(ctx context.Context, req *PreviewRequest) ([]map[st
 	return out, nil
 }
 
+func (a *sqlAdapter) ValidateContract(context.Context, *AdapterRequest, map[string]any) error {
+	return entity.ErrDataContractNotAvailable
+}
+
 type HTTPAdapter struct {
 	client   *http.Client
 	maxBytes int64
+	policy   OutboundNetworkPolicy
 }
 
 func NewHTTPAdapter(client *http.Client) DataSourceAdapter {
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(next *http.Request, via []*http.Request) error {
-			if len(via) >= 3 {
-				return errors.New("redirect limit")
-			}
-			if next.URL.User != nil || (next.URL.Scheme != "http" && next.URL.Scheme != "https") {
-				return errors.New("unsafe redirect")
-			}
-			return nil
-		}}
+	return NewHTTPAdapterWithPolicy(client, nil)
+}
+
+func NewHTTPAdapterWithPolicy(client *http.Client, policy OutboundNetworkPolicy) DataSourceAdapter {
+	if policy == nil {
+		policy = NewDefaultOutboundNetworkPolicy(nil)
 	}
-	return &HTTPAdapter{client: client, maxBytes: 2 << 20}
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	cloned := *client
+	cloned.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 3 {
+			return errors.New("redirect limit")
+		}
+		if err := policy.ValidateURL(next.Context(), next.URL); err != nil {
+			return err
+		}
+		return nil
+	}
+	return &HTTPAdapter{client: &cloned, maxBytes: 2 << 20, policy: policy}
 }
 
 type httpConfig struct {
@@ -389,6 +413,9 @@ func (a *HTTPAdapter) request(ctx context.Context, method, target string, header
 	u, e := url.Parse(target)
 	if e != nil || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return nil, entity.ErrPublicConfigInvalid
+	}
+	if e = a.policy.ValidateURL(ctx, u); e != nil {
+		return nil, e
 	}
 	r, e := http.NewRequestWithContext(ctx, method, target, nil)
 	if e != nil {
@@ -436,8 +463,28 @@ func (a *HTTPAdapter) TestConnection(ctx context.Context, req *AdapterRequest) e
 	if e != nil {
 		return e
 	}
-	_, e = a.request(ctx, http.MethodHead, c.BaseURL, httpRequestHeaders(req, c))
-	return e
+	headers := httpRequestHeaders(req, c)
+	u, _ := url.Parse(c.BaseURL)
+	if e = a.policy.ValidateURL(ctx, u); e != nil {
+		return e
+	}
+	request, _ := http.NewRequestWithContext(ctx, http.MethodHead, c.BaseURL, nil)
+	for name, value := range headers {
+		request.Header.Set(name, value)
+	}
+	response, e := a.client.Do(request)
+	if e != nil {
+		return entity.ErrDataConnectionFailed
+	}
+	_ = response.Body.Close()
+	if response.StatusCode == http.StatusMethodNotAllowed {
+		_, e = a.request(ctx, http.MethodGet, c.BaseURL, headers)
+		return e
+	}
+	if response.StatusCode >= 400 {
+		return entity.ErrDataConnectionFailed
+	}
+	return nil
 }
 func (a *HTTPAdapter) DiscoverAssets(ctx context.Context, req *AdapterRequest) ([]DiscoveredAsset, error) {
 	if req == nil {
@@ -464,15 +511,31 @@ func (a *HTTPAdapter) DiscoverAssets(ctx context.Context, req *AdapterRequest) (
 	for p, methods := range doc.Paths {
 		for m := range methods {
 			m = strings.ToUpper(m)
-			if m == "GET" || m == "HEAD" {
-				out = append(out, DiscoveredAsset{AssetType: entity.AssetEndpoint, Name: m + " " + p, PhysicalLocator: map[string]any{"url": strings.TrimRight(c.BaseURL, "/") + "/" + strings.TrimLeft(p, "/"), "method": m}})
+			if m == "GET" {
+				out = append(out, DiscoveredAsset{AssetType: entity.AssetEndpoint, Name: m + " " + p, PhysicalLocator: map[string]any{"url": strings.TrimRight(c.BaseURL, "/") + "/" + strings.TrimLeft(p, "/"), "method": m, "path": p}})
 			}
 		}
 	}
 	return out, nil
 }
-func (a *HTTPAdapter) GetSchema(context.Context, *AdapterRequest, map[string]any) (*entity.PhysicalSchema, error) {
-	return &entity.PhysicalSchema{Name: "http-response", Fields: []entity.PhysicalField{}, Relationships: []entity.PhysicalRelationship{}}, nil
+func (a *HTTPAdapter) GetSchema(ctx context.Context, req *AdapterRequest, locator map[string]any) (*entity.PhysicalSchema, error) {
+	if req == nil {
+		return nil, entity.ErrPublicConfigInvalid
+	}
+	config, err := parseHTTPConfig(req.PublicConfigJSON)
+	if err != nil || config.OpenAPIURL == "" {
+		return nil, entity.ErrDataDiscoveryFailed
+	}
+	document, err := a.request(ctx, http.MethodGet, config.OpenAPIURL, httpRequestHeaders(req, config))
+	if err != nil {
+		return nil, entity.ErrDataDiscoveryFailed
+	}
+	path, _ := locator["path"].(string)
+	return ParseOpenAPISchema(document, path)
+}
+
+func (a *HTTPAdapter) ValidateContract(context.Context, *AdapterRequest, map[string]any) error {
+	return entity.ErrDataContractNotAvailable
 }
 func (a *HTTPAdapter) Preview(ctx context.Context, req *PreviewRequest) ([]map[string]any, error) {
 	method := strings.ToUpper(req.Method)

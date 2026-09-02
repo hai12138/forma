@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	formaapp "github.com/coze-dev/coze-studio/backend/application/forma"
-	datasourcerepo "github.com/coze-dev/coze-studio/backend/domain/forma/datasource/repository"
-	datasourcesvc "github.com/coze-dev/coze-studio/backend/domain/forma/datasource/service"
+	datasourcerepo "github.com/coze-dev/coze-studio/backend/domain/forma/data/repository"
+	datasourcesvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
 	tenantctx "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/context"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
@@ -21,7 +21,7 @@ import (
 
 func TestDatasourceApplicationRequiresAdminForMutationAndAllowsMemberRead(t *testing.T) {
 	app := newAppService()
-	app.DatasourceSVC = datasourcesvc.NewDataSourceService(&datasourcesvc.Components{
+	app.DatasourceSVC = datasourcesvc.NewDataSourceService(&datasourcesvc.SourceComponents{
 		Repo:     datasourcerepo.NewMemoryDataSourceRepository(),
 		Adapters: datasourcesvc.NewDefaultAdapterRegistry(),
 	})
@@ -34,14 +34,14 @@ func TestDatasourceApplicationRequiresAdminForMutationAndAllowsMemberRead(t *tes
 	require.NoError(t, err)
 
 	ownerCtx = tenantctx.WithTenantContext(ownerCtx, &tenantctx.TenantContext{TenantID: boot.Tenant.TenantID, PrincipalID: boot.Principal.PrincipalID, MembershipRole: entity.RoleOwner, TenantStatus: entity.TenantStatusActive})
-	created, err := app.CreateDataSource(ownerCtx, &formaapp.CreateDataSourceInput{Name: "warehouse", SourceType: "DATABASE"})
+	created, err := app.CreateDataSource(ownerCtx, &formaapp.CreateDataSourceInput{Name: "warehouse", SourceType: "RELATIONAL_DATABASE"})
 	require.NoError(t, err)
 
 	memberCtx := tenantctx.WithTenantContext(ownerCtx, &tenantctx.TenantContext{TenantID: boot.Tenant.TenantID, PrincipalID: member.PrincipalID, MembershipRole: entity.RoleMember, TenantStatus: entity.TenantStatusActive})
 	read, err := app.GetDataSource(memberCtx, created.SourceID)
 	require.NoError(t, err)
 	require.Equal(t, created.SourceID, read.SourceID)
-	_, err = app.CreateDataSource(memberCtx, &formaapp.CreateDataSourceInput{Name: "forbidden", SourceType: "DATABASE"})
+	_, err = app.CreateDataSource(memberCtx, &formaapp.CreateDataSourceInput{Name: "forbidden", SourceType: "RELATIONAL_DATABASE"})
 	fe, ok := formaerrors.AsFormaError(err)
 	require.True(t, ok)
 	require.Equal(t, formaerrors.CodeDataForbidden, fe.Code)

@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/coze-dev/coze-studio/backend/domain/forma/datasource/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 )
 
 var forbiddenPublicConfigKeys = map[string]struct{}{
