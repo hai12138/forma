@@ -122,8 +122,8 @@ DataRequirement · DataRequirementAnalysisRun · DataRequirementDecision · prov
 | Documentation only | **YES** |
 | REAL_MODEL_CALLS | **0** |
 | G0 contract CI | [33610932722](https://github.com/hai12138/forma/actions/runs/33610932722) ALL GREEN |
-| G0-F1 commit | *(recorded after push)* |
-| G0-F1 Forma CI | *(recorded after push)* |
+| G0-F1 commit | `fae829ecfdb3de17a51a6882c295871252f30a9a` |
+| G0-F1 Forma CI | [33613193927](https://github.com/hai12138/forma/actions/runs/33613193927) **ALL GREEN** — forma-backend / forma-frontend / forma-migration-apply |
 
 ---
 
