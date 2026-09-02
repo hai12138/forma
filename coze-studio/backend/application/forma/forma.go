@@ -17,6 +17,8 @@ import (
 	assetsvc "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/service"
 	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
+	datarepo "github.com/coze-dev/coze-studio/backend/domain/forma/data/repository"
+	datasvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/meta"
 	tenancyrepo "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/repository"
 	tenancysvc "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/service"
@@ -35,6 +37,7 @@ type ApplicationService struct {
 	TenancySVC  tenancysvc.TenancyService
 	BusinessSVC businesssvc.BusinessService
 	AnalystSVC  analystsvc.AnalystService
+	DataSVC     datasvc.DataService
 }
 
 var ApplicationSVC = &ApplicationService{}
@@ -65,6 +68,11 @@ func InitService(_ context.Context, components *ServiceComponents) *ApplicationS
 		DB:           components.DB,
 		Model:        integration.NewCozeEinoAnalystModel("FORMA_ANALYST"),
 		AuditHook:    auditHook,
+	})
+	ApplicationSVC.DataSVC = datasvc.NewDataService(&datasvc.Components{
+		Repo:        datarepo.NewDataRepository(components.DB),
+		BusinessSVC: ApplicationSVC.BusinessSVC,
+		Model:       integration.NewCozeEinoDataModel("FORMA_DATA"),
 	})
 	return ApplicationSVC
 }

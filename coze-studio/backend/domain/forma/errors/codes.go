@@ -12,6 +12,7 @@ import (
 
 	analystentity "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
+	dataentity "github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 )
 
@@ -54,6 +55,19 @@ const (
 	CodeAnalystProposalAlreadyApplied int32 = 40922
 	CodeAnalystForbidden              int32 = 40320
 	CodeAnalystGapNotFound            int32 = 40423
+
+	CodeDataRequirementNotFound         int32 = 40430
+	CodeDataRequirementAlreadyDecided   int32 = 40930
+	CodeDataRequirementInvalidState     int32 = 40931
+	CodeDataAnalysisNotFound            int32 = 40431
+	CodeDataAnalysisIdempotencyConflict int32 = 40932
+	CodeDataAnalysisNotFailed           int32 = 40933
+	CodeDataBusinessRevisionNotFound    int32 = 40432
+	CodeDataBusinessElementRefInvalid   int32 = 40030
+	CodeDataRequirementInvalid          int32 = 40031
+	CodeDataForbidden                   int32 = 40330
+	CodeDataNotConfigured               int32 = 50030
+	CodeDataModelFailed                 int32 = 50031
 )
 
 const (
@@ -93,6 +107,19 @@ const (
 	KeyAnalystProposalAlreadyApplied = "FORMA_PROPOSAL_ALREADY_APPLIED"
 	KeyAnalystForbidden              = "FORMA_ANALYST_FORBIDDEN"
 	KeyAnalystGapNotFound            = "FORMA_ANALYST_GAP_NOT_FOUND"
+
+	KeyDataRequirementNotFound         = "FORMA_DATA_REQUIREMENT_NOT_FOUND"
+	KeyDataRequirementAlreadyDecided   = "FORMA_DATA_REQUIREMENT_ALREADY_DECIDED"
+	KeyDataRequirementInvalidState     = "FORMA_DATA_REQUIREMENT_INVALID_STATE"
+	KeyDataAnalysisNotFound            = "FORMA_DATA_ANALYSIS_NOT_FOUND"
+	KeyDataAnalysisIdempotencyConflict = "FORMA_DATA_ANALYSIS_IDEMPOTENCY_CONFLICT"
+	KeyDataAnalysisNotFailed           = "FORMA_DATA_ANALYSIS_NOT_FAILED"
+	KeyDataBusinessRevisionNotFound    = "FORMA_DATA_BUSINESS_REVISION_NOT_FOUND"
+	KeyDataBusinessElementRefInvalid   = "FORMA_DATA_BUSINESS_ELEMENT_REF_INVALID"
+	KeyDataRequirementInvalid          = "FORMA_DATA_REQUIREMENT_INVALID"
+	KeyDataForbidden                   = "FORMA_DATA_FORBIDDEN"
+	KeyDataNotConfigured               = "FORMA_DATA_NOT_CONFIGURED"
+	KeyDataModelFailed                 = "FORMA_DATA_MODEL_FAILED"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -355,6 +382,61 @@ func AnalystGapNotFound(msg string) *FormaError {
 	return New(CodeAnalystGapNotFound, http.StatusNotFound, KeyAnalystGapNotFound, msg)
 }
 
+func DataRequirementNotFound(msg string) *FormaError {
+	return New(CodeDataRequirementNotFound, http.StatusNotFound, KeyDataRequirementNotFound, defaultMessage(msg, "data requirement not found"))
+}
+
+func DataRequirementAlreadyDecided(msg string) *FormaError {
+	return New(CodeDataRequirementAlreadyDecided, http.StatusConflict, KeyDataRequirementAlreadyDecided, defaultMessage(msg, "data requirement already decided"))
+}
+
+func DataRequirementInvalidState(msg string) *FormaError {
+	return New(CodeDataRequirementInvalidState, http.StatusConflict, KeyDataRequirementInvalidState, defaultMessage(msg, "data requirement invalid state"))
+}
+
+func DataAnalysisNotFound(msg string) *FormaError {
+	return New(CodeDataAnalysisNotFound, http.StatusNotFound, KeyDataAnalysisNotFound, defaultMessage(msg, "data analysis run not found"))
+}
+
+func DataAnalysisIdempotencyConflict(msg string) *FormaError {
+	return New(CodeDataAnalysisIdempotencyConflict, http.StatusConflict, KeyDataAnalysisIdempotencyConflict, defaultMessage(msg, "data analysis idempotency conflict"))
+}
+
+func DataAnalysisNotFailed(msg string) *FormaError {
+	return New(CodeDataAnalysisNotFailed, http.StatusConflict, KeyDataAnalysisNotFailed, defaultMessage(msg, "data analysis run is not failed"))
+}
+
+func DataBusinessRevisionNotFound(msg string) *FormaError {
+	return New(CodeDataBusinessRevisionNotFound, http.StatusNotFound, KeyDataBusinessRevisionNotFound, defaultMessage(msg, "data business revision not found"))
+}
+
+func DataBusinessElementRefInvalid(msg string) *FormaError {
+	return New(CodeDataBusinessElementRefInvalid, http.StatusBadRequest, KeyDataBusinessElementRefInvalid, defaultMessage(msg, "data business element reference invalid"))
+}
+
+func DataRequirementInvalid(msg string) *FormaError {
+	return New(CodeDataRequirementInvalid, http.StatusBadRequest, KeyDataRequirementInvalid, defaultMessage(msg, "data requirement proposal invalid"))
+}
+
+func DataForbidden(msg string) *FormaError {
+	return New(CodeDataForbidden, http.StatusForbidden, KeyDataForbidden, defaultMessage(msg, "data action forbidden"))
+}
+
+func DataNotConfigured(msg string) *FormaError {
+	return New(CodeDataNotConfigured, http.StatusInternalServerError, KeyDataNotConfigured, defaultMessage(msg, "data service not configured"))
+}
+
+func DataModelFailed(msg string) *FormaError {
+	return New(CodeDataModelFailed, http.StatusInternalServerError, KeyDataModelFailed, defaultMessage(msg, "data model failed"))
+}
+
+func defaultMessage(msg, fallback string) string {
+	if msg == "" {
+		return fallback
+	}
+	return msg
+}
+
 // AsFormaError extracts a FormaError from err.
 func AsFormaError(err error) (*FormaError, bool) {
 	var fe *FormaError
@@ -451,6 +533,42 @@ func MapDomainError(err error) *FormaError {
 	}
 	if errors.Is(err, analystentity.ErrGapNotFound) {
 		return AnalystGapNotFound(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrRequirementNotFound) {
+		return DataRequirementNotFound(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrRequirementAlreadyDecided) {
+		return DataRequirementAlreadyDecided(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrRequirementInvalidState) {
+		return DataRequirementInvalidState(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrAnalysisNotFound) {
+		return DataAnalysisNotFound(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrAnalysisIdempotencyConflict) {
+		return DataAnalysisIdempotencyConflict(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrAnalysisNotFailed) {
+		return DataAnalysisNotFailed(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrBusinessRevisionNotFound) {
+		return DataBusinessRevisionNotFound(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrBusinessElementRefInvalid) {
+		return DataBusinessElementRefInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrInvalidProposal) {
+		return DataRequirementInvalid(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrForbidden) {
+		return DataForbidden(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrNotConfigured) {
+		return DataNotConfigured(err.Error())
+	}
+	if errors.Is(err, dataentity.ErrModelFailed) {
+		return DataModelFailed(err.Error())
 	}
 	return Internal(err.Error())
 }

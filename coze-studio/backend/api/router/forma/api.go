@@ -63,5 +63,15 @@ func Register(r *server.Hertz) {
 		v1.GET("/businesses/:id/proposals/:proposalId", formahandler.GetProposal)
 		v1.GET("/businesses/:id/proposals/:proposalId/preview", formahandler.GetProposalPreview)
 		v1.POST("/businesses/:id/proposals/:proposalId/apply", formahandler.ApplyProposal)
+
+		v1.POST("/businesses/:id/data-requirements/analyze", formahandler.AnalyzeDataRequirements)
+		v1.GET("/businesses/:id/data-analyses/:analysisRunId", formahandler.GetDataAnalysisRun)
+		v1.POST("/businesses/:id/data-analyses/:analysisRunId/retry", formahandler.RetryFailedDataAnalysis)
+		v1.GET("/businesses/:id/data-requirements", formahandler.ListDataRequirements)
+		v1.POST("/businesses/:id/data-requirements", formahandler.CreateManualDataRequirement)
+		v1.POST("/businesses/:id/data-requirements/:requirementId/confirm", formahandler.ConfirmDataRequirement)
+		v1.POST("/businesses/:id/data-requirements/:requirementId/reject", formahandler.RejectDataRequirement)
+		v1.POST("/businesses/:id/data-requirements/:requirementId/edit-confirm", formahandler.EditConfirmDataRequirement)
+		v1.GET("/businesses/:id/data-requirements/:requirementId/decisions", formahandler.ListDataRequirementDecisions)
 	}
 }

@@ -2,16 +2,16 @@
 
 ## Status
 
-**PASS / CONTRACT_READY** (after G0-F1 amendment)
+**PASS / ARCHITECTURE_APPROVED**
 
 | Item | Value |
 |------|-------|
 | Human Architecture Review (S4-G0 core) | **PASS_WITH_G0_F1** |
 | G0-F1 amendment | Data Requirement Audit / Idempotency |
-| Await | Final human review of G0-F1 docs |
-
-**DO NOT START S4-G1.**  
-**DO NOT create `forma-s4-frozen`.**
+| G0-F1 commit | `fae829ecfdb3de17a51a6882c295871252f30a9a` |
+| G0-F1 Forma CI | [33613193927](https://github.com/hai12138/forma/actions/runs/33613193927) **PASS** |
+| Final Human Architecture Review | **PASS** |
+| S4-G0 | **PASS / ARCHITECTURE_APPROVED** |
 
 ---
 
@@ -130,7 +130,7 @@ DataRequirement · DataRequirementAnalysisRun · DataRequirementDecision · prov
 ## Final Output Checklist
 
 ```
-S4_G0_F1_STATUS = PASS / CONTRACT_READY
+S4_G0_F1_STATUS = PASS / ARCHITECTURE_APPROVED
 ANALYSIS_RUN = DEFINED
 ANALYSIS_IDEMPOTENCY = LOCKED
 REQUIREMENT_DECISION = DEFINED
@@ -142,4 +142,4 @@ S4_S5_BOUNDARY = PRESERVED
 REAL_MODEL_CALLS = 0
 ```
 
-**STOP. Wait for final human architecture review before S4-G1.**
+**Final Human Architecture Review: PASS. S4-G1 implementation is authorized.**

@@ -1,0 +1,75 @@
+-- Forma S4-G1: Data Requirement Domain
+-- Independent of Coze core tables. Tenant-scoped; no FOREIGN KEY to Coze.
+
+CREATE TABLE IF NOT EXISTS `forma_data_requirement_analysis_run` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `analysis_run_id` VARCHAR(64) NOT NULL,
+  `tenant_id` VARCHAR(64) NOT NULL,
+  `business_id` VARCHAR(64) NOT NULL,
+  `business_model_revision` INT NOT NULL,
+  `client_request_id` VARCHAR(64) NOT NULL,
+  `request_digest` VARCHAR(128) NOT NULL,
+  `status` VARCHAR(32) NOT NULL,
+  `model_ref` VARCHAR(128) NOT NULL DEFAULT '',
+  `error_key` VARCHAR(128) NOT NULL DEFAULT '',
+  `error_message_sanitized` VARCHAR(1024) NOT NULL DEFAULT '',
+  `retry_count` INT NOT NULL DEFAULT 0,
+  `created_by` VARCHAR(64) NOT NULL,
+  `started_at` DATETIME(3) NULL,
+  `completed_at` DATETIME(3) NULL,
+  `created_at` DATETIME(3) NOT NULL,
+  `updated_at` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_forma_data_analysis_run` (`analysis_run_id`),
+  UNIQUE KEY `uk_forma_data_analysis_idempotency` (`tenant_id`, `business_id`, `business_model_revision`, `client_request_id`),
+  KEY `idx_forma_data_analysis_tenant_biz` (`tenant_id`, `business_id`),
+  KEY `idx_forma_data_analysis_revision` (`tenant_id`, `business_id`, `business_model_revision`),
+  KEY `idx_forma_data_analysis_status` (`tenant_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `forma_data_requirement` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `requirement_id` VARCHAR(64) NOT NULL,
+  `tenant_id` VARCHAR(64) NOT NULL,
+  `business_id` VARCHAR(64) NOT NULL,
+  `business_model_revision` INT NOT NULL,
+  `requirement_kind` VARCHAR(32) NOT NULL,
+  `semantic_name` VARCHAR(256) NOT NULL,
+  `description` TEXT NOT NULL,
+  `business_element_refs_json` TEXT NOT NULL,
+  `requiredness` VARCHAR(64) NOT NULL DEFAULT '',
+  `freshness_requirement` VARCHAR(128) NOT NULL DEFAULT '',
+  `access_need` VARCHAR(128) NOT NULL DEFAULT '',
+  `status` VARCHAR(32) NOT NULL,
+  `source` VARCHAR(32) NOT NULL,
+  `derived_from_requirement_id` VARCHAR(64) NOT NULL DEFAULT '',
+  `analysis_run_id` VARCHAR(64) NOT NULL DEFAULT '',
+  `created_by` VARCHAR(64) NOT NULL,
+  `created_at` DATETIME(3) NOT NULL,
+  `updated_at` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_forma_data_requirement` (`requirement_id`),
+  KEY `idx_forma_data_req_tenant_biz` (`tenant_id`, `business_id`),
+  KEY `idx_forma_data_req_revision` (`tenant_id`, `business_id`, `business_model_revision`),
+  KEY `idx_forma_data_req_status` (`tenant_id`, `business_id`, `status`),
+  KEY `idx_forma_data_req_analysis` (`tenant_id`, `analysis_run_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `forma_data_requirement_decision` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `decision_id` VARCHAR(64) NOT NULL,
+  `tenant_id` VARCHAR(64) NOT NULL,
+  `business_id` VARCHAR(64) NOT NULL,
+  `source_requirement_id` VARCHAR(64) NOT NULL,
+  `target_requirement_id` VARCHAR(64) NOT NULL DEFAULT '',
+  `action` VARCHAR(32) NOT NULL,
+  `actor_principal_id` VARCHAR(64) NOT NULL,
+  `reason` VARCHAR(1024) NOT NULL DEFAULT '',
+  `business_model_revision` INT NOT NULL,
+  `created_at` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_forma_data_req_decision` (`decision_id`),
+  UNIQUE KEY `uk_forma_data_req_decision_source` (`tenant_id`, `source_requirement_id`),
+  KEY `idx_forma_data_decision_biz` (`tenant_id`, `business_id`),
+  KEY `idx_forma_data_decision_source` (`tenant_id`, `source_requirement_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -68,6 +68,19 @@ test('S3-G1 integrity migration present', () => {
   assert.ok(!sql.includes('CREATE UNIQUE INDEX IF NOT EXISTS'));
 });
 
+test('S4-G1 data requirement migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250902100000_s4_g1_data_requirement.sql'),
+    'utf8',
+  );
+  assert.ok(sql.includes('forma_data_requirement'));
+  assert.ok(sql.includes('forma_data_requirement_analysis_run'));
+  assert.ok(sql.includes('forma_data_requirement_decision'));
+  assert.ok(sql.includes('uk_forma_data_analysis_idempotency'));
+  assert.ok(sql.includes('uk_forma_data_req_decision_source'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
+});
+
 test('atlas sum references migrations', () => {
   const sum = readFileSync(join(root, 'migrations', 'atlas.sum'), 'utf8');
   assert.ok(sum.includes('20250831100000_initial.sql'));
@@ -76,4 +89,5 @@ test('atlas sum references migrations', () => {
   assert.ok(sum.includes('20250901000000_s2_business_model.sql'));
   assert.ok(sum.includes('20250902000000_s3_analyst.sql'));
   assert.ok(sum.includes('20250902010000_s3_g1_integrity.sql'));
+  assert.ok(sum.includes('20250902100000_s4_g1_data_requirement.sql'));
 });

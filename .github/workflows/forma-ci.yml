@@ -25,6 +25,10 @@ on:
       - 'coze-studio/backend/domain/forma/**'
       - 'coze-studio/backend/application/forma/**'
       - 'coze-studio/backend/crossdomain/forma/**'
+      - 'coze-studio/backend/api/handler/forma/**'
+      - 'coze-studio/backend/api/router/forma/**'
+      - 'coze-studio/docker/atlas/forma/**'
+      - 'coze-studio/scripts/forma/**'
       - 'coze-studio/frontend/apps/forma/**'
       - 'coze-studio/frontend/packages/forma-api-client/**'
       - 'coze-studio/frontend/packages/forma-business/**'
@@ -56,10 +60,13 @@ jobs:
           test -f ../docker/atlas/forma/migrations/20250831140000_s1_g1_space_mapping.sql
           test -f ../docker/atlas/forma/migrations/20250901000000_s2_business_model.sql
           test -f ../docker/atlas/forma/migrations/20250902000000_s3_analyst.sql
+          test -f ../docker/atlas/forma/migrations/20250902100000_s4_g1_data_requirement.sql
       - name: Forma analyst domain tests
         run: go test ./domain/forma/analyst/... -count=1
       - name: Forma business domain tests
         run: go test ./domain/forma/business/... -count=1
+      - name: Forma data domain tests
+        run: go test ./domain/forma/data/... -count=1
       - name: Forma migration smoke validation
         working-directory: coze-studio
         run: node scripts/forma/migration-validate.mjs
