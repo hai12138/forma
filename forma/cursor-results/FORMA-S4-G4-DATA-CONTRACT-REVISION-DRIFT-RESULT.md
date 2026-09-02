@@ -148,8 +148,11 @@ All packages green.
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
+| Commit SHA | `cfb21cb4a9f8a62913ed1c7ac39e4cd7d42bdacc` |
+| Forma CI | [33658216479](https://github.com/hai12138/forma/actions/runs/33658216479) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
 
 ## STOP
 
