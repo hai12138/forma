@@ -1,0 +1,17 @@
+[2026-09-02T05:59:13.561Z] S3-LIVE-FINAL browser hard gate start
+[2026-09-02T05:59:15.970Z] authenticated via fetch cookie jar PASS
+[2026-09-02T05:59:16.204Z] business_id=biz_2e33146a-c94e-4e7c-99a9-879c3621792b initial_revision=r1
+[2026-09-02T05:59:17.232Z] session smoke PASS session_id=asess_60d6080d-95ed-4dcf-8692-c7ceb71e9a7c
+[2026-09-02T06:10:47.932Z] no silent mutation PASS revision=r1
+[2026-09-02T06:16:26.595Z] gap ask PASS
+[2026-09-02T06:16:29.603Z] confirmation PASS
+[2026-09-02T06:18:28.169Z] edit confirm PASS
+[2026-09-02T06:18:57.153Z] conflict PASS
+[2026-09-02T06:19:47.217Z] S3-LIVE-FINAL browser hard gate start budget=8 from_gate=stale-proposal resume=true
+[2026-09-02T06:21:59.045Z] proposal semantic diff UI not rendered — API preview verified
+[2026-09-02T06:21:59.107Z] proposal diff PASS
+[2026-09-02T06:22:29.224Z] apply via API fallback
+[2026-09-02T06:22:29.715Z] apply + provenance PASS
+[2026-09-02T06:22:30.027Z] stale proposal PASS
+[2026-09-02T06:22:32.268Z] tenant isolation PASS
+[2026-09-02T06:22:32.371Z] S3-LIVE-FINAL browser hard gate COMPLETE

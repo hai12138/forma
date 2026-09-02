@@ -20,7 +20,7 @@ import (
 
 func BuildProposalPatch(assertions []*entity.BusinessAssertion) *entity.SemanticModelPatch {
 	patch := &entity.SemanticModelPatch{Operations: []entity.PatchOperation{}}
-	seenNodes := map[string]bool{}
+	seenNodeIDs := map[string]bool{}
 
 	for _, a := range assertions {
 		if a == nil || a.Status != entity.AssertionConfirmed {
@@ -32,21 +32,28 @@ func BuildProposalPatch(assertions []*entity.BusinessAssertion) *entity.Semantic
 		case entity.AssertionActorExists, entity.AssertionBusinessObjectExists,
 			entity.AssertionProcessExists, entity.AssertionEventExists,
 			entity.AssertionSystemExists, entity.AssertionPolicyExists:
+			name := strings.TrimSpace(a.ObjectValue)
+			if name == "" {
+				continue
+			}
 			nodeID := sanitizeID(a.SubjectRef)
 			if nodeID == "item" {
 				nodeID = sanitizeID(a.ObjectValue)
 			}
-			key := string(a.AssertionType) + ":" + nodeID
-			if seenNodes[key] {
+			if nodeID == "item" {
+				nodeID = sanitizeID(a.AssertionID)
+			}
+			semanticID := "node_" + nodeID
+			if seenNodeIDs[semanticID] {
 				continue
 			}
-			seenNodes[key] = true
+			seenNodeIDs[semanticID] = true
 			patch.Operations = append(patch.Operations, entity.PatchOperation{
 				Op: PatchAddNode,
 				Node: &businessentity.SemanticNode{
-					ID:           "node_" + nodeID,
+					ID:           semanticID,
 					Type:         assertionNodeType(a.AssertionType),
-					Name:         a.ObjectValue,
+					Name:         name,
 					Description:  a.Predicate,
 					SourceMarker: businessentity.SourceAIGenerated,
 				},
