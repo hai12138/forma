@@ -567,7 +567,9 @@ func (s *contractService) DeprecateRevision(ctx context.Context, tenantID, revis
 		if err != nil {
 			return err
 		}
-		if _, err := tx.GetContractForUpdate(ctx, tenantID, rev.ContractID); err != nil {
+		// Lock contract root first so pointer decisions serialize with Activate/Drift.
+		contract, err := tx.GetContractForUpdate(ctx, tenantID, rev.ContractID)
+		if err != nil {
 			return err
 		}
 		rev, err = tx.GetRevision(ctx, tenantID, revisionID)
@@ -575,14 +577,33 @@ func (s *contractService) DeprecateRevision(ctx context.Context, tenantID, revis
 			return err
 		}
 		from := rev.Status
-		if from != entity.ContractStatusActive && from != entity.ContractStatusStale {
+		switch from {
+		case entity.ContractStatusActive:
+			// ACTIVE owns the pointer; mismatch is an invariant violation.
+			if contract.ActiveRevisionID != revisionID {
+				return entity.ErrContractInvalidState
+			}
+			if err := tx.UpdateRevisionStatus(ctx, tenantID, revisionID, from, entity.ContractStatusDeprecated); err != nil {
+				return err
+			}
+			if err := tx.ClearContractActiveRevisionIfMatch(ctx, tenantID, rev.ContractID, revisionID); err != nil {
+				return err
+			}
+		case entity.ContractStatusStale:
+			// Historical STALE never owns another revision's ACTIVE pointer.
+			if err := tx.UpdateRevisionStatus(ctx, tenantID, revisionID, from, entity.ContractStatusDeprecated); err != nil {
+				return err
+			}
+			// CASE A: pointer empty → no clear needed.
+			// CASE B: pointer points at another ACTIVE → leave untouched.
+			// CASE C: legacy inconsistent pointer == this STALE revision → clear safely.
+			if contract.ActiveRevisionID == revisionID {
+				if err := tx.ClearContractActiveRevisionIfMatch(ctx, tenantID, rev.ContractID, revisionID); err != nil {
+					return err
+				}
+			}
+		default:
 			return entity.ErrContractInvalidState
-		}
-		if err := tx.UpdateRevisionStatus(ctx, tenantID, revisionID, from, entity.ContractStatusDeprecated); err != nil {
-			return err
-		}
-		if err := tx.ClearContractActiveRevisionIfMatch(ctx, tenantID, rev.ContractID, revisionID); err != nil {
-			return err
 		}
 		now := time.Now().UTC()
 		if err := tx.CreateLifecycleEvent(ctx, &entity.DataContractLifecycleEvent{

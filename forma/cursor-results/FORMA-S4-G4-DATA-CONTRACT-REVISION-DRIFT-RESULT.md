@@ -157,3 +157,51 @@ All packages green.
 ## STOP
 
 Do **not** start S4-G5. Do **not** implement Data Plane UI / Business Capability. Do **not** create `forma-s4-frozen`.
+
+---
+
+# FORMA-S4-G4-F2 STALE REVISION LIFECYCLE / ACTIVE POINTER FINAL CONSISTENCY
+
+## Status
+
+**S4-G4-F2 = PASS** (pending CI record)
+
+## Bug Fixed
+
+Deprecate of historical STALE revision no longer calls ClearIfMatch when `active_revision_id` points at a newer ACTIVE revision.
+
+Chosen STALE behavior:
+- CASE A empty pointer → STALE→DEPRECATED, no clear
+- CASE B pointer → other ACTIVE → STALE→DEPRECATED, leave pointer
+- CASE C legacy pointer == this STALE → clear safely then deprecate
+
+ACTIVE→DEPRECATED still requires pointer match and clears via CAS.
+
+## Invariants (G4-F2)
+
+| Invariant | Result |
+|-----------|--------|
+| STALE_DEPRECATE_WITH_NEW_ACTIVE | PASS |
+| ACTIVE_POINTER_PRESERVATION | PASS |
+| ACTIVE_DEPRECATE_CLEAR | PASS |
+| BREAKING_STALE_CLEAR | PASS |
+| ACTIVE_DESCRIPTOR | PASS |
+| ACTIVATION_LOCK_CONTRACT | PASS |
+| NO_MIGRATION | PASS |
+| G1_REGRESSION | PASS |
+| G2_REGRESSION | PASS |
+| G3_REGRESSION | PASS |
+| G4_REGRESSION | PASS |
+| BUSINESS_MODEL_MUTATION | NONE |
+| REAL_MODEL_CALLS | 0 |
+
+## Delivery
+
+| Item | Value |
+|------|-------|
+| Commit SHA | TBD |
+| Forma CI | TBD |
+
+## STOP
+
+Do **not** start S4-G5. Do **not** implement Data Plane UI / Business Capability. Do **not** create `forma-s4-frozen`.
