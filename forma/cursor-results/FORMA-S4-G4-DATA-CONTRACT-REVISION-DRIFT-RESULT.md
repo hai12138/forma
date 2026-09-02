@@ -2,7 +2,7 @@
 
 ## Status
 
-**S4-G4 = PASS** (pending CI record)
+**S4-G4 = PASS**
 
 ## Baseline
 
@@ -76,8 +76,11 @@ No FOREIGN KEY. G1–G3 migrations untouched.
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
+| Commit SHA | `4cbfd737e8119560b8106cbd64dfb107ae6f00d0` |
+| Forma CI | [33654908875](https://github.com/hai12138/forma/actions/runs/33654908875) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
 
 ## STOP
 
