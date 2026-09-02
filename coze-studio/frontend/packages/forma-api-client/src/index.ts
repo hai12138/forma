@@ -369,6 +369,422 @@ export interface FormaProposalPreview {
   impact?: FormaDiffResponse['impact'];
 }
 
+/* ---- S4 Data Plane DTOs (snake_case matching backend app DTOs) ---- */
+
+export interface FormaDataRequirement {
+  requirement_id: string;
+  business_id: string;
+  business_model_revision: number;
+  requirement_kind: string;
+  semantic_name: string;
+  description: string;
+  business_element_refs: string[];
+  requiredness: string;
+  freshness_requirement: string;
+  access_need: string;
+  status: string;
+  source: string;
+  derived_from_requirement_id?: string;
+  analysis_run_id?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaDataRequirementDecision {
+  decision_id: string;
+  business_id: string;
+  source_requirement_id: string;
+  target_requirement_id?: string;
+  action: string;
+  actor_principal_id: string;
+  reason: string;
+  business_model_revision: number;
+  created_at: string;
+}
+
+export interface FormaDataAnalysisRun {
+  analysis_run_id: string;
+  business_id: string;
+  business_model_revision: number;
+  client_request_id: string;
+  status: string;
+  model_ref?: string;
+  error_key?: string;
+  error_message_sanitized?: string;
+  retry_count: number;
+  last_retry_by?: string;
+  last_retry_at?: string;
+  created_by: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaAnalyzeDataRequirementsResponse {
+  analysis_run: FormaDataAnalysisRun;
+  requirements: FormaDataRequirement[];
+  owned_execute: boolean;
+}
+
+export interface FormaCreateManualDataRequirementInput {
+  business_model_revision: number;
+  requirement_kind: string;
+  semantic_name: string;
+  description: string;
+  business_element_refs?: string[];
+  requiredness: string;
+  freshness_requirement: string;
+  access_need: string;
+}
+
+export interface FormaEditConfirmDataRequirementInput {
+  reason?: string;
+  requirement_kind: string;
+  semantic_name: string;
+  description: string;
+  business_element_refs?: string[];
+  requiredness: string;
+  freshness_requirement: string;
+  access_need: string;
+}
+
+export interface FormaDataSource {
+  source_id: string;
+  name: string;
+  source_type: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaDataConnection {
+  connection_id: string;
+  source_id: string;
+  name: string;
+  environment: string;
+  adapter_type: string;
+  public_config: Record<string, unknown> | string;
+  credential_ref_id?: string;
+  status: string;
+  last_test_status?: string;
+  last_test_at?: string;
+  last_test_error_key?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaDataAsset {
+  asset_id: string;
+  source_id: string;
+  connection_id: string;
+  asset_type: string;
+  name: string;
+  physical_locator: Record<string, unknown> | string;
+  locator_digest: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaPhysicalField {
+  name: string;
+  data_type: string;
+  native_type?: string;
+  nullable: boolean;
+  primary_key: boolean;
+  description?: string;
+  path?: string;
+  ordinal: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FormaPhysicalRelationship {
+  name: string;
+  from_fields: string[];
+  to_schema: string;
+  to_fields: string[];
+  relationship_type: string;
+}
+
+export interface FormaPhysicalSchema {
+  name: string;
+  fields: FormaPhysicalField[];
+  relationships: FormaPhysicalRelationship[];
+}
+
+export interface FormaSchemaSnapshot {
+  snapshot_id: string;
+  source_id: string;
+  connection_id: string;
+  asset_id: string;
+  schema: FormaPhysicalSchema | Record<string, unknown>;
+  fingerprint: string;
+  created_by: string;
+  created_at: string;
+}
+
+/** Credential response — MUST NOT include password|secret|token|api_key|authorization. */
+export interface FormaCredentialRef {
+  credential_ref_id: string;
+  status: string;
+  provider: string;
+  created_at: string;
+  rotated_at?: string;
+  last_rotated_at?: string;
+}
+
+/** Create body may carry ephemeral secret fields; never echoed in responses. */
+export interface FormaCreateCredentialInput {
+  secret_type: string;
+  secret: Record<string, unknown> | string;
+}
+
+export interface FormaSemanticMapping {
+  mapping_id: string;
+  business_id: string;
+  business_model_revision: number;
+  requirement_id: string;
+  source_id: string;
+  connection_id: string;
+  asset_id: string;
+  schema_snapshot_id: string;
+  target_field_paths: string[];
+  mapping_type: string;
+  transform_spec: Record<string, unknown> | string;
+  status: string;
+  source: string;
+  confidence: number;
+  reason: string;
+  derived_from_mapping_id?: string;
+  analysis_run_id?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaMappingCoverage {
+  total_confirmed_requirements: number;
+  confirmed_mappings: number;
+  unmapped_requirement_ids: string[];
+  coverage: number;
+}
+
+export interface FormaMappingAnalysisRun {
+  analysis_run_id: string;
+  business_id: string;
+  business_model_revision: number;
+  client_request_id: string;
+  status: string;
+  model_ref?: string;
+  error_key?: string;
+  error_message_sanitized?: string;
+  retry_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaAnalyzeSemanticMappingsResponse {
+  analysis_run: FormaMappingAnalysisRun;
+  mappings: FormaSemanticMapping[];
+  owned_execute: boolean;
+}
+
+export interface FormaCreateSemanticMappingInput {
+  business_model_revision: number;
+  requirement_id: string;
+  source_id: string;
+  connection_id: string;
+  asset_id: string;
+  schema_snapshot_id: string;
+  target_field_paths: string[];
+  mapping_type: string;
+  transform_spec?: Record<string, unknown>;
+  confidence?: number;
+  reason?: string;
+}
+
+export interface FormaEditConfirmSemanticMappingInput {
+  source_id: string;
+  connection_id: string;
+  asset_id: string;
+  schema_snapshot_id: string;
+  target_field_paths: string[];
+  mapping_type: string;
+  transform_spec?: Record<string, unknown>;
+  confidence?: number;
+  reason?: string;
+}
+
+export interface FormaLogicalField {
+  logical_key: string;
+  semantic_name: string;
+  logical_type: string;
+  description: string;
+  requirement_id: string;
+  nullable: boolean;
+  classification: string;
+}
+
+export interface FormaContractLogicalSchema {
+  fields: FormaLogicalField[];
+}
+
+export interface FormaContractBinding {
+  requirement_id: string;
+  mapping_id: string;
+  source_id: string;
+  connection_id: string;
+  asset_id: string;
+  schema_snapshot_id: string;
+}
+
+export interface FormaDataContract {
+  contract_id: string;
+  business_id: string;
+  active_revision_id?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormaDataContractRevision {
+  revision_id: string;
+  business_id: string;
+  contract_id: string;
+  version: number;
+  status: string;
+  business_model_revision: number;
+  name: string;
+  description: string;
+  requirement_ids: string[];
+  logical_schema: FormaContractLogicalSchema;
+  query_capabilities: string[];
+  filter_schema: { fields: Array<{ logical_key: string; operators: string[] }> };
+  sort_schema: { fields: Array<{ logical_key: string; directions: string[] }> };
+  pagination_policy: { default_limit: number; max_limit: number };
+  freshness_policy: string;
+  classification_policy: Record<string, string>;
+  binding_refs: FormaContractBinding[];
+  access_policy_ref?: string;
+  derived_from_revision_id?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Consumer-facing — no binding_refs / physical source fields. */
+export interface FormaDataContractDescriptor {
+  contract_id: string;
+  revision_id: string;
+  version: number;
+  business_model_revision: number;
+  logical_schema: FormaContractLogicalSchema;
+  query_capabilities: string[];
+  filter_schema: { fields: Array<{ logical_key: string; operators: string[] }> };
+  sort_schema: { fields: Array<{ logical_key: string; directions: string[] }> };
+  pagination_policy: { default_limit: number; max_limit: number };
+  freshness_policy: string;
+  classification: Record<string, string>;
+  access_policy_ref?: string;
+  status: string;
+}
+
+export interface FormaCreateDataContractInput {
+  business_model_revision: number;
+  name: string;
+  description?: string;
+  requirement_ids: string[];
+  logical_schema: FormaContractLogicalSchema;
+  query_capabilities?: string[];
+  filter_schema?: FormaDataContractRevision['filter_schema'];
+  sort_schema?: FormaDataContractRevision['sort_schema'];
+  pagination_policy?: FormaDataContractRevision['pagination_policy'];
+  freshness_policy?: string;
+  classification_policy?: Record<string, string>;
+  mapping_ids: string[];
+  access_policy_ref?: string;
+}
+
+export interface FormaCreateDataContractRevisionInput extends FormaCreateDataContractInput {
+  base_revision_id: string;
+}
+
+export interface FormaCreateDataContractResponse {
+  contract: FormaDataContract;
+  revision: FormaDataContractRevision;
+}
+
+/** Wire shape from domain entity without json tags → Go PascalCase. */
+export interface FormaValidationResult {
+  ValidationID: string;
+  TenantID: string;
+  BusinessID: string;
+  ContractID: string;
+  RevisionID: string;
+  Version: number;
+  Status: string;
+  Errors: Array<{ code: string; message: string }>;
+  Warnings: Array<{ code: string; message: string }>;
+  SnapshotFingerprints: Record<string, string>;
+  ValidatedBy: string;
+  ValidatedAt: string;
+  CreatedAt: string;
+}
+
+export interface FormaDriftResult {
+  DriftResultID: string;
+  TenantID: string;
+  BusinessID: string;
+  ContractID: string;
+  RevisionID: string;
+  Version: number;
+  Severity: string;
+  Findings: Array<{
+    code: string;
+    message: string;
+    binding_mapping_id: string;
+    field_path: string;
+  }>;
+  ComparedSnapshotIDs: Record<string, string>;
+  EvaluatedBy: string;
+  EvaluatedAt: string;
+  CreatedAt: string;
+}
+
+export interface FormaGapResult {
+  GapResultID: string;
+  TenantID: string;
+  BusinessID: string;
+  ContractID: string;
+  RevisionID: string;
+  Version: number;
+  FromBusinessRevision: number;
+  CurrentBusinessRevision: number;
+  NewConfirmedRequirementIDs: string[];
+  UnmappedRequirementIDs: string[];
+  GapStatus: string;
+  EvaluatedBy: string;
+  EvaluatedAt: string;
+  CreatedAt: string;
+}
+
+export interface FormaLifecycleEvent {
+  EventID: string;
+  TenantID: string;
+  BusinessID: string;
+  ContractID: string;
+  RevisionID: string;
+  Version: number;
+  Action: string;
+  ActorPrincipalID: string;
+  Reason: string;
+  CreatedAt: string;
+}
+
 export interface FormaApiClientOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
@@ -668,6 +1084,462 @@ export class FormaApiClient {
       'GET',
       `/api/forma/v1/businesses/${businessId}/proposals/${proposalId}/preview`,
     );
+  }
+
+  /* ---- S4 Data Plane ---- */
+
+  async listDataRequirements(
+    businessId: string,
+    opts?: { revision?: number; status?: string },
+  ): Promise<FormaApiEnvelope<FormaDataRequirement[]>> {
+    const q = new URLSearchParams();
+    if (opts?.revision != null) q.set('revision', String(opts.revision));
+    if (opts?.status) q.set('status', opts.status);
+    const qs = q.toString();
+    return this.request<FormaDataRequirement[]>(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-requirements${qs ? `?${qs}` : ''}`,
+    );
+  }
+
+  async analyzeDataRequirements(
+    businessId: string,
+    body: { business_model_revision: number; client_request_id?: string },
+  ): Promise<FormaApiEnvelope<FormaAnalyzeDataRequirementsResponse>> {
+    return this.request<FormaAnalyzeDataRequirementsResponse>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-requirements/analyze`,
+      body,
+    );
+  }
+
+  async getDataAnalysisRun(
+    businessId: string,
+    analysisRunId: string,
+  ): Promise<FormaApiEnvelope<FormaDataAnalysisRun>> {
+    return this.request<FormaDataAnalysisRun>(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-analyses/${analysisRunId}`,
+    );
+  }
+
+  async createManualDataRequirement(
+    businessId: string,
+    body: FormaCreateManualDataRequirementInput,
+  ): Promise<FormaApiEnvelope<FormaDataRequirement>> {
+    return this.request<FormaDataRequirement>(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-requirements`,
+      body,
+    );
+  }
+
+  async confirmDataRequirement(
+    businessId: string,
+    requirementId: string,
+    body?: { reason?: string },
+  ): Promise<FormaApiEnvelope<{ requirement: FormaDataRequirement; decision: FormaDataRequirementDecision }>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-requirements/${requirementId}/confirm`,
+      body ?? {},
+    );
+  }
+
+  async rejectDataRequirement(
+    businessId: string,
+    requirementId: string,
+    body?: { reason?: string },
+  ): Promise<FormaApiEnvelope<{ requirement: FormaDataRequirement; decision: FormaDataRequirementDecision }>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-requirements/${requirementId}/reject`,
+      body ?? {},
+    );
+  }
+
+  async editConfirmDataRequirement(
+    businessId: string,
+    requirementId: string,
+    body: FormaEditConfirmDataRequirementInput,
+  ): Promise<
+    FormaApiEnvelope<{
+      original: FormaDataRequirement;
+      replacement: FormaDataRequirement;
+      decision: FormaDataRequirementDecision;
+    }>
+  > {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-requirements/${requirementId}/edit-confirm`,
+      body,
+    );
+  }
+
+  async listDataRequirementDecisions(
+    businessId: string,
+    requirementId: string,
+  ): Promise<FormaApiEnvelope<FormaDataRequirementDecision[]>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-requirements/${requirementId}/decisions`,
+    );
+  }
+
+  async analyzeSemanticMappings(
+    businessId: string,
+    body: {
+      business_model_revision: number;
+      requirement_ids: string[];
+      schema_snapshot_ids: string[];
+      client_request_id?: string;
+    },
+  ): Promise<FormaApiEnvelope<FormaAnalyzeSemanticMappingsResponse>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/semantic-mappings/analyze`,
+      body,
+    );
+  }
+
+  async getMappingAnalysisRun(
+    businessId: string,
+    analysisRunId: string,
+  ): Promise<FormaApiEnvelope<FormaMappingAnalysisRun>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/semantic-mapping-analysis/${analysisRunId}`,
+    );
+  }
+
+  async listSemanticMappings(
+    businessId: string,
+  ): Promise<FormaApiEnvelope<FormaSemanticMapping[]>> {
+    return this.request('GET', `/api/forma/v1/businesses/${businessId}/semantic-mappings`);
+  }
+
+  async createManualSemanticMapping(
+    businessId: string,
+    body: FormaCreateSemanticMappingInput,
+  ): Promise<FormaApiEnvelope<FormaSemanticMapping>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/semantic-mappings`,
+      body,
+    );
+  }
+
+  async confirmSemanticMapping(
+    businessId: string,
+    mappingId: string,
+    body?: { reason?: string },
+  ): Promise<FormaApiEnvelope<{ mapping: FormaSemanticMapping; decision: unknown }>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/semantic-mappings/${mappingId}/confirm`,
+      body ?? {},
+    );
+  }
+
+  async rejectSemanticMapping(
+    businessId: string,
+    mappingId: string,
+    body?: { reason?: string },
+  ): Promise<FormaApiEnvelope<{ mapping: FormaSemanticMapping; decision: unknown }>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/semantic-mappings/${mappingId}/reject`,
+      body ?? {},
+    );
+  }
+
+  async editConfirmSemanticMapping(
+    businessId: string,
+    mappingId: string,
+    body: FormaEditConfirmSemanticMappingInput,
+  ): Promise<
+    FormaApiEnvelope<{
+      original: FormaSemanticMapping;
+      replacement: FormaSemanticMapping;
+      decision: unknown;
+    }>
+  > {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/semantic-mappings/${mappingId}/edit-confirm`,
+      body,
+    );
+  }
+
+  async getSemanticMappingCoverage(
+    businessId: string,
+  ): Promise<FormaApiEnvelope<FormaMappingCoverage>> {
+    return this.request('GET', `/api/forma/v1/businesses/${businessId}/semantic-mapping-coverage`);
+  }
+
+  async listDataContracts(businessId: string): Promise<FormaApiEnvelope<FormaDataContract[]>> {
+    return this.request('GET', `/api/forma/v1/businesses/${businessId}/data-contracts`);
+  }
+
+  async createDataContract(
+    businessId: string,
+    body: FormaCreateDataContractInput,
+  ): Promise<FormaApiEnvelope<FormaCreateDataContractResponse>> {
+    return this.request('POST', `/api/forma/v1/businesses/${businessId}/data-contracts`, body);
+  }
+
+  async getDataContract(
+    businessId: string,
+    contractId: string,
+  ): Promise<FormaApiEnvelope<FormaDataContract>> {
+    return this.request('GET', `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}`);
+  }
+
+  async getActiveDataContractDescriptor(
+    businessId: string,
+    contractId: string,
+  ): Promise<FormaApiEnvelope<FormaDataContractDescriptor>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/active-descriptor`,
+    );
+  }
+
+  async listDataContractRevisions(
+    businessId: string,
+    contractId: string,
+  ): Promise<FormaApiEnvelope<FormaDataContractRevision[]>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions`,
+    );
+  }
+
+  async createDataContractRevision(
+    businessId: string,
+    contractId: string,
+    body: FormaCreateDataContractRevisionInput,
+  ): Promise<FormaApiEnvelope<FormaDataContractRevision>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions`,
+      body,
+    );
+  }
+
+  async getDataContractRevision(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+  ): Promise<FormaApiEnvelope<FormaDataContractRevision>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}`,
+    );
+  }
+
+  async validateDataContractRevision(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+  ): Promise<FormaApiEnvelope<{ revision: FormaDataContractRevision; result: FormaValidationResult }>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}/validate`,
+      {},
+    );
+  }
+
+  async activateDataContractRevision(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+    body?: { reason?: string },
+  ): Promise<FormaApiEnvelope<FormaDataContractRevision>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}/activate`,
+      body ?? {},
+    );
+  }
+
+  async deprecateDataContractRevision(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+    body?: { reason?: string },
+  ): Promise<FormaApiEnvelope<FormaDataContractRevision>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}/deprecate`,
+      body ?? {},
+    );
+  }
+
+  async listDataContractValidationResults(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+  ): Promise<FormaApiEnvelope<FormaValidationResult[]>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}/validation-results`,
+    );
+  }
+
+  async evaluateDataContractDrift(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+    body: { new_snapshot_ids: Record<string, string> },
+  ): Promise<FormaApiEnvelope<{ result: FormaDriftResult; revision: FormaDataContractRevision }>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}/evaluate-drift`,
+      body,
+    );
+  }
+
+  async listDataContractDriftResults(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+  ): Promise<FormaApiEnvelope<FormaDriftResult[]>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}/drift-results`,
+    );
+  }
+
+  async evaluateDataContractGap(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+  ): Promise<FormaApiEnvelope<FormaGapResult>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}/evaluate-gap`,
+      {},
+    );
+  }
+
+  async listDataContractGapResults(
+    businessId: string,
+    contractId: string,
+    revisionId: string,
+  ): Promise<FormaApiEnvelope<FormaGapResult[]>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/revisions/${revisionId}/gap-results`,
+    );
+  }
+
+  async listDataContractLifecycleEvents(
+    businessId: string,
+    contractId: string,
+  ): Promise<FormaApiEnvelope<FormaLifecycleEvent[]>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/data-contracts/${contractId}/lifecycle-events`,
+    );
+  }
+
+  async listDataSources(): Promise<FormaApiEnvelope<FormaDataSource[]>> {
+    return this.request('GET', '/api/forma/v1/data-sources');
+  }
+
+  async createDataSource(body: {
+    name: string;
+    source_type: string;
+  }): Promise<FormaApiEnvelope<FormaDataSource>> {
+    return this.request('POST', '/api/forma/v1/data-sources', body);
+  }
+
+  async getDataSource(sourceId: string): Promise<FormaApiEnvelope<FormaDataSource>> {
+    return this.request('GET', `/api/forma/v1/data-sources/${sourceId}`);
+  }
+
+  async archiveDataSource(sourceId: string): Promise<FormaApiEnvelope<FormaDataSource>> {
+    return this.request('POST', `/api/forma/v1/data-sources/${sourceId}/archive`);
+  }
+
+  async listDataConnections(sourceId: string): Promise<FormaApiEnvelope<FormaDataConnection[]>> {
+    return this.request('GET', `/api/forma/v1/data-sources/${sourceId}/connections`);
+  }
+
+  async createDataConnection(
+    sourceId: string,
+    body: {
+      name: string;
+      environment: string;
+      adapter_type: string;
+      public_config: Record<string, unknown>;
+      credential_ref_id?: string;
+    },
+  ): Promise<FormaApiEnvelope<FormaDataConnection>> {
+    return this.request('POST', `/api/forma/v1/data-sources/${sourceId}/connections`, body);
+  }
+
+  async getDataConnection(
+    sourceId: string,
+    connectionId: string,
+  ): Promise<FormaApiEnvelope<FormaDataConnection>> {
+    return this.request(
+      'GET',
+      `/api/forma/v1/data-sources/${sourceId}/connections/${connectionId}`,
+    );
+  }
+
+  async testDataConnection(
+    sourceId: string,
+    connectionId: string,
+  ): Promise<FormaApiEnvelope<FormaDataConnection>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/data-sources/${sourceId}/connections/${connectionId}/test`,
+      {},
+    );
+  }
+
+  async discoverDataAssets(
+    sourceId: string,
+    connectionId: string,
+  ): Promise<FormaApiEnvelope<FormaDataAsset[]>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/data-sources/${sourceId}/connections/${connectionId}/discover`,
+      {},
+    );
+  }
+
+  async createDataCredential(
+    body: FormaCreateCredentialInput,
+  ): Promise<FormaApiEnvelope<FormaCredentialRef>> {
+    return this.request('POST', '/api/forma/v1/credentials', body);
+  }
+
+  async listDataAssets(sourceId: string): Promise<FormaApiEnvelope<FormaDataAsset[]>> {
+    return this.request('GET', `/api/forma/v1/data-sources/${sourceId}/assets`);
+  }
+
+  async getDataAsset(assetId: string): Promise<FormaApiEnvelope<FormaDataAsset>> {
+    return this.request('GET', `/api/forma/v1/data-assets/${assetId}`);
+  }
+
+  async captureDataSchema(
+    sourceId: string,
+    connectionId: string,
+    assetId: string,
+  ): Promise<FormaApiEnvelope<FormaSchemaSnapshot>> {
+    return this.request(
+      'POST',
+      `/api/forma/v1/data-sources/${sourceId}/connections/${connectionId}/assets/${assetId}/capture-schema`,
+      {},
+    );
+  }
+
+  async getSchemaSnapshot(snapshotId: string): Promise<FormaApiEnvelope<FormaSchemaSnapshot>> {
+    return this.request('GET', `/api/forma/v1/schema-snapshots/${snapshotId}`);
   }
 
   private async request<T>(

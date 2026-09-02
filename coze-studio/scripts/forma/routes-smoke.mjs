@@ -22,3 +22,19 @@ test('design tokens css exists', () => {
   assert.ok(tokens.includes('--forma-primary'));
   assert.ok(tokens.includes('--forma-background'));
 });
+
+test('data plane routes wired in AppRouter', () => {
+  const routesSrc = readFileSync(join(root, 'routes', 'index.tsx'), 'utf8');
+  assert.ok(routesSrc.includes('@forma/data'), 'expected @forma/data import');
+  assert.ok(routesSrc.includes('/data/*') || routesSrc.includes("path=\"/data/*\""));
+  for (const p of [
+    '/data',
+    '/data/requirements',
+    '/data/sources',
+    '/data/mappings',
+    '/data/contracts',
+    '/data/health',
+  ]) {
+    assert.ok(routesSrc.includes(p), `expected ${p} in routes/index.tsx`);
+  }
+});

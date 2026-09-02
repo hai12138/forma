@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 
 import { BusinessEditorPage, BusinessListPage } from '@forma/business';
 import { AnalystWorkspacePage } from '@forma/analyst';
+import { DataPlaneApp } from '@forma/data';
 
 import { AppShell } from '@/components/shell';
 import { useFormaSession } from '@/hooks/use-forma-session';
@@ -22,6 +23,11 @@ function AnalystRoute() {
   return <AnalystWorkspacePage client={client} currentTenant={currentTenant} />;
 }
 
+function DataPlaneRoute() {
+  const { client, currentTenant } = useFormaSession();
+  return <DataPlaneApp client={client} currentTenant={currentTenant} />;
+}
+
 export function AppRouter() {
   return (
     <AppShell>
@@ -31,7 +37,8 @@ export function AppRouter() {
         <Route path="/analyst" element={<AnalystRoute />} />
         <Route path="/business" element={<BusinessListRoute />} />
         <Route path="/business/:businessId" element={<BusinessEditorRoute />} />
-        <Route path="/data" element={<PlaceholderPage title="数据平面" />} />
+        {/* Data plane nested paths: /data /data/requirements /data/sources /data/mappings /data/contracts /data/health */}
+        <Route path="/data/*" element={<DataPlaneRoute />} />
         <Route path="/capabilities" element={<PlaceholderPage title="能力资产" />} />
         <Route path="/agents" element={<PlaceholderPage title="业务 Agent" />} />
         <Route path="/applications" element={<PlaceholderPage title="应用构建器" />} />

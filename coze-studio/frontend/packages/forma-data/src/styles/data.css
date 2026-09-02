@@ -1,0 +1,231 @@
+/* Forma Data Plane styles */
+.forma-data-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 480px;
+}
+
+.forma-data-plane-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.forma-data-plane-nav a {
+  padding: 6px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.forma-data-plane-nav a.active {
+  background: #1a56db;
+  color: #fff;
+  border-color: #1a56db;
+}
+
+.forma-data-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.forma-data-toolbar select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #d0d5dd;
+  min-width: 200px;
+}
+
+.forma-panel {
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.forma-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.forma-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.forma-btn-primary {
+  background: #1a56db;
+  color: #fff;
+  border-color: #1a56db;
+}
+
+.forma-btn-danger {
+  background: #fef2f2;
+  color: #b42318;
+  border-color: #fecdca;
+}
+
+.forma-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.forma-badge-proposed {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.forma-badge-confirmed,
+.forma-badge-active {
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.forma-badge-rejected,
+.forma-badge-stale,
+.forma-badge-failed {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.forma-badge-draft,
+.forma-badge-deprecated {
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.forma-empty-state {
+  padding: 32px 16px;
+  text-align: center;
+  color: #667085;
+  border: 1px dashed #d0d5dd;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.forma-error {
+  color: #b42318;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.forma-mapping-studio {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  gap: 12px;
+  min-height: 420px;
+}
+
+@media (max-width: 960px) {
+  .forma-mapping-studio {
+    grid-template-columns: 1fr;
+  }
+}
+
+.forma-mapping-col {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.forma-mapping-col h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.forma-card {
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.forma-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.forma-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.forma-form-row input,
+.forma-form-row select,
+.forma-form-row textarea {
+  padding: 6px 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+}
+
+.forma-banner {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.forma-banner-warn {
+  background: #fef3f2;
+  border-color: #fecdca;
+  color: #b42318;
+}
+
+.forma-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.forma-tab {
+  padding: 6px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.forma-tab.active {
+  background: #1a56db;
+  color: #fff;
+  border-color: #1a56db;
+}
+
+.forma-muted {
+  color: #667085;
+  font-size: 12px;
+}
+
+.forma-disclaimer {
+  font-size: 12px;
+  color: #b54708;
+  margin-top: 4px;
+}

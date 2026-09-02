@@ -19,4 +19,19 @@ describe('forma routes', () => {
     expect(editorPath.startsWith('/business/')).toBe(true);
     expect(editorPath).toMatch(/:businessId/);
   });
+
+  it('defines data plane nested paths', () => {
+    const dataPaths = [
+      '/data',
+      '/data/requirements',
+      '/data/sources',
+      '/data/mappings',
+      '/data/contracts',
+      '/data/health',
+    ];
+    for (const p of dataPaths) {
+      expect(p.startsWith('/data')).toBe(true);
+    }
+    expect(navigation.flatMap(g => g.items.map(i => i.path))).toContain('/data');
+  });
 });

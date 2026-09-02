@@ -18,6 +18,7 @@ on:
       - 'coze-studio/frontend/packages/forma-api-client/**'
       - 'coze-studio/frontend/packages/forma-business/**'
       - 'coze-studio/frontend/packages/forma-analyst/**'
+      - 'coze-studio/frontend/packages/forma-data/**'
       - 'forma/**'
       - '.github/workflows/forma-ci.yml'
   pull_request:
@@ -33,6 +34,7 @@ on:
       - 'coze-studio/frontend/packages/forma-api-client/**'
       - 'coze-studio/frontend/packages/forma-business/**'
       - 'coze-studio/frontend/packages/forma-analyst/**'
+      - 'coze-studio/frontend/packages/forma-data/**'
       - 'forma/**'
       - '.github/workflows/forma-ci.yml'
 
@@ -116,7 +118,7 @@ jobs:
       - name: Rush install
         run: node common/scripts/install-run-rush.js install
       - name: Forma typecheck
-        run: node common/scripts/install-run-rush.js build --to @forma/analyst --verbose
+        run: node common/scripts/install-run-rush.js build --to @forma/data --verbose
       - name: Forma app build
         run: node common/scripts/install-run-rush.js build --to @forma/app --verbose
       - name: Forma route smoke tests
@@ -125,5 +127,7 @@ jobs:
         run: node common/scripts/install-run-rush.js test --to @forma/business --verbose
       - name: Forma analyst tests
         run: node common/scripts/install-run-rush.js test --to @forma/analyst --verbose
+      - name: Forma data plane tests
+        run: node common/scripts/install-run-rush.js test --to @forma/data --verbose
       - name: Forma route + design token smoke (node)
         run: node scripts/forma/routes-smoke.mjs
