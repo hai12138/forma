@@ -2,7 +2,7 @@
 
 ## Status
 
-**S4-G3 = PASS (pending CI confirmation)**
+**S4-G3 = PASS**
 
 ## Baseline
 
@@ -67,9 +67,12 @@ DIRECT, CAST, ENUM_MAP, UNIT_CONVERT, TIME_NORMALIZE, FIELD_PATH, JOIN_REF — v
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD |
-| Forma CI | TBD |
-| S4-G3 final status | TBD |
+| Commit SHA | `7402f98ce43e53c17afee12831c6b4ed64708472` |
+| Forma CI | [33644969294](https://github.com/hai12138/forma/actions/runs/33644969294) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| S4-G3 final status | **PASS** |
 
 ## STOP
 
