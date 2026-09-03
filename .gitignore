@@ -37,6 +37,9 @@ output/
 # Docker local data
 docker/data/
 
+# Forma local launcher runtime (pids, logs, local env)
+coze-studio/.forma-local/
+
 # Go
 *.test
 *.out

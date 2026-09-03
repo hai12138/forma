@@ -60,3 +60,6 @@ values-dev.yaml
 
 *.tsbuildinfo
 .trae/*
+
+# Forma local launcher runtime (pids, logs, local env overrides)
+.forma-local/

@@ -1,0 +1,13 @@
+# Optional Forma local port overrides.
+# Used when host already binds Coze default ports (e.g. local MySQL on 3306).
+# Does NOT fork middleware service definitions — only remaps host publish ports.
+#
+# Inside the compose network, containers still use service DNS + container ports
+# (mysql:3306, redis:6379, ...). Backend-in-Docker is unaffected.
+#
+# Host-side tools that need MySQL should use 127.0.0.1:13306 when this file is active.
+
+services:
+  mysql:
+    ports: !override
+      - '127.0.0.1:13306:3306'

@@ -1,4 +1,4 @@
-.PHONY: debug fe server sync_db dump_db middleware web down clean python help
+.PHONY: debug fe server sync_db dump_db middleware web down clean python help forma-local forma-local-stop forma-local-status forma-local-doctor
 
 # 定义脚本路径
 SCRIPTS_DIR := ./scripts
@@ -128,6 +128,19 @@ oceanbase_server_debug:
 	@echo "Building and run OceanBase debug server..."
 	@APP_ENV=debug bash $(BUILD_SERVER_SCRIPT) -start
 
+# Thin wrappers around scripts/forma/local (no third logic path).
+forma-local:
+	@node ./scripts/forma/local/forma-local.mjs start
+
+forma-local-stop:
+	@node ./scripts/forma/local/forma-local.mjs stop
+
+forma-local-status:
+	@node ./scripts/forma/local/forma-local.mjs status
+
+forma-local-doctor:
+	@node ./scripts/forma/local/forma-local.mjs doctor
+
 help:
 	@echo "Usage: make [target]"
 	@echo ""
@@ -149,6 +162,10 @@ help:
 	@echo "  python           - Setup python environment."
 	@echo "  atlas-hash       - Rehash atlas migration files."
 	@echo "  setup_es_index   - Setup elasticsearch index."
+	@echo "  forma-local         - Forma one-command local start (scripts/forma/local)."
+	@echo "  forma-local-stop    - Stop Forma local frontend/backend."
+	@echo "  forma-local-status  - Forma local status."
+	@echo "  forma-local-doctor  - Forma local doctor."
 	@echo ""
 	@echo "OceanBase Commands:"
 	@echo "  oceanbase_env    - Setup OceanBase environment file (like 'env')."
