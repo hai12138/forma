@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import type {
@@ -12,8 +12,15 @@ import type {
 import { EmptyState } from '../components/EmptyState';
 import { SecretCredentialForm } from '../components/SecretCredentialForm';
 import { StatusBadge } from '../components/StatusBadge';
-import { safeMutate } from '../utils/errors';
+import { safeMutate, sanitizedErrorMessage } from '../utils/errors';
 import { isEditor } from '../utils/roles';
+import {
+  adaptersForSourceType,
+  buildCreateConnectionBody,
+  defaultAdapterForSourceType,
+  defaultPortForAdapter,
+  SOURCE_TYPES,
+} from '../utils/source-connection';
 import { useDataPlaneContext } from './useDataPlaneContext';
 
 function parseSchema(raw: FormaSchemaSnapshot['schema']): FormaPhysicalSchema | null {
@@ -29,7 +36,7 @@ export function DataSourcesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [sourceType, setSourceType] = useState('EXTERNAL_SQL');
+  const [sourceType, setSourceType] = useState<(typeof SOURCE_TYPES)[number]>('RELATIONAL_DATABASE');
   const [credId, setCredId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +47,7 @@ export function DataSourcesPage() {
       const resp = await client.listDataSources();
       setSources(resp.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      setError(sanitizedErrorMessage(err));
       setSources([]);
     } finally {
       setLoading(false);
@@ -85,9 +92,16 @@ export function DataSourcesPage() {
             </div>
             <div className="forma-form-row">
               <label>类型</label>
-              <select value={sourceType} onChange={e => setSourceType(e.target.value)}>
-                <option value="EXTERNAL_SQL">EXTERNAL_SQL</option>
-                <option value="EXTERNAL_HTTP">EXTERNAL_HTTP</option>
+              <select
+                value={sourceType}
+                onChange={e => setSourceType(e.target.value as (typeof SOURCE_TYPES)[number])}
+                data-testid="source-type-select"
+              >
+                {SOURCE_TYPES.map(t => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
             <button
@@ -150,8 +164,30 @@ export function SourceDetailPage() {
   const [snapshot, setSnapshot] = useState<FormaSchemaSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connName, setConnName] = useState('default');
+  const [environment, setEnvironment] = useState('DEV');
+  const [adapterType, setAdapterType] = useState('MYSQL');
+  const [host, setHost] = useState('localhost');
+  const [port, setPort] = useState('3306');
+  const [database, setDatabase] = useState('demo');
+  const [username, setUsername] = useState('u');
+  const [baseUrl, setBaseUrl] = useState('https://api.example/v1');
+  const [openapiUrl, setOpenapiUrl] = useState('');
   const [credRef, setCredRef] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const sourceType = source?.source_type ?? 'RELATIONAL_DATABASE';
+  const adapterOptions = useMemo(() => adaptersForSourceType(sourceType), [sourceType]);
+  const isHttp = sourceType === 'HTTP_API';
+
+  useEffect(() => {
+    if (!adapterOptions.includes(adapterType)) {
+      const next = defaultAdapterForSourceType(sourceType);
+      setAdapterType(next);
+      if (next === 'MYSQL' || next === 'POSTGRESQL') {
+        setPort(String(defaultPortForAdapter(next)));
+      }
+    }
+  }, [adapterOptions, adapterType, sourceType]);
 
   const reload = useCallback(async () => {
     if (!sourceId) return;
@@ -165,7 +201,7 @@ export function SourceDetailPage() {
       setConnections(c.data ?? []);
       setAssets(a.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      setError(sanitizedErrorMessage(err));
     }
   }, [client, sourceId]);
 
@@ -174,16 +210,20 @@ export function SourceDetailPage() {
   }, [reload]);
 
   const createConnection = () => {
-    if (busy) return;
+    if (busy || !source) return;
     setBusy(true);
     void safeMutate(async () => {
-      await client.createDataConnection(sourceId, {
+      const body = buildCreateConnectionBody({
         name: connName,
-        environment: 'DEV',
-        adapter_type: 'MYSQL',
-        public_config: { host: 'localhost', port: 3306, database: 'demo', username: 'u' },
+        environment,
+        sourceType: source.source_type,
+        adapterType,
+        form: isHttp
+          ? { base_url: baseUrl, openapi_url: openapiUrl }
+          : { host, port, database, username },
         credential_ref_id: credRef || undefined,
       });
+      await client.createDataConnection(sourceId, body);
       await reload();
     }, setError).finally(() => setBusy(false));
   };
@@ -236,11 +276,93 @@ export function SourceDetailPage() {
       {tab === 'connections' ? (
         <>
           {canEdit ? (
-            <div className="forma-panel" style={{ marginBottom: 12 }}>
+            <div className="forma-panel" style={{ marginBottom: 12 }} data-testid="create-connection-form">
               <div className="forma-form-row">
                 <label>连接名称</label>
-                <input value={connName} onChange={e => setConnName(e.target.value)} />
+                <input
+                  value={connName}
+                  onChange={e => setConnName(e.target.value)}
+                  data-testid="connection-name"
+                />
               </div>
+              <div className="forma-form-row">
+                <label>环境</label>
+                <select
+                  value={environment}
+                  onChange={e => setEnvironment(e.target.value)}
+                  data-testid="connection-environment"
+                >
+                  <option value="DEV">DEV</option>
+                  <option value="TEST">TEST</option>
+                  <option value="PROD">PROD</option>
+                </select>
+              </div>
+              <div className="forma-form-row">
+                <label>适配器</label>
+                <select
+                  value={adapterType}
+                  onChange={e => {
+                    setAdapterType(e.target.value);
+                    if (e.target.value === 'MYSQL' || e.target.value === 'POSTGRESQL') {
+                      setPort(String(defaultPortForAdapter(e.target.value)));
+                    }
+                  }}
+                  data-testid="connection-adapter"
+                >
+                  {adapterOptions.map(a => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {isHttp ? (
+                <>
+                  <div className="forma-form-row">
+                    <label>Base URL</label>
+                    <input
+                      value={baseUrl}
+                      onChange={e => setBaseUrl(e.target.value)}
+                      data-testid="connection-base-url"
+                    />
+                  </div>
+                  <div className="forma-form-row">
+                    <label>OpenAPI URL</label>
+                    <input
+                      value={openapiUrl}
+                      onChange={e => setOpenapiUrl(e.target.value)}
+                      data-testid="connection-openapi-url"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="forma-form-row">
+                    <label>Host</label>
+                    <input value={host} onChange={e => setHost(e.target.value)} data-testid="connection-host" />
+                  </div>
+                  <div className="forma-form-row">
+                    <label>Port</label>
+                    <input value={port} onChange={e => setPort(e.target.value)} data-testid="connection-port" />
+                  </div>
+                  <div className="forma-form-row">
+                    <label>Database</label>
+                    <input
+                      value={database}
+                      onChange={e => setDatabase(e.target.value)}
+                      data-testid="connection-database"
+                    />
+                  </div>
+                  <div className="forma-form-row">
+                    <label>Username</label>
+                    <input
+                      value={username}
+                      onChange={e => setUsername(e.target.value)}
+                      data-testid="connection-username"
+                    />
+                  </div>
+                </>
+              )}
               <div className="forma-form-row">
                 <label>凭证引用 ID</label>
                 <input value={credRef} onChange={e => setCredRef(e.target.value)} />

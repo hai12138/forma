@@ -668,7 +668,8 @@ export interface FormaDataContractRevision {
   pagination_policy: { default_limit: number; max_limit: number };
   freshness_policy: string;
   classification_policy: Record<string, string>;
-  binding_refs: FormaContractBinding[];
+  /** Omitted for MEMBER/VIEWER via member-safe revision projection. */
+  binding_refs?: FormaContractBinding[];
   access_policy_ref?: string;
   derived_from_revision_id?: string;
   created_by: string;

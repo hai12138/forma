@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FormaDriftResult, FormaGapResult, FormaLifecycleEvent, FormaValidationResult } from '@forma/api-client';
 
 import { EmptyState } from '../components/EmptyState';
-import { safeMutate } from '../utils/errors';
+import { safeMutate, sanitizedErrorMessage } from '../utils/errors';
 import { isEditor } from '../utils/roles';
 import { useDataPlaneContext } from './useDataPlaneContext';
 
@@ -36,7 +36,7 @@ export function DataHealthPage() {
         setGaps(g.data ?? []);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      setError(sanitizedErrorMessage(err));
     }
   }, [client, businessId, contractId, revisionId]);
 

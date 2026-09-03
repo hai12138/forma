@@ -14,6 +14,7 @@ import {
   labMapping,
   labProposedRequirement,
   labRequirement,
+  labSchemaSnapshot,
   labSource,
   staleRevision,
 } from './model/fixtures';
@@ -120,13 +121,27 @@ export function mockClient(overrides: Partial<FormaApiClient> = {}): FormaApiCli
     confirmSemanticMapping: vi.fn().mockResolvedValue({ data: { mapping: labMapping, decision: {} } }),
     rejectSemanticMapping: vi.fn().mockResolvedValue({ data: { mapping: labMapping, decision: {} } }),
     createDataContract: vi.fn().mockResolvedValue({ data: { contract: { contract_id: 'ctr_new' } } }),
+    createDataConnection: vi.fn().mockResolvedValue({
+      data: {
+        connection_id: 'conn_new',
+        source_id: 'src_lab',
+        name: 'default',
+        environment: 'DEV',
+        adapter_type: 'MYSQL',
+        status: 'ACTIVE',
+        public_config: {},
+        created_by: 'p',
+        created_at: '',
+        updated_at: '',
+      },
+    }),
     listDataContractLifecycleEvents: vi.fn().mockResolvedValue({ data: [] }),
     listDataContractValidationResults: vi.fn().mockResolvedValue({ data: [] }),
     listDataContractDriftResults: vi.fn().mockResolvedValue({ data: [] }),
     listDataContractGapResults: vi.fn().mockResolvedValue({ data: [] }),
     evaluateDataContractDrift: vi.fn().mockResolvedValue({ data: { result: {}, revision: activeRevision } }),
     evaluateDataContractGap: vi.fn().mockResolvedValue({ data: {} }),
-    getSchemaSnapshot: vi.fn().mockResolvedValue({ data: { snapshot_id: 'snap_lab', schema: { fields: [] } } }),
+    getSchemaSnapshot: vi.fn().mockResolvedValue({ data: labSchemaSnapshot }),
     ...overrides,
   };
   return new Proxy(base, {

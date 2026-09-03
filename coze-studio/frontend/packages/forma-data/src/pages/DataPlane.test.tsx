@@ -11,7 +11,9 @@ import { SecretCredentialForm } from '../components/SecretCredentialForm';
 import {
   activeRevision,
   draftRevision,
+  labBusiness,
   labDescriptor,
+  labHttpSource,
   labMapping,
   labRequirement,
   procurementMapping,
@@ -236,6 +238,73 @@ describe('role-aware rendering', () => {
     expect(member.container.querySelector('[data-testid="evaluate-drift"]')).toBeNull();
     expect(member.container.querySelector('[data-testid="evaluate-gap"]')).toBeNull();
   });
+
+  it('OWNER health page can execute drift/gap; MEMBER cannot', async () => {
+    const owner = await mount('/data/health?businessId=biz_lab', { tenant: ownerTenant });
+    await waitFor(() => {
+      expect(owner.container.querySelector('[data-testid="data-health-page"]')).not.toBeNull();
+    });
+    await setValue(
+      owner.container.querySelector('[data-testid="health-contract-id"]') as HTMLInputElement,
+      'ctr_lab',
+    );
+    await setValue(
+      owner.container.querySelector('[data-testid="health-revision-id"]') as HTMLInputElement,
+      'rev_lab_2',
+    );
+    await waitFor(() => {
+      expect(owner.container.querySelector('[data-testid="evaluate-drift"]')).not.toBeNull();
+      expect(owner.container.querySelector('[data-testid="evaluate-gap"]')).not.toBeNull();
+    });
+
+    const member = await mount('/data/health?businessId=biz_lab', { tenant: memberTenant });
+    await setValue(
+      member.container.querySelector('[data-testid="health-contract-id"]') as HTMLInputElement,
+      'ctr_lab',
+    );
+    await setValue(
+      member.container.querySelector('[data-testid="health-revision-id"]') as HTMLInputElement,
+      'rev_lab_2',
+    );
+    expect(member.container.querySelector('[data-testid="evaluate-drift"]')).toBeNull();
+    expect(member.container.querySelector('[data-testid="evaluate-gap"]')).toBeNull();
+  });
+
+  it('MEMBER network revision payload omits physical binding fields', async () => {
+    const memberSafe = {
+      ...activeRevision,
+      binding_refs: undefined,
+    };
+    delete (memberSafe as { binding_refs?: unknown }).binding_refs;
+    const client = mockClient({
+      listDataContractRevisions: vi.fn().mockResolvedValue({ data: [memberSafe] }),
+      getDataContractRevision: vi.fn().mockResolvedValue({ data: memberSafe }),
+    });
+    const { container } = await mount('/data/contracts/ctr_lab?businessId=biz_lab', {
+      client,
+      tenant: memberTenant,
+    });
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="contract-detail-page"]')).not.toBeNull();
+    });
+    const resp = await client.listDataContractRevisions('biz_lab', 'ctr_lab');
+    const json = JSON.stringify(resp.data);
+    for (const forbidden of [
+      'binding_refs',
+      'source_id',
+      'connection_id',
+      'asset_id',
+      'schema_snapshot_id',
+      'src_lab',
+      'conn_lab',
+      'asset_lab',
+      'snap_lab',
+    ]) {
+      expect(json).not.toContain(forbidden);
+    }
+    expect(container.querySelector('[data-testid="physical-binding-tab"]')).toBeNull();
+    expect(container.textContent).not.toContain('src_lab');
+  });
 });
 
 describe('contract lifecycle UX', () => {
@@ -311,7 +380,69 @@ describe('contract lifecycle UX', () => {
     });
   });
 
-  it('ACTIVE and STALE show Deprecate; historical STALE can deprecate while ACTIVE exists', async () => {
+  it('ACTIVE Deprecate uses exact revision_id and refreshes list', async () => {
+    let revisions = [activeRevision];
+    const listFn = vi.fn(async () => ({ data: revisions }));
+    const client = mockClient({
+      listDataContractRevisions: listFn,
+      deprecateDataContractRevision: vi.fn(async (_b, _c, revId) => {
+        expect(revId).toBe(activeRevision.revision_id);
+        revisions = [{ ...activeRevision, status: 'DEPRECATED' }];
+        return { data: revisions[0] };
+      }),
+    });
+    const { container } = await mount('/data/contracts/ctr_lab?businessId=biz_lab', { client });
+    await click(container.querySelector('[data-testid="revisions-tab"]'));
+    await waitFor(() => {
+      expect(
+        container.querySelector(`[data-revision-id="${activeRevision.revision_id}"]`),
+      ).not.toBeNull();
+    });
+    const listCallsBefore = listFn.mock.calls.length;
+    await click(container.querySelector(`[data-revision-id="${activeRevision.revision_id}"]`));
+    await waitFor(() => {
+      expect(client.deprecateDataContractRevision).toHaveBeenCalledWith(
+        'biz_lab',
+        'ctr_lab',
+        activeRevision.revision_id,
+        expect.objectContaining({ reason: 'ui-deprecate' }),
+      );
+      expect(listFn.mock.calls.length).toBeGreaterThan(listCallsBefore);
+    });
+  });
+
+  it('STALE Deprecate uses exact revision_id and refreshes list', async () => {
+    let revisions = [staleRevision, activeRevision];
+    const listFn = vi.fn(async () => ({ data: revisions }));
+    const client = mockClient({
+      listDataContractRevisions: listFn,
+      deprecateDataContractRevision: vi.fn(async (_b, _c, revId) => {
+        expect(revId).toBe(staleRevision.revision_id);
+        revisions = [{ ...staleRevision, status: 'DEPRECATED' }, activeRevision];
+        return { data: revisions[0] };
+      }),
+    });
+    const { container } = await mount('/data/contracts/ctr_lab?businessId=biz_lab', { client });
+    await click(container.querySelector('[data-testid="revisions-tab"]'));
+    await waitFor(() => {
+      expect(
+        container.querySelector(`[data-revision-id="${staleRevision.revision_id}"]`),
+      ).not.toBeNull();
+    });
+    const listCallsBefore = listFn.mock.calls.length;
+    await click(container.querySelector(`[data-revision-id="${staleRevision.revision_id}"]`));
+    await waitFor(() => {
+      expect(client.deprecateDataContractRevision).toHaveBeenCalledWith(
+        'biz_lab',
+        'ctr_lab',
+        staleRevision.revision_id,
+        expect.objectContaining({ reason: 'ui-deprecate' }),
+      );
+      expect(listFn.mock.calls.length).toBeGreaterThan(listCallsBefore);
+    });
+  });
+
+  it('ACTIVE and STALE both expose Deprecate while ACTIVE exists', async () => {
     const client = mockClient({
       listDataContractRevisions: vi.fn().mockResolvedValue({ data: [staleRevision, activeRevision] }),
     });
@@ -323,10 +454,6 @@ describe('contract lifecycle UX', () => {
     expect(container.querySelector('[data-testid="validate-revision"]')).toBeNull();
     expect(container.querySelector('[data-testid="activate-revision"]')).toBeNull();
     expect(container.querySelector('[data-testid="stale-warning"]')).not.toBeNull();
-    await click(container.querySelector('[data-testid="deprecate-revision"]'));
-    await waitFor(() => {
-      expect(client.deprecateDataContractRevision).toHaveBeenCalled();
-    });
   });
 
   it('shows sanitized error and does not reject on validate failure', async () => {
@@ -359,6 +486,82 @@ describe('contract lifecycle UX', () => {
     expect(rejections).toEqual([]);
     window.removeEventListener('unhandledrejection', onReject);
   });
+
+  it('does not leak secrets from Error.message or validation messages into DOM', async () => {
+    const leak =
+      'postgres://user:password@db/prod Authorization: Bearer tok_abc token=xyz';
+    const client = mockClient({
+      listDataContractRevisions: vi.fn().mockRejectedValue(new Error(leak)),
+    });
+    const { container } = await mount('/data/contracts/ctr_lab?businessId=biz_lab', { client });
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="contract-error"]')?.textContent).toContain(
+        '操作失败',
+      );
+    });
+    expect(container.innerHTML).not.toContain('password');
+    expect(container.innerHTML).not.toContain('Authorization');
+    expect(container.innerHTML).not.toContain('Bearer');
+    expect(container.innerHTML).not.toContain('tok_abc');
+    expect(container.innerHTML).not.toContain('token=xyz');
+
+    const draftClient = mockClient({
+      listDataContractRevisions: vi.fn().mockResolvedValue({ data: [draftRevision] }),
+      validateDataContractRevision: vi.fn().mockResolvedValue({
+        data: {
+          revision: draftRevision,
+          result: {
+            ValidationID: 'val_leak',
+            TenantID: 't1',
+            BusinessID: 'biz_lab',
+            ContractID: 'ctr_lab',
+            RevisionID: draftRevision.revision_id,
+            Version: 3,
+            Status: 'FAIL',
+            Errors: [{ code: 'SCHEMA_JSON', message: leak }],
+            Warnings: [],
+            SnapshotFingerprints: {},
+            ValidatedBy: 'p',
+            ValidatedAt: '2026-01-01T00:00:00Z',
+            CreatedAt: '2026-01-01T00:00:00Z',
+          },
+        },
+      }),
+    });
+    const draft = await mount('/data/contracts/ctr_lab?businessId=biz_lab', { client: draftClient });
+    await click(draft.container.querySelector('[data-testid="revisions-tab"]'));
+    await click(draft.container.querySelector('[data-testid="validate-revision"]'));
+    await waitFor(() => {
+      expect(draft.container.querySelector('[data-testid="validation-issue"]')).not.toBeNull();
+    });
+    expect(draft.container.innerHTML).not.toContain('password');
+    expect(draft.container.innerHTML).not.toContain('Authorization');
+    expect(draft.container.innerHTML).not.toContain('tok_abc');
+    expect(draft.container.querySelector('[data-testid="validation-issue"]')?.textContent).toBe(
+      '结构快照无效。',
+    );
+  });
+
+  it('create contract uses business.current_revision when > 1', async () => {
+    const biz = { ...labBusiness, current_revision: 5 };
+    const client = mockClient({
+      listBusinesses: vi.fn().mockResolvedValue({ data: [biz] }),
+      createDataContract: vi.fn().mockResolvedValue({
+        data: { contract: { contract_id: 'ctr_new' }, revision: draftRevision },
+      }),
+    });
+    const { container } = await mount('/data/contracts?businessId=biz_lab', { client });
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="create-contract"]')).not.toBeNull();
+    });
+    await setValue(container.querySelector('[data-testid="contract-name"]') as HTMLInputElement, 'C5');
+    await click(container.querySelector('[data-testid="create-contract"]'));
+    await waitFor(() => {
+      expect(client.createDataContract).toHaveBeenCalled();
+    });
+    const body = (client.createDataContract as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(body.business_model_revision).toBe(5);
+  });
 });
 
 describe('mapping studio DSL payloads', () => {
@@ -388,6 +591,11 @@ describe('mapping studio DSL payloads', () => {
     expect(body.transform_spec.source_timezone).toBe('Asia/Shanghai');
     expect(body.transform_spec.target_timezone).toBe('UTC');
     expect(body.transform_spec.format).toBe('RFC3339');
+    expect(body.source_id).toBe('src_lab');
+    expect(body.connection_id).toBe('conn_lab');
+    expect(body.asset_id).toBe('asset_lab');
+    expect(body.schema_snapshot_id).toBe('snap_lab');
+    expect(body.source_id).not.toBe('src_manual');
   });
 
   it('submits FIELD_PATH transform_spec matching mapping_type', async () => {
@@ -411,6 +619,136 @@ describe('mapping studio DSL payloads', () => {
     const body = (client.createManualSemanticMapping as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(body.mapping_type).toBe('FIELD_PATH');
     expect(body.transform_spec).toEqual({ type: 'FIELD_PATH', path: 'sensor.temperature' });
+  });
+
+  it('valid snapshot lineage is submitted; incomplete snapshot fails without manual placeholders', async () => {
+    const incompleteClient = mockClient({
+      getSchemaSnapshot: vi.fn().mockResolvedValue({
+        data: { snapshot_id: 'snap_lab', schema: { fields: [] } },
+      }),
+    });
+    const incomplete = await mount('/data/mappings?businessId=biz_lab', { client: incompleteClient });
+    await click(
+      incomplete.container.querySelector(
+        `[data-testid="mapping-requirement-${labRequirement.requirement_id}"]`,
+      ),
+    );
+    await setValue(
+      incomplete.container.querySelector('[data-testid="snapshot-ids-input"]') as HTMLInputElement,
+      'snap_lab',
+    );
+    await setValue(
+      incomplete.container.querySelector('[data-testid="target-path-input"]') as HTMLInputElement,
+      'temp_c',
+    );
+    await click(incomplete.container.querySelector('[data-testid="create-manual-mapping"]'));
+    await waitFor(() => {
+      expect(incomplete.container.querySelector('[data-testid="mapping-error"]')?.textContent).toContain(
+        '结构快照不完整',
+      );
+    });
+    expect(incompleteClient.createManualSemanticMapping).not.toHaveBeenCalled();
+
+    const client = mockClient();
+    const { container } = await mount('/data/mappings?businessId=biz_lab', { client });
+    await click(container.querySelector(`[data-testid="mapping-requirement-${labRequirement.requirement_id}"]`));
+    await setValue(container.querySelector('[data-testid="snapshot-ids-input"]') as HTMLInputElement, 'snap_lab');
+    await setValue(container.querySelector('[data-testid="target-path-input"]') as HTMLInputElement, 'temp_c');
+    await click(container.querySelector('[data-testid="create-manual-mapping"]'));
+    await waitFor(() => {
+      expect(client.createManualSemanticMapping).toHaveBeenCalled();
+    });
+    const body = (client.createManualSemanticMapping as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(body).toMatchObject({
+      source_id: 'src_lab',
+      connection_id: 'conn_lab',
+      asset_id: 'asset_lab',
+      schema_snapshot_id: 'snap_lab',
+    });
+    expect(JSON.stringify(body)).not.toContain('src_manual');
+    expect(JSON.stringify(body)).not.toContain('conn_manual');
+    expect(JSON.stringify(body)).not.toContain('asset_manual');
+  });
+});
+
+describe('data source / connection payloads', () => {
+  it('creates RELATIONAL_DATABASE source and MYSQL connection with SQL public_config', async () => {
+    const client = mockClient();
+    const { container } = await mount('/data/sources?businessId=biz_lab', { client });
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="source-type-select"]')).not.toBeNull();
+    });
+    await setValue(container.querySelector('[data-testid="source-name"]') as HTMLInputElement, 'DB');
+    await setValue(
+      container.querySelector('[data-testid="source-type-select"]') as HTMLSelectElement,
+      'RELATIONAL_DATABASE',
+    );
+    await click(container.querySelector('[data-testid="create-source"]'));
+    await waitFor(() => {
+      expect(client.createDataSource).toHaveBeenCalled();
+    });
+    expect((client.createDataSource as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual({
+      name: 'DB',
+      source_type: 'RELATIONAL_DATABASE',
+    });
+
+    const detail = await mount('/data/sources/src_lab?businessId=biz_lab', { client });
+    await waitFor(() => {
+      expect(detail.container.querySelector('[data-testid="create-connection"]')).not.toBeNull();
+    });
+    await setValue(
+      detail.container.querySelector('[data-testid="connection-adapter"]') as HTMLSelectElement,
+      'POSTGRESQL',
+    );
+    await setValue(detail.container.querySelector('[data-testid="connection-host"]') as HTMLInputElement, 'db.host');
+    await setValue(detail.container.querySelector('[data-testid="connection-database"]') as HTMLInputElement, 'lab');
+    await setValue(detail.container.querySelector('[data-testid="connection-username"]') as HTMLInputElement, 'reader');
+    await click(detail.container.querySelector('[data-testid="create-connection"]'));
+    await waitFor(() => {
+      expect(client.createDataConnection).toHaveBeenCalled();
+    });
+    const connBody = (client.createDataConnection as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(connBody.adapter_type).toBe('POSTGRESQL');
+    expect(connBody.public_config).toEqual({
+      host: 'db.host',
+      port: 5432,
+      database: 'lab',
+      username: 'reader',
+    });
+  });
+
+  it('HTTP_API connection only allows HTTP adapter and HTTP public_config', async () => {
+    const client = mockClient({
+      getDataSource: vi.fn().mockResolvedValue({ data: labHttpSource }),
+      listDataSources: vi.fn().mockResolvedValue({ data: [labHttpSource] }),
+    });
+    const { container } = await mount('/data/sources/src_lab_http?businessId=biz_lab', { client });
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="connection-adapter"]')).not.toBeNull();
+    });
+    const adapter = container.querySelector('[data-testid="connection-adapter"]') as HTMLSelectElement;
+    expect(Array.from(adapter.options).map(o => o.value)).toEqual(['HTTP']);
+    expect(container.querySelector('[data-testid="connection-base-url"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="connection-host"]')).toBeNull();
+    await setValue(
+      container.querySelector('[data-testid="connection-base-url"]') as HTMLInputElement,
+      'https://api.example/v1',
+    );
+    await setValue(
+      container.querySelector('[data-testid="connection-openapi-url"]') as HTMLInputElement,
+      'https://api.example/openapi.json',
+    );
+    await click(container.querySelector('[data-testid="create-connection"]'));
+    await waitFor(() => {
+      expect(client.createDataConnection).toHaveBeenCalled();
+    });
+    const body = (client.createDataConnection as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(body.adapter_type).toBe('HTTP');
+    expect(body.public_config).toEqual({
+      base_url: 'https://api.example/v1',
+      openapi_url: 'https://api.example/openapi.json',
+    });
+    expect(body.adapter_type).not.toBe('MYSQL');
   });
 });
 

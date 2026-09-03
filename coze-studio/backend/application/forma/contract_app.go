@@ -81,8 +81,8 @@ type DataContractRevisionDTO struct {
 	PaginationPolicy      entity.PaginationPolicy        `json:"pagination_policy"`
 	FreshnessPolicy       entity.FreshnessPolicy         `json:"freshness_policy"`
 	ClassificationPolicy  map[string]entity.DataClassification `json:"classification_policy"`
-	BindingRefs           []entity.ContractBinding       `json:"binding_refs"`
-	AccessPolicyRef       string                         `json:"access_policy_ref,omitempty"`
+	BindingRefs           []entity.ContractBinding             `json:"binding_refs,omitempty"`
+	AccessPolicyRef       string                               `json:"access_policy_ref,omitempty"`
 	DerivedFromRevisionID string                         `json:"derived_from_revision_id,omitempty"`
 	CreatedBy             string                         `json:"created_by"`
 	CreatedAt             string                         `json:"created_at"`
@@ -123,7 +123,7 @@ func (s *ApplicationService) CreateDataContract(ctx context.Context, businessID 
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return &CreateDataContractResponse{contractDTO(c), contractRevisionDTO(rev)}, nil
+	return &CreateDataContractResponse{contractDTO(c), contractRevisionDTO(rev, true)}, nil
 }
 
 func (s *ApplicationService) ListDataContracts(ctx context.Context, businessID string) ([]*DataContractDTO, error) {
@@ -191,9 +191,10 @@ func (s *ApplicationService) ListDataContractRevisions(ctx context.Context, busi
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
+	includeBindings := roleAtLeastAdmin(tc.MembershipRole)
 	out := make([]*DataContractRevisionDTO, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, contractRevisionDTO(r))
+		out = append(out, contractRevisionDTO(r, includeBindings))
 	}
 	return out, nil
 }
@@ -220,7 +221,7 @@ func (s *ApplicationService) CreateDataContractRevision(ctx context.Context, bus
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return contractRevisionDTO(rev), nil
+	return contractRevisionDTO(rev, true), nil
 }
 
 func (s *ApplicationService) GetDataContractRevision(ctx context.Context, businessID, contractID, revisionID string) (*DataContractRevisionDTO, error) {
@@ -232,8 +233,8 @@ func (s *ApplicationService) GetDataContractRevision(ctx context.Context, busine
 	if err != nil {
 		return nil, err
 	}
-	// Admin detail — includes BindingRefs. Consumer Contract Interface — S5 must use descriptor, not Binding Detail.
-	return contractRevisionDTO(rev), nil
+	// OWNER/ADMIN may receive physical BindingRefs. MEMBER/VIEWER get a member-safe projection.
+	return contractRevisionDTO(rev, roleAtLeastAdmin(tc.MembershipRole)), nil
 }
 
 // GetActiveDataContractDescriptor returns the consumer-facing active contract descriptor only.
@@ -268,7 +269,7 @@ func (s *ApplicationService) ValidateDataContractRevision(ctx context.Context, b
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return &ValidateRevisionResponse{contractRevisionDTO(rev), result}, nil
+	return &ValidateRevisionResponse{contractRevisionDTO(rev, true), result}, nil
 }
 
 func (s *ApplicationService) ActivateDataContractRevision(ctx context.Context, businessID, contractID, revisionID string, in *ContractReasonInput) (*DataContractRevisionDTO, error) {
@@ -287,7 +288,7 @@ func (s *ApplicationService) ActivateDataContractRevision(ctx context.Context, b
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return contractRevisionDTO(rev), nil
+	return contractRevisionDTO(rev, true), nil
 }
 
 func (s *ApplicationService) DeprecateDataContractRevision(ctx context.Context, businessID, contractID, revisionID string, in *ContractReasonInput) (*DataContractRevisionDTO, error) {
@@ -306,7 +307,7 @@ func (s *ApplicationService) DeprecateDataContractRevision(ctx context.Context, 
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return contractRevisionDTO(rev), nil
+	return contractRevisionDTO(rev, true), nil
 }
 
 func (s *ApplicationService) ListDataContractValidationResults(ctx context.Context, businessID, contractID, revisionID string) ([]*entity.DataValidationResult, error) {
@@ -341,7 +342,7 @@ func (s *ApplicationService) EvaluateDataContractDrift(ctx context.Context, busi
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
-	return &EvaluateDriftResponse{result, contractRevisionDTO(rev)}, nil
+	return &EvaluateDriftResponse{result, contractRevisionDTO(rev, true)}, nil
 }
 
 func (s *ApplicationService) ListDataContractDriftResults(ctx context.Context, businessID, contractID, revisionID string) ([]*entity.DataDriftResult, error) {
@@ -416,16 +417,23 @@ func contractDTO(v *entity.DataContract) *DataContractDTO {
 	}
 }
 
-func contractRevisionDTO(v *entity.DataContractRevision) *DataContractRevisionDTO {
+// contractRevisionDTO projects a revision for API responses.
+// When includeBindings is false (MEMBER/VIEWER), physical BindingRefs are omitted so
+// source_id / connection_id / asset_id / schema_snapshot_id never leave the DTO boundary.
+func contractRevisionDTO(v *entity.DataContractRevision, includeBindings bool) *DataContractRevisionDTO {
 	if v == nil {
 		return nil
+	}
+	var bindings []entity.ContractBinding
+	if includeBindings {
+		bindings = v.BindingRefs
 	}
 	return &DataContractRevisionDTO{
 		RevisionID: v.RevisionID, BusinessID: v.BusinessID, ContractID: v.ContractID, Version: v.Version,
 		Status: string(v.Status), BusinessModelRevision: v.BusinessModelRevision, Name: v.Name, Description: v.Description,
 		RequirementIDs: v.RequirementIDs, LogicalSchema: v.LogicalSchema, QueryCapabilities: v.QueryCapabilities,
 		FilterSchema: v.FilterSchema, SortSchema: v.SortSchema, PaginationPolicy: v.PaginationPolicy,
-		FreshnessPolicy: v.FreshnessPolicy, ClassificationPolicy: v.ClassificationPolicy, BindingRefs: v.BindingRefs,
+		FreshnessPolicy: v.FreshnessPolicy, ClassificationPolicy: v.ClassificationPolicy, BindingRefs: bindings,
 		AccessPolicyRef: v.AccessPolicyRef, DerivedFromRevisionID: v.DerivedFromRevisionID, CreatedBy: v.CreatedBy,
 		CreatedAt: v.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: v.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}

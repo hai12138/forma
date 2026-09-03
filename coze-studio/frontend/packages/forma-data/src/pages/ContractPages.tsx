@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import type {
+  FormaBusiness,
   FormaDataContract,
   FormaDataContractDescriptor,
   FormaDataContractRevision,
@@ -17,13 +18,14 @@ import {
   canDeprecateRevision,
   canValidateRevision,
 } from '../utils/contract-lifecycle';
-import { safeMutate } from '../utils/errors';
+import { safeMutate, sanitizedErrorMessage, validationIssueLabel } from '../utils/errors';
 import { isEditor } from '../utils/roles';
 import { useDataPlaneContext } from './useDataPlaneContext';
 
 export function DataContractsPage() {
-  const { client, currentTenant, businessId } = useDataPlaneContext();
+  const { client, currentTenant, businessId, businesses } = useDataPlaneContext();
   const canEdit = isEditor(currentTenant?.role);
+  const business: FormaBusiness | undefined = businesses.find(b => b.business_id === businessId);
   const [items, setItems] = useState<FormaDataContract[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export function DataContractsPage() {
       const resp = await client.listDataContracts(businessId);
       setItems(resp.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      setError(sanitizedErrorMessage(err));
       setItems([]);
     } finally {
       setLoading(false);
@@ -51,10 +53,14 @@ export function DataContractsPage() {
 
   const create = () => {
     if (!name.trim() || busy) return;
+    if (!business) {
+      setError('请选择业务资产');
+      return;
+    }
     setBusy(true);
     void safeMutate(async () => {
       await client.createDataContract(businessId, {
-        business_model_revision: 1,
+        business_model_revision: business.current_revision,
         name: name.trim(),
         description: name.trim(),
         requirement_ids: [],
@@ -82,7 +88,7 @@ export function DataContractsPage() {
         <div className="forma-panel" style={{ marginBottom: 12 }}>
           <div className="forma-form-row">
             <label>契约名称</label>
-            <input value={name} onChange={e => setName(e.target.value)} />
+            <input value={name} onChange={e => setName(e.target.value)} data-testid="contract-name" />
           </div>
           <button
             className="forma-btn forma-btn-primary"
@@ -139,7 +145,7 @@ export function ContractDetailPage() {
       setDescriptor(desc?.data ?? null);
       setSelected(prev => list.find(r => r.revision_id === prev?.revision_id) ?? list[0] ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      setError(sanitizedErrorMessage(err));
     }
   }, [client, businessId, contractId]);
 
@@ -232,8 +238,8 @@ export function ContractDetailPage() {
           {(validation.Errors ?? []).length > 0 ? (
             <ul>
               {validation.Errors.map((e, i) => (
-                <li key={`${e.code}-${i}`}>
-                  {e.code}: {e.message}
+                <li key={`${e.code}-${i}`} data-testid="validation-issue">
+                  {validationIssueLabel(e.code, e.message)}
                 </li>
               ))}
             </ul>
@@ -344,6 +350,7 @@ export function ContractDetailPage() {
                     className="forma-btn forma-btn-danger"
                     type="button"
                     data-testid="deprecate-revision"
+                    data-revision-id={r.revision_id}
                     disabled={busy}
                     onClick={() => deprecate(r)}
                   >

@@ -12,9 +12,10 @@ import { EmptyState } from '../components/EmptyState';
 import { MappingDslForm } from '../components/MappingDslForm';
 import { StatusBadge } from '../components/StatusBadge';
 import { confidenceDisclaimer } from '../utils/labels';
+import { mappingLineageFromSnapshot } from '../utils/mapping-lineage';
 import { buildTransformSpec, MAPPING_TYPES } from '../utils/mapping-dsl';
 import { isEditor } from '../utils/roles';
-import { safeMutate } from '../utils/errors';
+import { safeMutate, sanitizedErrorMessage } from '../utils/errors';
 import { useDataPlaneContext } from './useDataPlaneContext';
 
 export function MappingStudioPage() {
@@ -47,7 +48,7 @@ export function MappingStudioPage() {
       setRequirements(reqs.data ?? []);
       setMappings(maps.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      setError(sanitizedErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -104,6 +105,12 @@ export function MappingStudioPage() {
     }
     setBusy(true);
     void safeMutate(async () => {
+      const snapResp = await client.getSchemaSnapshot(firstSnap);
+      const lineage = mappingLineageFromSnapshot(snapResp.data);
+      if (!lineage) {
+        setError('结构快照不完整，无法创建映射');
+        return;
+      }
       const form = {
         ...dslForm,
         path: dslForm.path || targetPath,
@@ -111,10 +118,10 @@ export function MappingStudioPage() {
       await client.createManualSemanticMapping(businessId, {
         business_model_revision: business.current_revision,
         requirement_id: selectedReqId,
-        source_id: 'src_manual',
-        connection_id: 'conn_manual',
-        asset_id: 'asset_manual',
-        schema_snapshot_id: firstSnap,
+        source_id: lineage.source_id,
+        connection_id: lineage.connection_id,
+        asset_id: lineage.asset_id,
+        schema_snapshot_id: lineage.schema_snapshot_id,
         target_field_paths: [targetPath],
         mapping_type: mappingType,
         transform_spec: buildTransformSpec(mappingType, form),

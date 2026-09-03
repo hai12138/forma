@@ -34,7 +34,17 @@ export const procurementBusiness: FormaBusiness = {
 export const labSource: FormaDataSource = {
   source_id: 'src_lab',
   name: 'Lab Readings DB',
-  source_type: 'EXTERNAL_SQL',
+  source_type: 'RELATIONAL_DATABASE',
+  status: 'ACTIVE',
+  created_by: 'principal_1',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+};
+
+export const labHttpSource: FormaDataSource = {
+  source_id: 'src_lab_http',
+  name: 'Lab Readings API',
+  source_type: 'HTTP_API',
   status: 'ACTIVE',
   created_by: 'principal_1',
   created_at: '2026-01-01T00:00:00Z',
@@ -89,6 +99,17 @@ export const labSchema: FormaPhysicalSchema = {
     },
   ],
   relationships: [],
+};
+
+export const labSchemaSnapshot = {
+  snapshot_id: 'snap_lab',
+  source_id: 'src_lab',
+  connection_id: 'conn_lab',
+  asset_id: 'asset_lab',
+  schema: labSchema,
+  fingerprint: 'fp_lab',
+  created_by: 'principal_1',
+  created_at: '2026-01-01T00:00:00Z',
 };
 
 export const labMapping: FormaSemanticMapping = {

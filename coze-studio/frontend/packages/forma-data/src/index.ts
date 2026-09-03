@@ -15,4 +15,11 @@ export {
   canActivateRevision,
   canDeprecateRevision,
 } from './utils/contract-lifecycle';
-export { sanitizedErrorMessage } from './utils/errors';
+export { sanitizedErrorMessage, validationIssueLabel } from './utils/errors';
+export {
+  SOURCE_TYPES,
+  adaptersForSourceType,
+  buildCreateConnectionBody,
+  buildConnectionPublicConfig,
+} from './utils/source-connection';
+export { mappingLineageFromSnapshot, lineageMatchesSnapshot } from './utils/mapping-lineage';

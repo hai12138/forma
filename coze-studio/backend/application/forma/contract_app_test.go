@@ -7,6 +7,7 @@ package forma_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -59,8 +60,14 @@ func (s *contractAppStub) GetRevision(_ context.Context, tenantID, id string) (*
 	}
 	return v, nil
 }
-func (s *contractAppStub) ListRevisions(context.Context, string, string) ([]*dataentity.DataContractRevision, error) {
-	return nil, nil
+func (s *contractAppStub) ListRevisions(_ context.Context, tenantID, contractID string) ([]*dataentity.DataContractRevision, error) {
+	out := []*dataentity.DataContractRevision{}
+	for _, v := range s.revisions {
+		if v.TenantID == tenantID && v.ContractID == contractID {
+			out = append(out, v)
+		}
+	}
+	return out, nil
 }
 func (*contractAppStub) CreateRevision(context.Context, *datasvc.CreateRevisionInput) (*dataentity.DataContractRevision, error) {
 	return nil, errors.New("unexpected mutation")
@@ -188,4 +195,114 @@ func TestContractApplicationAuthorizationAndTenantIsolation(t *testing.T) {
 	fe, ok := formaerrors.AsFormaError(err)
 	require.True(t, ok)
 	require.Equal(t, formaerrors.CodeDataContractNotFound, fe.Code)
+}
+
+func TestContractRevisionPhysicalBindingPayloadIsolation(t *testing.T) {
+	app := newAppService()
+	app.DataSVC = datasvc.NewDataService(&datasvc.Components{Repo: datarepo.NewMemoryDataRepository()})
+	stub := &contractAppStub{contracts: map[string]*dataentity.DataContract{}, revisions: map[string]*dataentity.DataContractRevision{}}
+	app.ContractSVC = stub
+
+	ownerSession := withSession(7310, "binding-owner@example.com")
+	boot, err := app.TenancySVC.Bootstrap(ownerSession, 7310, "binding-owner@example.com", 0)
+	require.NoError(t, err)
+	admin, err := app.TenancySVC.ResolveOrCreatePrincipal(ownerSession, 7311, "binding-admin@example.com")
+	require.NoError(t, err)
+	member, err := app.TenancySVC.ResolveOrCreatePrincipal(ownerSession, 7312, "binding-member@example.com")
+	require.NoError(t, err)
+	viewer, err := app.TenancySVC.ResolveOrCreatePrincipal(ownerSession, 7313, "binding-viewer@example.com")
+	require.NoError(t, err)
+	for _, item := range []struct {
+		principal string
+		role      tenantentity.MembershipRole
+	}{
+		{admin.PrincipalID, tenantentity.RoleAdmin},
+		{member.PrincipalID, tenantentity.RoleMember},
+		{viewer.PrincipalID, tenantentity.RoleViewer},
+	} {
+		_, err = app.TenancySVC.AddMember(ownerSession, &tenancysvc.AddMemberRequest{
+			TenantID: boot.Tenant.TenantID, PrincipalID: item.principal, Role: item.role,
+			CreatedBy: boot.Principal.PrincipalID,
+		})
+		require.NoError(t, err)
+	}
+
+	ctxFor := func(principal string, role tenantentity.MembershipRole) context.Context {
+		return tenantctx.WithTenantContext(ownerSession, &tenantctx.TenantContext{
+			TenantID: boot.Tenant.TenantID, PrincipalID: principal,
+			MembershipRole: role, TenantStatus: tenantentity.TenantStatusActive,
+		})
+	}
+
+	now := time.Now().UTC()
+	rev := &dataentity.DataContractRevision{
+		RevisionID: "crev-bind", TenantID: boot.Tenant.TenantID, BusinessID: "lab", ContractID: "ctr-bind",
+		Version: 1, Status: dataentity.ContractStatusActive, CreatedAt: now, UpdatedAt: now,
+		BindingRefs: []dataentity.ContractBinding{{
+			RequirementID: "req1", MappingID: "map1",
+			SourceID: "src_secret", ConnectionID: "conn_secret",
+			AssetID: "asset_secret", SchemaSnapshotID: "snap_secret",
+		}},
+	}
+	stub.contracts[boot.Tenant.TenantID+"/ctr-bind"] = &dataentity.DataContract{
+		ContractID: "ctr-bind", TenantID: boot.Tenant.TenantID, BusinessID: "lab", CreatedAt: now, UpdatedAt: now,
+	}
+	stub.revisions[boot.Tenant.TenantID+"/crev-bind"] = rev
+
+	assertJSONHasNoPhysicalBinding := func(t *testing.T, payload any) {
+		t.Helper()
+		raw, err := json.Marshal(payload)
+		require.NoError(t, err)
+		body := string(raw)
+		for _, forbidden := range []string{
+			"binding_refs", "source_id", "connection_id", "asset_id", "schema_snapshot_id",
+			"src_secret", "conn_secret", "asset_secret", "snap_secret",
+		} {
+			require.NotContains(t, body, forbidden, "member-safe JSON must not contain %q; body=%s", forbidden, body)
+		}
+	}
+
+	assertJSONHasPhysicalBinding := func(t *testing.T, payload any) {
+		t.Helper()
+		raw, err := json.Marshal(payload)
+		require.NoError(t, err)
+		body := string(raw)
+		require.Contains(t, body, "binding_refs")
+		require.Contains(t, body, "src_secret")
+		require.Contains(t, body, "conn_secret")
+		require.Contains(t, body, "asset_secret")
+		require.Contains(t, body, "snap_secret")
+	}
+
+	for _, roleCtx := range []context.Context{
+		ctxFor(member.PrincipalID, tenantentity.RoleMember),
+		ctxFor(viewer.PrincipalID, tenantentity.RoleViewer),
+	} {
+		listed, err := app.ListDataContractRevisions(roleCtx, "lab", "ctr-bind")
+		require.NoError(t, err)
+		require.Len(t, listed, 1)
+		require.Nil(t, listed[0].BindingRefs)
+		assertJSONHasNoPhysicalBinding(t, listed)
+
+		got, err := app.GetDataContractRevision(roleCtx, "lab", "ctr-bind", "crev-bind")
+		require.NoError(t, err)
+		require.Nil(t, got.BindingRefs)
+		assertJSONHasNoPhysicalBinding(t, got)
+	}
+
+	for _, roleCtx := range []context.Context{
+		ctxFor(boot.Principal.PrincipalID, tenantentity.RoleOwner),
+		ctxFor(admin.PrincipalID, tenantentity.RoleAdmin),
+	} {
+		listed, err := app.ListDataContractRevisions(roleCtx, "lab", "ctr-bind")
+		require.NoError(t, err)
+		require.Len(t, listed, 1)
+		require.NotEmpty(t, listed[0].BindingRefs)
+		assertJSONHasPhysicalBinding(t, listed)
+
+		got, err := app.GetDataContractRevision(roleCtx, "lab", "ctr-bind", "crev-bind")
+		require.NoError(t, err)
+		require.NotEmpty(t, got.BindingRefs)
+		assertJSONHasPhysicalBinding(t, got)
+	}
 }
