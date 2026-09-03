@@ -16,7 +16,7 @@ COZE_AUTH_CORE_CHANGE = NONE (logout cookie expire + session allowlist for /logo
 
 | Field | Value |
 |---|---|
-| CANDIDATE_SHA | bf813880ba9e269af010cd7cf15ccb8d2ec8346a |
+| CANDIDATE_SHA | d332acc038b9937a9b71362e3b683eefd8e10654 |
 | CI_RUN | *(filled after CI)* |
 | Frozen tag (immutable) | `forma-s4-frozen` → `3f45d8bc31862da7304bc5d99a858f41ff3e300e` |
 
