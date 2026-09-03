@@ -1,12 +1,14 @@
 ## Status
 
-**S4-G5-F2 = PASS** (awaiting Forma CI ALL GREEN + human review)
+**S4-G5-F2 = PASS**
 
 ## Baseline
 
 | Item | Value |
 |------|-------|
 | Parent tip (requested) | `bcaeb44d59d50ac4a364fdff8f6e8f0fbdd603f8` |
+| Implementation commit | `8793c38782f6948d1934d7fb1d90259e4659a90e` |
+| Forma CI | `33705669429` **ALL GREEN** |
 | S4-G5-F1 | PASS (`a3c14697` / docs tip `bcaeb44d`) |
 | Scope | Minimal F2 fixes only — **no S4-G6**, **no `forma-s4-frozen`**, no S4 backend domain-semantic / migration changes |
 
@@ -23,9 +25,17 @@
 | ROLE_TESTS | PASS |
 | ROUTE_TESTS | PASS (all 8 `/data*` MemoryRouter routes) |
 | REAL_TYPECHECK | PASS |
-| FRONTEND_BUILD | PASS (local typecheck + package tests; CI pending) |
+| FRONTEND_BUILD | PASS (CI) |
 | REAL_MODEL_CALLS | 0 |
 | NO_MIGRATION | PASS |
+
+## CI Jobs (`33705669429` @ `8793c387`)
+
+| Job | Result |
+|-----|--------|
+| forma-backend | success |
+| forma-migration-apply | success |
+| forma-frontend | success |
 
 ## Fixes
 
@@ -89,4 +99,4 @@
 
 ## Stop condition
 
-Wait for latest `main` Forma CI jobs **forma-backend**, **forma-migration-apply**, **forma-frontend** ALL GREEN, then **stop for human review**.
+Forma CI **forma-backend** + **forma-migration-apply** + **forma-frontend** ALL GREEN on `8793c387`. **Stopped for human review.** Do not enter S4-G6 / freeze.
