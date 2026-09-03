@@ -11,7 +11,7 @@ export type PassportResult = {
 
 function sanitizedAuthError(status: number, bodyText: string): string {
   if (status === 401 || status === 403) {
-    return '邮箱或密码不正确，请重试。';
+    return '账号或密码不正确，请重试。';
   }
   if (status >= 500) {
     return '登录服务暂时不可用，请稍后重试。';
@@ -21,16 +21,43 @@ function sanitizedAuthError(status: number, bodyText: string): string {
   return '登录失败，请检查账号信息后重试。';
 }
 
-export async function passportLogin(email: string, password: string): Promise<PassportResult> {
-  const res = await fetch('/api/passport/web/email/login/', {
+export async function passportLogin(
+  account: string,
+  password: string,
+): Promise<PassportResult & { password_change_required?: boolean }> {
+  const res = await fetch('/api/forma/v1/auth/login', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ account, password }),
   });
   const text = await res.text();
   if (!res.ok) {
     return { ok: false, message: sanitizedAuthError(res.status, text) };
+  }
+  try {
+    const data = JSON.parse(text);
+    return { ok: true, password_change_required: data?.data?.password_change_required };
+  } catch {
+    return { ok: true };
+  }
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<PassportResult> {
+  const res = await fetch('/api/forma/v1/auth/change-password', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    try {
+      const data = JSON.parse(text);
+      return { ok: false, message: data?.msg || '修改密码失败' };
+    } catch {
+      return { ok: false, message: '修改密码失败' };
+    }
   }
   return { ok: true };
 }

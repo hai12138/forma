@@ -83,7 +83,8 @@ func main() {
 	userSVC := userApp.InitService(ctx, db, oss, idGen)
 	crossuser.SetDefaultSVC(userImpl.InitDomainService(userSVC.DomainSVC))
 
-	formaApp.InitService(ctx, &formaApp.ServiceComponents{DB: db, IDGen: idGen})
+	formaAppSVC := formaApp.InitService(ctx, &formaApp.ServiceComponents{DB: db, IDGen: idGen})
+	formaAppSVC.SetUserDomainSVC(userSVC.DomainSVC)
 	crossforma.SetDefaultSVC(formaImpl.InitDomainService(
 		formaIntegration.NewFormaCozeIntegration(
 			formaIntegration.NewCozeAgentAdapter(),
@@ -105,6 +106,15 @@ func main() {
 
 	formaRouter.Register(h)
 
+	// Bootstrap default admin
+	if err := formaApp.ApplicationSVC.BootstrapDefaultAdmin(ctx); err != nil {
+		logs.Errorf("bootstrap admin failed: %v", err)
+	}
+
+	logs.Infof("=== Forma Live Harness ===")
+	logs.Infof("Default Administrator: admin")
+	logs.Infof("Initial Password: admin123")
+	logs.Infof("Login: http://localhost:3001")
 	logs.Infof("forma live harness listening on %s", addr)
 	h.Spin()
 }

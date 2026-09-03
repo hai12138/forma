@@ -21,7 +21,9 @@ func Register(r *server.Hertz) {
 		v1.GET("/meta/baseline", formahandler.Baseline)
 
 		// Forma-owned auth facade (SoT remains Coze SessionAuth).
+		v1.POST("/auth/login", formahandler.FormaLogin)
 		v1.POST("/auth/logout", formahandler.Logout)
+		v1.POST("/auth/change-password", formahandler.FormaChangePassword)
 
 		v1.GET("/me", formahandler.Me)
 		v1.GET("/tenants", formahandler.ListTenants)
@@ -35,6 +37,17 @@ func Register(r *server.Hertz) {
 		v1.POST("/tenants/:id/spaces", formahandler.BindSpace)
 		v1.POST("/bootstrap", formahandler.Bootstrap)
 		v1.GET("/assets/counts", formahandler.AssetCounts)
+
+		// Admin routes (SUPER_ADMIN only, enforced in handlers)
+		admin := v1.Group("/admin")
+		{
+			admin.GET("/users", formahandler.AdminListUsers)
+			admin.POST("/users", formahandler.AdminCreateUser)
+			admin.GET("/users/:principalId", formahandler.AdminGetUser)
+			admin.POST("/users/:principalId/disable", formahandler.AdminDisableUser)
+			admin.POST("/users/:principalId/enable", formahandler.AdminEnableUser)
+			admin.POST("/users/:principalId/reset-password", formahandler.AdminResetPassword)
+		}
 
 		v1.POST("/businesses", formahandler.CreateBusiness)
 		v1.GET("/businesses", formahandler.ListBusinesses)

@@ -74,6 +74,36 @@ func (d *PrincipalDAO) GetByProviderSubject(ctx context.Context, provider, exter
 	return toPrincipalEntity(&model), nil
 }
 
+func (d *PrincipalDAO) UpdateStatus(ctx context.Context, principalID string, status entity.PrincipalStatus) error {
+	now := time.Now().UTC()
+	result := d.db.WithContext(ctx).Model(&PrincipalModel{}).
+		Where("principal_id = ?", principalID).
+		Updates(map[string]interface{}{
+			"status":     string(status),
+			"updated_at": now,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return entity.ErrNotFound
+	}
+	return nil
+}
+
+func (d *PrincipalDAO) ListAll(ctx context.Context) ([]*entity.Principal, error) {
+	var models []PrincipalModel
+	err := d.db.WithContext(ctx).Order("created_at ASC").Find(&models).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*entity.Principal, 0, len(models))
+	for i := range models {
+		out = append(out, toPrincipalEntity(&models[i]))
+	}
+	return out, nil
+}
+
 func toPrincipalModel(p *entity.Principal) *PrincipalModel {
 	return &PrincipalModel{
 		ID:              p.ID,

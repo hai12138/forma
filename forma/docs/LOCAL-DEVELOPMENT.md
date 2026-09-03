@@ -3,9 +3,8 @@
 本文档是 Forma 本地开发的正式入口。目标：拉取仓库后，尽可能通过**一个命令**完成环境检查、中间件、Forma Migration、Backend、Frontend，并拿到可访问地址。
 
 > **当前开发状态（重要）**  
-> 当前处于 **S4-G6-F2 PRODUCT UI + AUTH CLOSEOUT**（候选 SHA，等待人工 freeze）。  
-> **不是** S5 ready。  
-> `forma-s4-frozen` 标签**不要移动**。
+> 当前处于 **S5-G0 Platform Admin / User Management Foundation**。  
+> S4 已冻结：`forma-s4-frozen-r2`。
 ---
 
 ## 1. 适用范围
@@ -110,10 +109,15 @@ Forma Local Development READY
 Frontend:
   http://localhost:3001
 
+Default Forma Administrator:
+  Username: admin
+  Initial Password: admin123
+  ⚠ 首次登录必须修改密码（不能继续使用 admin123）
+
 NEXT STEP:
   打开 http://localhost:3001
-  系统自动进入 Forma 登录页。
-  （无需先手动访问 Coze UI 登录。）
+  使用 admin / admin123 登录 → 强制修改密码 → 进入 Forma。
+  管理员可在「系统管理 → 用户管理」创建其他用户。
 
 Backend:
   http://localhost:8888

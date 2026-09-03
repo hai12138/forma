@@ -26,6 +26,10 @@ export function FormaAuthGuard({ children }: { children: React.ReactNode }) {
     return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
   }
 
+  if (state === 'password_change_required') {
+    return <Navigate to="/change-password" replace />;
+  }
+
   if (state === 'empty' || state === 'authenticated_no_tenant') {
     return <Navigate to="/onboarding" replace />;
   }

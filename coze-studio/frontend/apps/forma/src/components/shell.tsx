@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 
-import { navigation } from '@/lib/navigation';
+import { adminNavigation, navigation } from '@/lib/navigation';
 import { passportLogout } from '@/lib/passport';
 import { useFormaSession } from '@/hooks/use-forma-session';
 
@@ -144,6 +144,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ))}
           </div>
         ))}
+        {me?.principal?.platform_role === 'SUPER_ADMIN'
+          ? adminNavigation.map(group => (
+              <div key={group.group} className="forma-nav-group">
+                <div className="forma-nav-group-title">{group.group}</div>
+                {group.items.map(item => (
+                  <NavLink
+                    key={item.id}
+                    to={item.path}
+                    end={item.path === '/'}
+                    className={({ isActive }) => `forma-nav-item${isActive ? ' active' : ''}`}
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            ))
+          : null}
       </aside>
       <main className="forma-main">
         <header className="forma-topbar">

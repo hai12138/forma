@@ -28,11 +28,13 @@ type MeResponse struct {
 }
 
 type PrincipalDTO struct {
-	PrincipalID   string `json:"principal_id"`
-	PrincipalType string `json:"principal_type"`
-	DisplayName   string `json:"display_name"`
-	CozeUserID    string `json:"coze_user_id"`
-	Status        string `json:"status"`
+	PrincipalID            string `json:"principal_id"`
+	PrincipalType          string `json:"principal_type"`
+	DisplayName            string `json:"display_name"`
+	CozeUserID             string `json:"coze_user_id"`
+	Status                 string `json:"status"`
+	PlatformRole           string `json:"platform_role,omitempty"`
+	PasswordChangeRequired bool   `json:"password_change_required"`
 }
 
 type TenantDTO struct {
@@ -239,8 +241,15 @@ func (s *ApplicationService) Me(ctx context.Context) (*MeResponse, error) {
 		current = tenantDTOs[0]
 	}
 
+	principalDTO := toPrincipalDTO(p)
+	// Enrich with platform role
+	if platformRole, prErr := s.TenancySVC.GetPlatformRole(ctx, p.PrincipalID); prErr == nil && platformRole != nil {
+		principalDTO.PlatformRole = string(platformRole.Role)
+		principalDTO.PasswordChangeRequired = platformRole.PasswordChangeRequired
+	}
+
 	return &MeResponse{
-		Principal:     toPrincipalDTO(p),
+		Principal:     principalDTO,
 		CurrentTenant: current,
 		Memberships:   memDTOs,
 		Tenants:       tenantDTOs,

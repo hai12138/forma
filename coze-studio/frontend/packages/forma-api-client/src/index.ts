@@ -60,6 +60,8 @@ export interface FormaPrincipal {
   /** Coze snowflake ID — always string (never JS number). */
   coze_user_id: string;
   status: string;
+  platform_role?: string;
+  password_change_required?: boolean;
 }
 
 export interface FormaTenant {

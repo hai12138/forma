@@ -73,31 +73,45 @@ type TenancyService interface {
 
 	Bootstrap(ctx context.Context, cozeUserID int64, displayName string, defaultSpaceID int64) (*BootstrapResult, error)
 	RecordAudit(ctx context.Context, event *entity.AuditEvent) error
+
+	// Platform admin
+	GetPlatformRole(ctx context.Context, principalID string) (*entity.FormaPlatformRoleAssignment, error)
+	SetPlatformRole(ctx context.Context, principalID string, role entity.PlatformRole) error
+	SetPasswordChangeRequired(ctx context.Context, principalID string, required bool) error
+	ListPlatformRoles(ctx context.Context) ([]*entity.FormaPlatformRoleAssignment, error)
+	CountActiveSuperAdmins(ctx context.Context) (int, error)
+	SuspendPrincipal(ctx context.Context, principalID string) error
+	ActivatePrincipal(ctx context.Context, principalID string) error
+	GetPrincipalByID(ctx context.Context, principalID string) (*entity.Principal, error)
+	ListAllPrincipals(ctx context.Context) ([]*entity.Principal, error)
 }
 
 type Components struct {
-	PrincipalRepo  repository.PrincipalRepository
-	TenantRepo     repository.TenantRepository
-	MembershipRepo repository.MembershipRepository
-	SpaceRefRepo   repository.SpaceRefRepository
-	AuditRepo      repository.AuditRepository
+	PrincipalRepo    repository.PrincipalRepository
+	TenantRepo       repository.TenantRepository
+	MembershipRepo   repository.MembershipRepository
+	SpaceRefRepo     repository.SpaceRefRepository
+	AuditRepo        repository.AuditRepository
+	PlatformRoleRepo repository.PlatformRoleRepository
 }
 
 type tenancyServiceImpl struct {
-	principalRepo  repository.PrincipalRepository
-	tenantRepo     repository.TenantRepository
-	membershipRepo repository.MembershipRepository
-	spaceRefRepo   repository.SpaceRefRepository
-	auditRepo      repository.AuditRepository
+	principalRepo    repository.PrincipalRepository
+	tenantRepo       repository.TenantRepository
+	membershipRepo   repository.MembershipRepository
+	spaceRefRepo     repository.SpaceRefRepository
+	auditRepo        repository.AuditRepository
+	platformRoleRepo repository.PlatformRoleRepository
 }
 
 func NewTenancyService(c *Components) TenancyService {
 	return &tenancyServiceImpl{
-		principalRepo:  c.PrincipalRepo,
-		tenantRepo:     c.TenantRepo,
-		membershipRepo: c.MembershipRepo,
-		spaceRefRepo:   c.SpaceRefRepo,
-		auditRepo:      c.AuditRepo,
+		principalRepo:    c.PrincipalRepo,
+		tenantRepo:       c.TenantRepo,
+		membershipRepo:   c.MembershipRepo,
+		spaceRefRepo:     c.SpaceRefRepo,
+		auditRepo:        c.AuditRepo,
+		platformRoleRepo: c.PlatformRoleRepo,
 	}
 }
 
@@ -545,6 +559,93 @@ func (s *tenancyServiceImpl) countActiveOwners(ctx context.Context, tenantID str
 		}
 	}
 	return n, nil
+}
+
+func (s *tenancyServiceImpl) GetPlatformRole(ctx context.Context, principalID string) (*entity.FormaPlatformRoleAssignment, error) {
+	if s.platformRoleRepo == nil {
+		return nil, nil
+	}
+	return s.platformRoleRepo.GetByPrincipalID(ctx, principalID)
+}
+
+func (s *tenancyServiceImpl) SetPlatformRole(ctx context.Context, principalID string, role entity.PlatformRole) error {
+	if s.platformRoleRepo == nil {
+		return fmt.Errorf("platform role repository not initialized")
+	}
+	now := time.Now().UTC()
+	existing, err := s.platformRoleRepo.GetByPrincipalID(ctx, principalID)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		existing.Role = role
+		return s.platformRoleRepo.Update(ctx, existing)
+	}
+	return s.platformRoleRepo.Create(ctx, &entity.FormaPlatformRoleAssignment{
+		PrincipalID: principalID,
+		Role:        role,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+}
+
+func (s *tenancyServiceImpl) SetPasswordChangeRequired(ctx context.Context, principalID string, required bool) error {
+	if s.platformRoleRepo == nil {
+		return fmt.Errorf("platform role repository not initialized")
+	}
+	existing, err := s.platformRoleRepo.GetByPrincipalID(ctx, principalID)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return entity.ErrNotFound
+	}
+	existing.PasswordChangeRequired = required
+	return s.platformRoleRepo.Update(ctx, existing)
+}
+
+func (s *tenancyServiceImpl) ListPlatformRoles(ctx context.Context) ([]*entity.FormaPlatformRoleAssignment, error) {
+	if s.platformRoleRepo == nil {
+		return nil, nil
+	}
+	return s.platformRoleRepo.ListAll(ctx)
+}
+
+func (s *tenancyServiceImpl) CountActiveSuperAdmins(ctx context.Context) (int, error) {
+	if s.platformRoleRepo == nil {
+		return 0, nil
+	}
+	admins, err := s.platformRoleRepo.ListSuperAdmins(ctx)
+	if err != nil {
+		return 0, err
+	}
+	activeIDs := make([]string, 0, len(admins))
+	for _, a := range admins {
+		p, pErr := s.principalRepo.GetByPrincipalID(ctx, a.PrincipalID)
+		if pErr != nil {
+			return 0, pErr
+		}
+		if p != nil && p.Status == entity.PrincipalStatusActive {
+			activeIDs = append(activeIDs, a.PrincipalID)
+		}
+	}
+	return len(activeIDs), nil
+}
+
+func (s *tenancyServiceImpl) SuspendPrincipal(ctx context.Context, principalID string) error {
+	return s.principalRepo.UpdateStatus(ctx, principalID, entity.PrincipalStatusSuspended)
+}
+
+func (s *tenancyServiceImpl) ActivatePrincipal(ctx context.Context, principalID string) error {
+	return s.principalRepo.UpdateStatus(ctx, principalID, entity.PrincipalStatusActive)
+}
+
+func (s *tenancyServiceImpl) GetPrincipalByID(ctx context.Context, principalID string) (*entity.Principal, error) {
+	return s.principalRepo.GetByPrincipalID(ctx, principalID)
+}
+
+func (s *tenancyServiceImpl) ListAllPrincipals(ctx context.Context) ([]*entity.Principal, error) {
+	return s.principalRepo.ListAll(ctx)
 }
 
 func personalTenantKey(cozeUserID int64) string {

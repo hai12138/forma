@@ -24,6 +24,7 @@ const TENANT_STORAGE_KEY = 'forma.selectedTenantId';
 export type SessionState =
   | 'loading'
   | 'ready'
+  | 'password_change_required'
   | 'unauthenticated'
   | 'forbidden'
   | 'suspended'
@@ -111,6 +112,14 @@ export function FormaSessionProvider({ children }: { children: ReactNode }) {
     try {
       const meResp = await client.me();
       const data = meResp.data;
+
+      if (data.principal?.password_change_required) {
+        setMe(data);
+        setAssetCounts(null);
+        wasReadyRef.current = true;
+        setState('password_change_required');
+        return 'password_change_required';
+      }
 
       if (!data.tenants?.length) {
         setMe(data);

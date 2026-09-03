@@ -105,6 +105,12 @@ const (
 	CodeDataPublicConfigInvalid       int32 = 40042
 	CodeSourceTypeNotSupported        int32 = 40043
 	CodeDataContractNotAvailable      int32 = 40940
+
+	CodeAdminForbidden         int32 = 40351 // HTTP 403
+	CodeAdminBadRequest        int32 = 40070 // HTTP 400
+	CodeAdminLastSuperAdmin    int32 = 40970 // HTTP 409
+	CodeAdminUserNotFound      int32 = 40471 // HTTP 404
+	CodePasswordChangeRequired int32 = 40371 // HTTP 403
 )
 
 const (
@@ -194,6 +200,12 @@ const (
 	KeyDataPublicConfigInvalid       = "FORMA_DATA_PUBLIC_CONFIG_INVALID"
 	KeySourceTypeNotSupported        = "FORMA_DATA_SOURCE_TYPE_NOT_SUPPORTED"
 	KeyDataContractNotAvailable      = "FORMA_DATA_CONTRACT_NOT_AVAILABLE"
+
+	KeyAdminForbidden         = "FORMA_ADMIN_FORBIDDEN"
+	KeyAdminBadRequest        = "FORMA_ADMIN_BAD_REQUEST"
+	KeyAdminLastSuperAdmin    = "FORMA_ADMIN_LAST_SUPER_ADMIN"
+	KeyAdminUserNotFound      = "FORMA_ADMIN_USER_NOT_FOUND"
+	KeyPasswordChangeRequired = "FORMA_PASSWORD_CHANGE_REQUIRED"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -616,6 +628,30 @@ func SourceTypeNotSupported(msg string) *FormaError {
 }
 func DataContractNotAvailable(msg string) *FormaError {
 	return New(CodeDataContractNotAvailable, http.StatusConflict, KeyDataContractNotAvailable, defaultMessage(msg, "data contract not available"))
+}
+
+func AdminForbidden(msg string) *FormaError {
+	return New(CodeAdminForbidden, http.StatusForbidden, KeyAdminForbidden, defaultMessage(msg, "platform admin access required"))
+}
+
+func AdminBadRequest(msg string) *FormaError {
+	return New(CodeAdminBadRequest, http.StatusBadRequest, KeyAdminBadRequest, defaultMessage(msg, "invalid admin request"))
+}
+
+func AdminLastSuperAdmin(msg string) *FormaError {
+	return New(CodeAdminLastSuperAdmin, http.StatusConflict, KeyAdminLastSuperAdmin, defaultMessage(msg, "cannot remove last super admin"))
+}
+
+func AdminUserNotFound(msg string) *FormaError {
+	return New(CodeAdminUserNotFound, http.StatusNotFound, KeyAdminUserNotFound, defaultMessage(msg, "user not found"))
+}
+
+func PasswordChangeRequired(msg string) *FormaError {
+	return New(CodePasswordChangeRequired, http.StatusForbidden, KeyPasswordChangeRequired, defaultMessage(msg, "password change required"))
+}
+
+func BadRequest(msg string) *FormaError {
+	return New(CodeAdminBadRequest, http.StatusBadRequest, KeyAdminBadRequest, defaultMessage(msg, "bad request"))
 }
 
 func defaultMessage(msg, fallback string) string {

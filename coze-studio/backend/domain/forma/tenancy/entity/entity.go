@@ -136,4 +136,27 @@ const (
 	AuditMemberRemoved      = "MEMBER_REMOVED"
 	AuditSpaceBound          = "SPACE_BOUND"
 	AuditSpaceUnbound       = "SPACE_UNBOUND"
+
+	AuditAdminUserCreated     = "ADMIN_USER_CREATED"
+	AuditAdminUserDisabled    = "ADMIN_USER_DISABLED"
+	AuditAdminUserEnabled     = "ADMIN_USER_ENABLED"
+	AuditAdminPasswordReset   = "ADMIN_PASSWORD_RESET"
+	AuditAdminPasswordChanged = "ADMIN_PASSWORD_CHANGED"
+	AuditAdminBootstrap       = "ADMIN_BOOTSTRAP"
 )
+
+type PlatformRole string
+
+const (
+	PlatformRoleSuperAdmin PlatformRole = "SUPER_ADMIN"
+	PlatformRoleUser       PlatformRole = "USER"
+)
+
+type FormaPlatformRoleAssignment struct {
+	ID                     int64        `json:"id"`
+	PrincipalID            string       `json:"principal_id"`
+	Role                   PlatformRole `json:"platform_role"`
+	PasswordChangeRequired bool         `json:"password_change_required"`
+	CreatedAt              time.Time    `json:"created_at"`
+	UpdatedAt              time.Time    `json:"updated_at"`
+}

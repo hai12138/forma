@@ -14,7 +14,7 @@ export function LoginPage() {
   const returnTo = useMemo(() => safeReturnTo(params.get('returnTo')), [params]);
   const expired = params.get('expired') === '1';
 
-  const [email, setEmail] = useState('');
+  const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(
     expired ? '登录已过期，请重新登录。' : null,
@@ -23,6 +23,9 @@ export function LoginPage() {
 
   if (state === 'ready') {
     return <Navigate to={returnTo} replace />;
+  }
+  if (state === 'password_change_required') {
+    return <Navigate to="/change-password" replace />;
   }
   if (state === 'empty' || state === 'authenticated_no_tenant') {
     return <Navigate to="/onboarding" replace />;
@@ -34,10 +37,14 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const result = await passportLogin(email.trim(), password);
+      const result = await passportLogin(account.trim(), password);
       setPassword('');
       if (!result.ok) {
         setError(result.message || '登录失败，请重试。');
+        return;
+      }
+      if (result.password_change_required) {
+        navigate('/change-password', { replace: true });
         return;
       }
       const next = await refresh();
@@ -80,16 +87,17 @@ export function LoginPage() {
           </div>
         ) : null}
         <form onSubmit={e => void onSubmit(e)} data-testid="login-form">
-          <label htmlFor="forma-login-email">邮箱</label>
+          <label htmlFor="forma-login-account">账号</label>
           <input
-            id="forma-login-email"
-            name="email"
-            type="email"
+            id="forma-login-account"
+            name="account"
+            type="text"
             autoComplete="username"
             required
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            data-testid="login-email"
+            placeholder="请输入账号"
+            value={account}
+            onChange={e => setAccount(e.target.value)}
+            data-testid="login-account"
           />
           <label htmlFor="forma-login-password">密码</label>
           <input

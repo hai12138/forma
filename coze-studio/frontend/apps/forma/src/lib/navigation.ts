@@ -38,3 +38,10 @@ export const navigation = [
 ] as const;
 
 export const routeIds = navigation.flatMap(g => g.items.map(i => i.id));
+
+export const adminNavigation = [
+  {
+    group: '系统管理',
+    items: [{ id: 'admin-users', label: '用户管理', path: '/admin/users' }],
+  },
+] as const;

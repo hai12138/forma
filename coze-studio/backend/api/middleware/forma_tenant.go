@@ -44,7 +44,8 @@ func FormaTenantMW() app.HandlerFunc {
 
 func isFormaPublicPath(path string) bool {
 	switch path {
-	case "/api/forma/v1/health", "/api/forma/v1/version", "/api/forma/v1/meta/baseline":
+	case "/api/forma/v1/health", "/api/forma/v1/version", "/api/forma/v1/meta/baseline",
+		"/api/forma/v1/auth/login":
 		return true
 	default:
 		return false
@@ -58,9 +59,15 @@ func isFormaAuthOnlyPath(path, method string) bool {
 		return true
 	case "/api/forma/v1/auth/logout":
 		return method == http.MethodPost
+	case "/api/forma/v1/auth/change-password":
+		return method == http.MethodPost
 	case "/api/forma/v1/tenants":
 		return method == http.MethodGet || method == http.MethodPost
 	default:
+		// Admin routes need auth but not tenant context
+		if strings.HasPrefix(path, "/api/forma/v1/admin/") {
+			return true
+		}
 		// GET/PATCH /tenants/:id must stay reachable so OWNER can inspect/reactivate SUSPENDED tenants.
 		if (method == http.MethodGet || method == http.MethodPatch) &&
 			strings.HasPrefix(path, "/api/forma/v1/tenants/") {

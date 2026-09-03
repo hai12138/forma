@@ -76,3 +76,14 @@ type AuditEventModel struct {
 }
 
 func (AuditEventModel) TableName() string { return "forma_audit_event" }
+
+type PlatformRoleModel struct {
+	ID                     int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	PrincipalID            string    `gorm:"column:principal_id;size:64;not null"`
+	Role                   string    `gorm:"column:role;size:32;not null;default:USER"`
+	PasswordChangeRequired int8      `gorm:"column:password_change_required;not null;default:0"`
+	CreatedAt              time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt              time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (PlatformRoleModel) TableName() string { return "forma_platform_role" }

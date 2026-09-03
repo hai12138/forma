@@ -7,6 +7,8 @@ import { DataPlaneApp } from '@forma/data';
 import { FormaAuthGuard } from '@/components/FormaAuthGuard';
 import { AppShell } from '@/components/shell';
 import { useFormaSession } from '@/hooks/use-forma-session';
+import { AdminUsersPage } from '@/pages/AdminUsersPage';
+import { ChangePasswordPage } from '@/pages/ChangePasswordPage';
 import { DesignPage, OverviewPage, PlaceholderPage } from '@/pages';
 import { LoginPage } from '@/pages/LoginPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
@@ -53,6 +55,7 @@ function ProtectedApp() {
           <Route path="/observability" element={<PlaceholderPage title="可观测性" />} />
           <Route path="/governance" element={<PlaceholderPage title="安全与治理" />} />
           <Route path="/delivery" element={<PlaceholderPage title="商业交付" />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
         </Routes>
       </AppShell>
     </FormaAuthGuard>
@@ -63,6 +66,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/*" element={<ProtectedApp />} />
     </Routes>

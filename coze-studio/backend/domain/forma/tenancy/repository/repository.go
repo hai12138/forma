@@ -19,6 +19,17 @@ type PrincipalRepository interface {
 	GetByPrincipalID(ctx context.Context, principalID string) (*entity.Principal, error)
 	GetByCozeUserID(ctx context.Context, cozeUserID int64) (*entity.Principal, error)
 	GetByProviderSubject(ctx context.Context, provider, externalSubject string) (*entity.Principal, error)
+	UpdateStatus(ctx context.Context, principalID string, status entity.PrincipalStatus) error
+	ListAll(ctx context.Context) ([]*entity.Principal, error)
+}
+
+type PlatformRoleRepository interface {
+	GetByPrincipalID(ctx context.Context, principalID string) (*entity.FormaPlatformRoleAssignment, error)
+	Create(ctx context.Context, assignment *entity.FormaPlatformRoleAssignment) error
+	Update(ctx context.Context, assignment *entity.FormaPlatformRoleAssignment) error
+	ListSuperAdmins(ctx context.Context) ([]*entity.FormaPlatformRoleAssignment, error)
+	ListAll(ctx context.Context) ([]*entity.FormaPlatformRoleAssignment, error)
+	CountActiveSuperAdmins(ctx context.Context, activePrincipalIDs []string) (int, error)
 }
 
 type TenantRepository interface {
@@ -66,4 +77,8 @@ func NewSpaceRefRepository(db *gorm.DB) SpaceRefRepository {
 
 func NewAuditRepository(db *gorm.DB) AuditRepository {
 	return dal.NewAuditDAO(db)
+}
+
+func NewPlatformRoleRepository(db *gorm.DB) PlatformRoleRepository {
+	return dal.NewPlatformRoleDAO(db)
 }
