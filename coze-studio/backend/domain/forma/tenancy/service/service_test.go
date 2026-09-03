@@ -87,6 +87,121 @@ func (r *memPrincipalRepo) GetByProviderSubject(_ context.Context, provider, ext
 	return nil, nil
 }
 
+func (r *memPrincipalRepo) UpdateStatus(_ context.Context, principalID string, status entity.PrincipalStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := r.byID[principalID]
+	if !ok {
+		return entity.ErrNotFound
+	}
+	p.Status = status
+	p.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *memPrincipalRepo) ListAll(_ context.Context) ([]*entity.Principal, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*entity.Principal, 0, len(r.byID))
+	for _, p := range r.byID {
+		cp := *p
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
+type memPlatformRoleRepo struct {
+	mu   sync.Mutex
+	byID map[string]*entity.FormaPlatformRoleAssignment
+	seq  int64
+}
+
+func newMemPlatformRoleRepo() *memPlatformRoleRepo {
+	return &memPlatformRoleRepo{byID: make(map[string]*entity.FormaPlatformRoleAssignment)}
+}
+
+func (r *memPlatformRoleRepo) GetByPrincipalID(_ context.Context, principalID string) (*entity.FormaPlatformRoleAssignment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	a, ok := r.byID[principalID]
+	if !ok {
+		return nil, nil
+	}
+	cp := *a
+	return &cp, nil
+}
+
+func (r *memPlatformRoleRepo) Create(_ context.Context, assignment *entity.FormaPlatformRoleAssignment) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.byID[assignment.PrincipalID]; ok {
+		return fmt.Errorf("duplicate platform role")
+	}
+	r.seq++
+	cp := *assignment
+	cp.ID = r.seq
+	r.byID[cp.PrincipalID] = &cp
+	assignment.ID = cp.ID
+	return nil
+}
+
+func (r *memPlatformRoleRepo) Update(_ context.Context, assignment *entity.FormaPlatformRoleAssignment) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cur, ok := r.byID[assignment.PrincipalID]
+	if !ok {
+		return entity.ErrNotFound
+	}
+	cp := *assignment
+	cp.ID = cur.ID
+	cp.UpdatedAt = time.Now().UTC()
+	r.byID[cp.PrincipalID] = &cp
+	assignment.UpdatedAt = cp.UpdatedAt
+	return nil
+}
+
+func (r *memPlatformRoleRepo) ListSuperAdmins(_ context.Context) ([]*entity.FormaPlatformRoleAssignment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*entity.FormaPlatformRoleAssignment
+	for _, a := range r.byID {
+		if a.Role == entity.PlatformRoleSuperAdmin {
+			cp := *a
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (r *memPlatformRoleRepo) ListAll(_ context.Context) ([]*entity.FormaPlatformRoleAssignment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*entity.FormaPlatformRoleAssignment, 0, len(r.byID))
+	for _, a := range r.byID {
+		cp := *a
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
+func (r *memPlatformRoleRepo) CountActiveSuperAdmins(_ context.Context, activePrincipalIDs []string) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	active := make(map[string]struct{}, len(activePrincipalIDs))
+	for _, id := range activePrincipalIDs {
+		active[id] = struct{}{}
+	}
+	n := 0
+	for _, a := range r.byID {
+		if a.Role == entity.PlatformRoleSuperAdmin {
+			if _, ok := active[a.PrincipalID]; ok {
+				n++
+			}
+		}
+	}
+	return n, nil
+}
+
 type memTenantRepo struct {
 	mu   sync.Mutex
 	byID map[string]*entity.Tenant
@@ -350,11 +465,12 @@ func (r *memAuditRepo) Create(_ context.Context, e *entity.AuditEvent) error {
 
 func newTestService() service.TenancyService {
 	return service.NewTenancyService(&service.Components{
-		PrincipalRepo:  newMemPrincipalRepo(),
-		TenantRepo:     newMemTenantRepo(),
-		MembershipRepo: newMemMembershipRepo(),
-		SpaceRefRepo:   newMemSpaceRefRepo(),
-		AuditRepo:      newMemAuditRepo(),
+		PrincipalRepo:    newMemPrincipalRepo(),
+		TenantRepo:       newMemTenantRepo(),
+		MembershipRepo:   newMemMembershipRepo(),
+		SpaceRefRepo:     newMemSpaceRefRepo(),
+		AuditRepo:        newMemAuditRepo(),
+		PlatformRoleRepo: newMemPlatformRoleRepo(),
 	})
 }
 
@@ -439,4 +555,73 @@ func TestUpdateMemberRole_RevisionConflict(t *testing.T) {
 
 	_, err = svc.UpdateMemberRole(ctx, tenant.TenantID, member.PrincipalID, entity.RoleViewer, 1, owner.PrincipalID, "req-1")
 	require.ErrorIs(t, err, entity.ErrRevisionConflict)
+}
+
+func TestPlatformRole_SetAndPasswordChangeRequired(t *testing.T) {
+	svc := newTestService()
+	ctx := context.Background()
+
+	principal, err := svc.ResolveOrCreatePrincipal(ctx, 9001, "admin")
+	require.NoError(t, err)
+
+	require.NoError(t, svc.SetPlatformRole(ctx, principal.PrincipalID, entity.PlatformRoleSuperAdmin))
+	require.NoError(t, svc.SetPasswordChangeRequired(ctx, principal.PrincipalID, true))
+
+	role, err := svc.GetPlatformRole(ctx, principal.PrincipalID)
+	require.NoError(t, err)
+	require.NotNil(t, role)
+	assert.Equal(t, entity.PlatformRoleSuperAdmin, role.Role)
+	assert.True(t, role.PasswordChangeRequired)
+
+	require.NoError(t, svc.SetPasswordChangeRequired(ctx, principal.PrincipalID, false))
+	role, err = svc.GetPlatformRole(ctx, principal.PrincipalID)
+	require.NoError(t, err)
+	assert.False(t, role.PasswordChangeRequired)
+}
+
+func TestPlatformRole_LastSuperAdminProtection(t *testing.T) {
+	svc := newTestService()
+	ctx := context.Background()
+
+	admin, err := svc.ResolveOrCreatePrincipal(ctx, 1, "admin")
+	require.NoError(t, err)
+	require.NoError(t, svc.SetPlatformRole(ctx, admin.PrincipalID, entity.PlatformRoleSuperAdmin))
+
+	count, err := svc.CountActiveSuperAdmins(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	require.NoError(t, svc.SuspendPrincipal(ctx, admin.PrincipalID))
+	count, err = svc.CountActiveSuperAdmins(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+
+	require.NoError(t, svc.ActivatePrincipal(ctx, admin.PrincipalID))
+	count, err = svc.CountActiveSuperAdmins(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestPrincipal_ListAllAndStatus(t *testing.T) {
+	svc := newTestService()
+	ctx := context.Background()
+
+	p1, err := svc.ResolveOrCreatePrincipal(ctx, 11, "one")
+	require.NoError(t, err)
+	p2, err := svc.ResolveOrCreatePrincipal(ctx, 12, "two")
+	require.NoError(t, err)
+
+	all, err := svc.ListAllPrincipals(ctx)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(all), 2)
+
+	require.NoError(t, svc.SuspendPrincipal(ctx, p2.PrincipalID))
+	got, err := svc.GetPrincipalByID(ctx, p2.PrincipalID)
+	require.NoError(t, err)
+	assert.Equal(t, entity.PrincipalStatusSuspended, got.Status)
+
+	require.NoError(t, svc.ActivatePrincipal(ctx, p2.PrincipalID))
+	got, err = svc.GetPrincipalByID(ctx, p1.PrincipalID)
+	require.NoError(t, err)
+	assert.Equal(t, entity.PrincipalStatusActive, got.Status)
 }

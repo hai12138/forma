@@ -8,7 +8,6 @@ package forma
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
@@ -74,18 +73,21 @@ func (s *ApplicationService) requireSuperAdmin(ctx context.Context) (*tenancyent
 	return principal, nil
 }
 
-func accountToEmail(account string) string {
-	if strings.Contains(account, "@") {
-		return account
+func accountToEmail(account string) (string, error) {
+	n, err := NormalizeAccount(account)
+	if err != nil {
+		return "", err
 	}
-	return account + "@forma.local"
+	return n.Email, nil
 }
 
 func emailToAccount(email string) string {
-	if strings.HasSuffix(email, "@forma.local") {
-		return strings.TrimSuffix(email, "@forma.local")
-	}
-	return email
+	return AccountFromEmail(email)
+}
+
+// ValidatePasswordForTest exposes validatePassword for unit tests.
+func ValidatePasswordForTest(password string) error {
+	return validatePassword(password)
 }
 
 func validatePassword(password string) error {
@@ -166,10 +168,14 @@ func (s *ApplicationService) AdminCreateUser(ctx context.Context, in *AdminCreat
 		return nil, err
 	}
 
-	email := accountToEmail(in.Account)
+	email, err := accountToEmail(in.Account)
+	if err != nil {
+		return nil, err
+	}
+	normalized, _ := NormalizeAccount(in.Account)
 	displayName := in.DisplayName
 	if displayName == "" {
-		displayName = in.Account
+		displayName = normalized.Account
 	}
 
 	cozeUser, err := s.UserDomainSVC.Create(ctx, &userservice.CreateUserRequest{
@@ -215,12 +221,7 @@ func (s *ApplicationService) AdminCreateUser(ctx context.Context, in *AdminCreat
 	})
 
 	role, _ := s.TenancySVC.GetPlatformRole(ctx, principal.PrincipalID)
-	dto := s.buildAdminUserDTO(ctx, &tenancyentity.Principal{
-		PrincipalID: principal.PrincipalID,
-		DisplayName: displayName,
-		Status:      tenancyentity.PrincipalStatusActive,
-		CreatedAt:   principal.CreatedAt,
-	}, role)
+	dto := s.buildAdminUserDTO(ctx, principal, role)
 
 	return &AdminCreateUserResponse{
 		User:            dto,

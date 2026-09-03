@@ -113,8 +113,38 @@ function UserMenu() {
   );
 }
 
+type NavItem = {
+  id: string;
+  label: string;
+  path: string;
+};
+
+type NavGroup = {
+  group: string;
+  items: readonly NavItem[];
+};
+
+function renderNavGroups(groups: readonly NavGroup[]) {
+  return groups.map(group => (
+    <div key={group.group} className="forma-nav-group">
+      <div className="forma-nav-group-title">{group.group}</div>
+      {group.items.map(item => (
+        <NavLink
+          key={item.id}
+          to={item.path}
+          end={item.path === '/'}
+          className={({ isActive }) => `forma-nav-item${isActive ? ' active' : ''}`}
+        >
+          {item.label}
+        </NavLink>
+      ))}
+    </div>
+  ));
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { me, currentTenant } = useFormaSession();
+  const showAdminNav = me?.principal?.platform_role === 'SUPER_ADMIN';
 
   return (
     <div className="forma-shell" data-testid="forma-app-shell">
@@ -127,40 +157,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <TenantSwitcher />
-        {navigation.map(group => (
-          <div key={group.group} className="forma-nav-group">
-            <div className="forma-nav-group-title">{group.group}</div>
-            {group.items.map(item => (
-              <NavLink
-                key={item.id}
-                to={item.path}
-                end={item.path === '/'}
-                className={({ isActive }) =>
-                  `forma-nav-item${isActive ? ' active' : ''}`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </div>
-        ))}
-        {me?.principal?.platform_role === 'SUPER_ADMIN'
-          ? adminNavigation.map(group => (
-              <div key={group.group} className="forma-nav-group">
-                <div className="forma-nav-group-title">{group.group}</div>
-                {group.items.map(item => (
-                  <NavLink
-                    key={item.id}
-                    to={item.path}
-                    end={item.path === '/'}
-                    className={({ isActive }) => `forma-nav-item${isActive ? ' active' : ''}`}
-                  >
-                    {item.label}
-                  </NavLink>
-                ))}
-              </div>
-            ))
-          : null}
+        {renderNavGroups(navigation)}
+        {showAdminNav ? renderNavGroups(adminNavigation) : null}
       </aside>
       <main className="forma-main">
         <header className="forma-topbar">

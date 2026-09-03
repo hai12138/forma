@@ -1,4 +1,4 @@
-h1:fVMY2DsIQzHjQLKK+k52KDOcN95LdWoghoNKAMy/YiI=
+h1:s2glm9RG7PIHkN0YCBDyD3ZJkhKmlzHGaSPovM8F+do=
 20250831100000_initial.sql h1:9b0az5JjQaJjx2kfkA41c/ly4lywgsNtTzyTcATpj8o=
 20250831120000_s1_tenancy.sql h1:dT43HbCJd5Rx7D2y9u9mX6d/2PLut6nhckAlWfcipDM=
 20250831140000_s1_g1_space_mapping.sql h1:UfzhBL0yV0KPhy2b46c7d6L1sPaByq5yqiv8loyk/Bg=
@@ -12,3 +12,4 @@ h1:fVMY2DsIQzHjQLKK+k52KDOcN95LdWoghoNKAMy/YiI=
 20250902113000_s4_g2_contract_alignment.sql h1:xzrSLg8IVCfa1I+3SNQP8TtA/VdqgkEwEKbENAGGQBc=
 20250902120000_s4_g3_semantic_mapping.sql h1:WSDVxwXmUCw29cKhsSGtHYuZuthUx7y4o9SAeAwPSGs=
 20250902130000_s4_g4_data_contract.sql h1:t/MqufFgf2ax7dUs7KoleVPn5fHWmzbWzdV09kt+2xs=
+20250903000000_s5_g0_platform_admin.sql h1:RVbvRooFk9mS3BQWrtxjuGQtOQq63gInb0XS01ekQEE=

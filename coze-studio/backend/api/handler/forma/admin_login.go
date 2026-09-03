@@ -7,7 +7,6 @@ package forma
 
 import (
 	"context"
-	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol"
@@ -15,6 +14,7 @@ import (
 	formaapp "github.com/coze-dev/coze-studio/backend/application/forma"
 	"github.com/coze-dev/coze-studio/backend/application/user"
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
+	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/user/entity"
 	"github.com/coze-dev/coze-studio/backend/pkg/hertzutil/domain"
 	"github.com/coze-dev/coze-studio/backend/types/consts"
@@ -31,8 +31,7 @@ type loginResponse struct {
 }
 
 // FormaLogin is the Forma-owned login endpoint.
-// Maps the bootstrap admin alias "admin" to "admin@forma.local",
-// then delegates to Coze User domain for authentication.
+// Applies Forma Local Account Alias normalization, then delegates to Coze User domain.
 func FormaLogin(ctx context.Context, c *app.RequestContext) {
 	var req loginRequest
 	if err := c.BindAndValidate(&req); err != nil {
@@ -40,31 +39,23 @@ func FormaLogin(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	account := strings.TrimSpace(req.Account)
-	password := req.Password
-
-	if account == "" || password == "" {
+	if req.Account == "" || req.Password == "" {
 		writeError(ctx, c, formaerrors.BadRequest("account and password required"))
 		return
 	}
 
-	// Map bootstrap admin alias to internal email
-	email := account
-	if account == formaapp.DefaultBootstrapAdminUsername {
-		email = formaapp.DefaultBootstrapAdminEmail
-	} else if !strings.Contains(account, "@") {
-		// Non-email usernames are mapped to @forma.local
-		email = account + "@forma.local"
-	}
-
-	// Delegate to Coze user domain
-	cozeUser, err := user.UserApplicationSVC.DomainSVC.Login(ctx, email, password)
+	normalized, err := formaapp.NormalizeAccount(req.Account)
 	if err != nil {
 		writeError(ctx, c, formaerrors.Unauthenticated("invalid credentials"))
 		return
 	}
 
-	// Set session cookie (same pattern as Coze passport handler)
+	cozeUser, err := user.UserApplicationSVC.DomainSVC.Login(ctx, normalized.Email, req.Password)
+	if err != nil {
+		writeError(ctx, c, formaerrors.Unauthenticated("invalid credentials"))
+		return
+	}
+
 	c.SetCookie(
 		entity.SessionKey,
 		cozeUser.SessionKey,
@@ -76,11 +67,25 @@ func FormaLogin(ctx context.Context, c *app.RequestContext) {
 		true,
 	)
 
-	// Check if password change is required
 	principal, _ := formaapp.ApplicationSVC.TenancySVC.ResolveOrCreatePrincipal(ctx, cozeUser.UserID, cozeUser.Name)
 	passwordChangeRequired := false
 	principalID := ""
 	if principal != nil {
+		if principal.Status == tenancyentity.PrincipalStatusSuspended {
+			_ = user.UserApplicationSVC.DomainSVC.Logout(ctx, cozeUser.UserID)
+			c.SetCookie(
+				entity.SessionKey,
+				"",
+				-1,
+				"/",
+				domain.GetOriginHost(c),
+				protocol.CookieSameSiteDefaultMode,
+				false,
+				true,
+			)
+			writeError(ctx, c, formaerrors.Unauthenticated("account disabled"))
+			return
+		}
 		principalID = principal.PrincipalID
 		role, _ := formaapp.ApplicationSVC.TenancySVC.GetPlatformRole(ctx, principal.PrincipalID)
 		if role != nil && role.PasswordChangeRequired {

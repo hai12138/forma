@@ -231,32 +231,45 @@ Backend 健康：`http://localhost:8888/api/forma/v1/health`
 
 ---
 
-## 10. 测试账号 / 首次登录说明
+## 10. 默认管理员 / 首次登录说明
 
-Forma **拥有自己的登录页**（`/login`），认证 SoT **继续复用 Coze Passport Session**（HttpOnly `session_key`）。仓库内**没有**写死的 `admin/admin`，也**没有**第二套 Forma 认证系统。
+Forma **拥有自己的登录页**（`/login`），认证 SoT **继续复用 Coze SessionAuth**（HttpOnly `session_key`）。**不**建立第二套密码库 / Session / JWT。
 
-1. 确认注册未关闭（`docker/.env.debug` 中 `DISABLE_USER_REGISTRATION` 为空或非 `true`）。
-2. 打开 `http://localhost:3001` → 自动进入 **Forma 登录页**（无 Sidebar / AppShell）。
-3. 若尚无账号，可用 API 注册一次（示例，自行替换邮箱与密码）：
+### Default Forma Administrator（development bootstrap）
 
-```powershell
-# Windows PowerShell
-Invoke-RestMethod -Method POST -Uri http://localhost:8888/api/passport/web/email/register/v2/ `
-  -ContentType 'application/json' `
-  -Body '{"email":"you@example.com","password":"YourLocalPass1!"}' `
-  -SessionVariable s
-```
+| 项 | 值 |
+|---|---|
+| Username | `admin` |
+| Initial Password | `admin123` |
+| Internal Coze email | `admin@forma.local` |
+| Platform role | `SUPER_ADMIN` |
 
-```bash
-# macOS / Linux
-curl -c /tmp/forma-cookies.txt -X POST http://localhost:8888/api/passport/web/email/register/v2/ \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"YourLocalPass1!"}'
-```
+⚠ `admin123` 仅为 **INITIAL PASSWORD**。首次登录必须进入 `/change-password`；修改后禁止再设回 `admin123`。
 
-4. 回到 Forma 登录页，用同一邮箱/密码登录。前端经 same-origin 代理调用 `/api/passport/web/email/login/`，依赖 Cookie，**不要**把 Token 写入 localStorage。
-5. 登录后若尚无 Tenant → `/onboarding` 创建第一个 Workspace；否则进入原 `returnTo` 或 `/`。
-6. 退出：用户菜单 →「退出登录」→ Forma `/api/forma/v1/auth/logout`（复用 Coze Session revoke + 过期 Cookie）→ `/login`。
+可通过环境变量覆盖：
+
+- `FORMA_BOOTSTRAP_ADMIN_USERNAME`（默认 `admin`）
+- `FORMA_BOOTSTRAP_ADMIN_PASSWORD`（默认 `admin123`）
+
+Bootstrap 为 **CREATE_IF_ABSENT**：重启不会重置已修改密码。
+
+### Forma Local Account Alias
+
+| 输入账号 | 内部登录标识 |
+|---|---|
+| `admin` | `admin@forma.local` |
+| `user01` | `user01@forma.local` |
+| `user01@forma.local` | `user01@forma.local`（与 `user01` 同一身份） |
+| `email@example.com` | `email@example.com` |
+
+产品默认关闭公开自助注册入口。新用户由 `SUPER_ADMIN` 在「系统管理 → 用户管理」创建。
+
+### 登录流程
+
+1. 打开 `http://localhost:3001` → Forma 登录页（输入「账号」）
+2. `admin` / `admin123` → `/change-password`
+3. 修改密码后 → Workspace readiness / Forma Home
+4. 退出：用户菜单 →「退出登录」→ Forma `/api/forma/v1/auth/logout` → `/login`
 
 未登录访问受保护路由会重定向到 `/login?returnTo=…`，**不会**渲染 AppShell。
 ---

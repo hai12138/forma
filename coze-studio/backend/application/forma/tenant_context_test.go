@@ -79,6 +79,29 @@ func (r *memPrincipalRepo) GetByProviderSubject(_ context.Context, provider, sub
 	return nil, nil
 }
 
+func (r *memPrincipalRepo) UpdateStatus(_ context.Context, principalID string, status entity.PrincipalStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := r.byID[principalID]
+	if !ok {
+		return entity.ErrNotFound
+	}
+	p.Status = status
+	p.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *memPrincipalRepo) ListAll(_ context.Context) ([]*entity.Principal, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*entity.Principal, 0, len(r.byID))
+	for _, p := range r.byID {
+		cp := *p
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
 type memTenantRepo struct {
 	mu   sync.Mutex
 	byID map[string]*entity.Tenant

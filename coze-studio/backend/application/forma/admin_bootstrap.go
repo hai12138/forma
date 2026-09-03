@@ -20,9 +20,9 @@ import (
 
 const (
 	DefaultBootstrapAdminUsername = "admin"
-	DefaultBootstrapAdminEmail   = "admin@forma.local"
+	DefaultBootstrapAdminEmail    = "admin@" + FormaLocalEmailDomain
 	DefaultBootstrapAdminPassword = "admin123"
-	DefaultBootstrapTenantName   = "Forma Workspace"
+	DefaultBootstrapTenantName    = "Forma Workspace"
 )
 
 func bootstrapAdminUsername() string {

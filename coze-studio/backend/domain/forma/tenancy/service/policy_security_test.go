@@ -206,11 +206,12 @@ func TestAuditActorIsActorNotTarget_MemberRoleChanged(t *testing.T) {
 func newTestServiceWithAudit() (service.TenancyService, *memAuditRepo) {
 	audit := newMemAuditRepo()
 	svc := service.NewTenancyService(&service.Components{
-		PrincipalRepo:  newMemPrincipalRepo(),
-		TenantRepo:     newMemTenantRepo(),
-		MembershipRepo: newMemMembershipRepo(),
-		SpaceRefRepo:   newMemSpaceRefRepo(),
-		AuditRepo:      audit,
+		PrincipalRepo:    newMemPrincipalRepo(),
+		TenantRepo:       newMemTenantRepo(),
+		MembershipRepo:   newMemMembershipRepo(),
+		SpaceRefRepo:     newMemSpaceRefRepo(),
+		AuditRepo:        audit,
+		PlatformRoleRepo: newMemPlatformRoleRepo(),
 	})
 	return svc, audit
 }
