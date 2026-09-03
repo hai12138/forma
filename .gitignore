@@ -49,3 +49,5 @@ go.work.sum
 # Coze model configs (local overrides)
 backend/conf/model/*.yaml
 values-dev.yaml
+
+_ci-frontend.log
