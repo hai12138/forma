@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FormaDriftResult, FormaGapResult, FormaLifecycleEvent, FormaValidationResult } from '@forma/api-client';
 
 import { EmptyState } from '../components/EmptyState';
+import { safeMutate } from '../utils/errors';
 import { isEditor } from '../utils/roles';
 import { useDataPlaneContext } from './useDataPlaneContext';
 
@@ -53,11 +54,19 @@ export function DataHealthPage() {
       <div className="forma-panel" style={{ marginBottom: 12 }}>
         <div className="forma-form-row">
           <label>契约 ID</label>
-          <input value={contractId} onChange={e => setContractId(e.target.value)} />
+          <input
+            value={contractId}
+            onChange={e => setContractId(e.target.value)}
+            data-testid="health-contract-id"
+          />
         </div>
         <div className="forma-form-row">
           <label>修订 ID</label>
-          <input value={revisionId} onChange={e => setRevisionId(e.target.value)} />
+          <input
+            value={revisionId}
+            onChange={e => setRevisionId(e.target.value)}
+            data-testid="health-revision-id"
+          />
         </div>
         <button className="forma-btn" type="button" onClick={() => void load()}>
           刷新
@@ -67,15 +76,15 @@ export function DataHealthPage() {
             <button
               className="forma-btn"
               type="button"
+              data-testid="evaluate-drift"
               onClick={() =>
-                void client
-                  .evaluateDataContractDrift(businessId, contractId, revisionId, {
+                void safeMutate(async () => {
+                  await client.evaluateDataContractDrift(businessId, contractId, revisionId, {
                     new_snapshot_ids: {},
-                  })
-                  .then(() => {
-                    setMessage('漂移评估已提交');
-                    return load();
-                  })
+                  });
+                  setMessage('漂移评估已提交');
+                  await load();
+                }, setError)
               }
             >
               评估漂移
@@ -83,11 +92,13 @@ export function DataHealthPage() {
             <button
               className="forma-btn"
               type="button"
+              data-testid="evaluate-gap"
               onClick={() =>
-                void client.evaluateDataContractGap(businessId, contractId, revisionId).then(() => {
+                void safeMutate(async () => {
+                  await client.evaluateDataContractGap(businessId, contractId, revisionId);
                   setMessage('缺口评估已提交');
-                  return load();
-                })
+                  await load();
+                }, setError)
               }
             >
               评估缺口

@@ -12,6 +12,7 @@ import type {
 import { EmptyState } from '../components/EmptyState';
 import { SecretCredentialForm } from '../components/SecretCredentialForm';
 import { StatusBadge } from '../components/StatusBadge';
+import { safeMutate } from '../utils/errors';
 import { isEditor } from '../utils/roles';
 import { useDataPlaneContext } from './useDataPlaneContext';
 
@@ -30,6 +31,7 @@ export function DataSourcesPage() {
   const [name, setName] = useState('');
   const [sourceType, setSourceType] = useState('EXTERNAL_SQL');
   const [credId, setCredId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,11 +51,14 @@ export function DataSourcesPage() {
     void load();
   }, [load, currentTenant?.tenant_id]);
 
-  const create = async () => {
-    if (!name.trim()) return;
-    await client.createDataSource({ name: name.trim(), source_type: sourceType });
-    setName('');
-    await load();
+  const create = () => {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    void safeMutate(async () => {
+      await client.createDataSource({ name: name.trim(), source_type: sourceType });
+      setName('');
+      await load();
+    }, setError).finally(() => setBusy(false));
   };
 
   const q = businessId ? `?businessId=${encodeURIComponent(businessId)}` : '';
@@ -85,7 +90,13 @@ export function DataSourcesPage() {
                 <option value="EXTERNAL_HTTP">EXTERNAL_HTTP</option>
               </select>
             </div>
-            <button className="forma-btn forma-btn-primary" type="button" onClick={() => void create()}>
+            <button
+              className="forma-btn forma-btn-primary"
+              type="button"
+              data-testid="create-source"
+              disabled={busy}
+              onClick={create}
+            >
               创建数据源
             </button>
           </div>
@@ -108,7 +119,12 @@ export function DataSourcesPage() {
                   <button
                     className="forma-btn"
                     type="button"
-                    onClick={() => void client.archiveDataSource(s.source_id).then(load)}
+                    onClick={() =>
+                      void safeMutate(async () => {
+                        await client.archiveDataSource(s.source_id);
+                        await load();
+                      }, setError)
+                    }
                   >
                     归档
                   </button>
@@ -135,6 +151,7 @@ export function SourceDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [connName, setConnName] = useState('default');
   const [credRef, setCredRef] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
     if (!sourceId) return;
@@ -144,7 +161,7 @@ export function SourceDetailPage() {
         client.listDataConnections(sourceId),
         client.listDataAssets(sourceId),
       ]);
-      setSource(s.data);
+      setSource(s.data && !Array.isArray(s.data) ? s.data : null);
       setConnections(c.data ?? []);
       setAssets(a.data ?? []);
     } catch (err) {
@@ -156,23 +173,29 @@ export function SourceDetailPage() {
     void reload();
   }, [reload]);
 
-  const createConnection = async () => {
-    await client.createDataConnection(sourceId, {
-      name: connName,
-      environment: 'DEV',
-      adapter_type: 'MYSQL',
-      public_config: { host: 'localhost', port: 3306, database: 'demo', username: 'u' },
-      credential_ref_id: credRef || undefined,
-    });
-    await reload();
+  const createConnection = () => {
+    if (busy) return;
+    setBusy(true);
+    void safeMutate(async () => {
+      await client.createDataConnection(sourceId, {
+        name: connName,
+        environment: 'DEV',
+        adapter_type: 'MYSQL',
+        public_config: { host: 'localhost', port: 3306, database: 'demo', username: 'u' },
+        credential_ref_id: credRef || undefined,
+      });
+      await reload();
+    }, setError).finally(() => setBusy(false));
   };
 
-  const capture = async (connectionId: string, assetId: string) => {
-    const resp = await client.captureDataSchema(sourceId, connectionId, assetId);
-    const id = resp.data.snapshot_id;
-    setCapturedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
-    setSnapshot(resp.data);
-    setTab('schema');
+  const capture = (connectionId: string, assetId: string) => {
+    void safeMutate(async () => {
+      const resp = await client.captureDataSchema(sourceId, connectionId, assetId);
+      const id = resp.data.snapshot_id;
+      setCapturedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+      setSnapshot(resp.data);
+      setTab('schema');
+    }, setError);
   };
 
   const loadSnapshot = async (id: string) => {
@@ -222,7 +245,13 @@ export function SourceDetailPage() {
                 <label>凭证引用 ID</label>
                 <input value={credRef} onChange={e => setCredRef(e.target.value)} />
               </div>
-              <button className="forma-btn forma-btn-primary" type="button" onClick={() => void createConnection()}>
+              <button
+                className="forma-btn forma-btn-primary"
+                type="button"
+                data-testid="create-connection"
+                disabled={busy}
+                onClick={createConnection}
+              >
                 创建连接
               </button>
             </div>
@@ -241,7 +270,12 @@ export function SourceDetailPage() {
                     <button
                       className="forma-btn"
                       type="button"
-                      onClick={() => void client.testDataConnection(sourceId, c.connection_id).then(reload)}
+                      onClick={() =>
+                        void safeMutate(async () => {
+                          await client.testDataConnection(sourceId, c.connection_id);
+                          await reload();
+                        }, setError)
+                      }
                     >
                       测试连接
                     </button>
@@ -249,7 +283,10 @@ export function SourceDetailPage() {
                       className="forma-btn"
                       type="button"
                       onClick={() =>
-                        void client.discoverDataAssets(sourceId, c.connection_id).then(reload)
+                        void safeMutate(async () => {
+                          await client.discoverDataAssets(sourceId, c.connection_id);
+                          await reload();
+                        }, setError)
                       }
                     >
                       发现资产
@@ -267,7 +304,7 @@ export function SourceDetailPage() {
                             className="forma-btn"
                             type="button"
                             style={{ marginLeft: 8 }}
-                            onClick={() => void capture(c.connection_id, a.asset_id)}
+                            onClick={() => capture(c.connection_id, a.asset_id)}
                           >
                             捕获 Schema
                           </button>

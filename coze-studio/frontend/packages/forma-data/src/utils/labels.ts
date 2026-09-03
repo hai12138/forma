@@ -7,6 +7,7 @@ const STATUS_LABELS: Record<string, string> = {
   SUPERSEDED: '已替代',
   ACTIVE: '生效中',
   DRAFT: '草稿',
+  VALIDATED: '已验证',
   STALE: '已过期',
   DEPRECATED: '已弃用',
   ARCHIVED: '已归档',

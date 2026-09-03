@@ -9,51 +9,13 @@ import type {
 } from '@forma/api-client';
 
 import { EmptyState } from '../components/EmptyState';
+import { MappingDslForm } from '../components/MappingDslForm';
 import { StatusBadge } from '../components/StatusBadge';
 import { confidenceDisclaimer } from '../utils/labels';
+import { buildTransformSpec, MAPPING_TYPES } from '../utils/mapping-dsl';
 import { isEditor } from '../utils/roles';
+import { safeMutate } from '../utils/errors';
 import { useDataPlaneContext } from './useDataPlaneContext';
-
-const MAPPING_TYPES = ['DIRECT', 'CAST', 'ENUM_MAP', 'UNIT_CONVERT', 'TIMEZONE', 'JSON_PATH', 'JOIN_REF'] as const;
-
-function buildTransformSpec(
-  mappingType: string,
-  form: Record<string, string>,
-): Record<string, unknown> {
-  switch (mappingType) {
-    case 'CAST':
-      return { type: 'CAST', from_type: form.from_type || 'string', to_type: form.to_type || 'string' };
-    case 'ENUM_MAP':
-      return { type: 'ENUM_MAP', pairs: form.pairs ? JSON.parse(form.pairs) : [] };
-    case 'UNIT_CONVERT':
-      return {
-        type: 'UNIT_CONVERT',
-        from_unit: form.from_unit || '',
-        to_unit: form.to_unit || '',
-        factor: Number(form.factor || 1),
-        offset: Number(form.offset || 0),
-      };
-    case 'TIMEZONE':
-      return {
-        type: 'TIMEZONE',
-        source_timezone: form.source_timezone || 'UTC',
-        target_timezone: form.target_timezone || 'UTC',
-        format: form.format || '',
-      };
-    case 'JSON_PATH':
-      return { type: 'JSON_PATH', path: form.path || '' };
-    case 'JOIN_REF':
-      return {
-        type: 'JOIN_REF',
-        relationship: form.relationship || '',
-        from_fields: (form.from_fields || '').split(',').map(s => s.trim()).filter(Boolean),
-        to_schema: form.to_schema || '',
-        to_fields: (form.to_fields || '').split(',').map(s => s.trim()).filter(Boolean),
-      };
-    default:
-      return { type: 'DIRECT' };
-  }
-}
 
 export function MappingStudioPage() {
   const { client, currentTenant, businessId, businesses } = useDataPlaneContext();
@@ -71,6 +33,7 @@ export function MappingStudioPage() {
   const [dslForm, setDslForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!businessId) return;
@@ -111,44 +74,55 @@ export function MappingStudioPage() {
       setMappingType(selectedMapping.mapping_type);
       setTargetPath(selectedMapping.target_field_paths?.[0] ?? '');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMapping?.mapping_id]);
 
-  const analyze = async () => {
-    if (!business) return;
-    const ids = snapshotIds
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-    await client.analyzeSemanticMappings(businessId, {
-      business_model_revision: business.current_revision,
-      requirement_ids: requirements.map(r => r.requirement_id),
-      schema_snapshot_ids: ids,
-      client_request_id: `map-${Date.now()}`,
-    });
-    await load();
+  const analyze = () => {
+    if (!business || busy) return;
+    setBusy(true);
+    void safeMutate(async () => {
+      const ids = snapshotIds
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      await client.analyzeSemanticMappings(businessId, {
+        business_model_revision: business.current_revision,
+        requirement_ids: requirements.map(r => r.requirement_id),
+        schema_snapshot_ids: ids,
+        client_request_id: `map-${Date.now()}`,
+      });
+      await load();
+    }, setError).finally(() => setBusy(false));
   };
 
-  const createManual = async () => {
-    if (!business || !selectedReqId || !targetPath) return;
+  const createManual = () => {
+    if (!business || !selectedReqId || !targetPath || busy) return;
     const firstSnap = snapshotIds.split(',')[0]?.trim();
     if (!firstSnap) {
       setError('请填写 schema_snapshot_ids');
       return;
     }
-    await client.createManualSemanticMapping(businessId, {
-      business_model_revision: business.current_revision,
-      requirement_id: selectedReqId,
-      source_id: 'src_manual',
-      connection_id: 'conn_manual',
-      asset_id: 'asset_manual',
-      schema_snapshot_id: firstSnap,
-      target_field_paths: [targetPath],
-      mapping_type: mappingType,
-      transform_spec: buildTransformSpec(mappingType, dslForm),
-      confidence: 1,
-      reason: 'manual',
-    });
-    await load();
+    setBusy(true);
+    void safeMutate(async () => {
+      const form = {
+        ...dslForm,
+        path: dslForm.path || targetPath,
+      };
+      await client.createManualSemanticMapping(businessId, {
+        business_model_revision: business.current_revision,
+        requirement_id: selectedReqId,
+        source_id: 'src_manual',
+        connection_id: 'conn_manual',
+        asset_id: 'asset_manual',
+        schema_snapshot_id: firstSnap,
+        target_field_paths: [targetPath],
+        mapping_type: mappingType,
+        transform_spec: buildTransformSpec(mappingType, form),
+        confidence: 1,
+        reason: 'manual',
+      });
+      await load();
+    }, setError).finally(() => setBusy(false));
   };
 
   if (!businessId) {
@@ -168,14 +142,25 @@ export function MappingStudioPage() {
               value={snapshotIds}
               onChange={e => setSnapshotIds(e.target.value)}
               style={{ minWidth: 240 }}
+              data-testid="snapshot-ids-input"
             />
-            <button className="forma-btn forma-btn-primary" type="button" onClick={() => void analyze()}>
+            <button
+              className="forma-btn forma-btn-primary"
+              type="button"
+              data-testid="analyze-mappings"
+              disabled={busy}
+              onClick={analyze}
+            >
               分析映射
             </button>
           </>
         ) : null}
       </div>
-      {error ? <div className="forma-error">{error}</div> : null}
+      {error ? (
+        <div className="forma-error" data-testid="mapping-error">
+          {error}
+        </div>
+      ) : null}
       {loading ? <div className="forma-muted">加载中…</div> : null}
       <div className="forma-mapping-studio">
         <div className="forma-mapping-col" data-testid="mapping-left">
@@ -188,6 +173,7 @@ export function MappingStudioPage() {
                 key={r.requirement_id}
                 type="button"
                 className="forma-card"
+                data-testid={`mapping-requirement-${r.requirement_id}`}
                 style={{
                   textAlign: 'left',
                   cursor: 'pointer',
@@ -227,9 +213,15 @@ export function MappingStudioPage() {
                   <button
                     className="forma-btn forma-btn-primary"
                     type="button"
+                    data-testid="confirm-mapping"
+                    disabled={busy}
                     onClick={e => {
                       e.stopPropagation();
-                      void client.confirmSemanticMapping(businessId, m.mapping_id).then(load);
+                      setBusy(true);
+                      void safeMutate(async () => {
+                        await client.confirmSemanticMapping(businessId, m.mapping_id);
+                        await load();
+                      }, setError).finally(() => setBusy(false));
                     }}
                   >
                     确认
@@ -237,9 +229,15 @@ export function MappingStudioPage() {
                   <button
                     className="forma-btn forma-btn-danger"
                     type="button"
+                    data-testid="reject-mapping"
+                    disabled={busy}
                     onClick={e => {
                       e.stopPropagation();
-                      void client.rejectSemanticMapping(businessId, m.mapping_id).then(load);
+                      setBusy(true);
+                      void safeMutate(async () => {
+                        await client.rejectSemanticMapping(businessId, m.mapping_id);
+                        await load();
+                      }, setError).finally(() => setBusy(false));
                     }}
                   >
                     拒绝
@@ -249,10 +247,15 @@ export function MappingStudioPage() {
             </div>
           ))}
           {canEdit ? (
-            <div className="forma-panel">
+            <div className="forma-panel" data-testid="manual-mapping-form">
               <div className="forma-form-row">
-                <label>映射类型</label>
-                <select value={mappingType} onChange={e => setMappingType(e.target.value)}>
+                <label htmlFor="mapping-type-select">映射类型</label>
+                <select
+                  id="mapping-type-select"
+                  data-testid="mapping-type-select"
+                  value={mappingType}
+                  onChange={e => setMappingType(e.target.value)}
+                >
                   {MAPPING_TYPES.map(t => (
                     <option key={t} value={t}>
                       {t}
@@ -261,37 +264,22 @@ export function MappingStudioPage() {
                 </select>
               </div>
               <div className="forma-form-row">
-                <label>目标字段路径</label>
-                <input value={targetPath} onChange={e => setTargetPath(e.target.value)} />
+                <label htmlFor="target-path-input">目标字段路径</label>
+                <input
+                  id="target-path-input"
+                  data-testid="target-path-input"
+                  value={targetPath}
+                  onChange={e => setTargetPath(e.target.value)}
+                />
               </div>
-              {mappingType === 'CAST' ? (
-                <>
-                  <div className="forma-form-row">
-                    <label>from_type</label>
-                    <input
-                      value={dslForm.from_type ?? ''}
-                      onChange={e => setDslForm(f => ({ ...f, from_type: e.target.value }))}
-                    />
-                  </div>
-                  <div className="forma-form-row">
-                    <label>to_type</label>
-                    <input
-                      value={dslForm.to_type ?? ''}
-                      onChange={e => setDslForm(f => ({ ...f, to_type: e.target.value }))}
-                    />
-                  </div>
-                </>
-              ) : null}
-              {mappingType === 'JSON_PATH' ? (
-                <div className="forma-form-row">
-                  <label>path</label>
-                  <input
-                    value={dslForm.path ?? ''}
-                    onChange={e => setDslForm(f => ({ ...f, path: e.target.value }))}
-                  />
-                </div>
-              ) : null}
-              <button className="forma-btn forma-btn-primary" type="button" onClick={() => void createManual()}>
+              <MappingDslForm mappingType={mappingType} form={dslForm} onChange={setDslForm} />
+              <button
+                className="forma-btn forma-btn-primary"
+                type="button"
+                data-testid="create-manual-mapping"
+                disabled={busy}
+                onClick={createManual}
+              >
                 手动创建映射
               </button>
             </div>

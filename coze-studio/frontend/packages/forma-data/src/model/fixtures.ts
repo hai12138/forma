@@ -1,11 +1,45 @@
 import type {
+  FormaBusiness,
   FormaContractBinding,
   FormaDataContractDescriptor,
   FormaDataContractRevision,
   FormaDataRequirement,
+  FormaDataSource,
   FormaPhysicalSchema,
   FormaSemanticMapping,
 } from '@forma/api-client';
+
+export const labBusiness: FormaBusiness = {
+  business_id: 'biz_lab',
+  asset_id: 'a1',
+  name: 'Lab Biz',
+  status: 'ACTIVE',
+  current_revision: 1,
+  schema_version: '1.0',
+  updated_at: '2026-01-01T00:00:00Z',
+  created_at: '2026-01-01T00:00:00Z',
+};
+
+export const procurementBusiness: FormaBusiness = {
+  business_id: 'biz_proc',
+  asset_id: 'a2',
+  name: 'Procurement Biz',
+  status: 'ACTIVE',
+  current_revision: 2,
+  schema_version: '1.0',
+  updated_at: '2026-02-01T00:00:00Z',
+  created_at: '2026-02-01T00:00:00Z',
+};
+
+export const labSource: FormaDataSource = {
+  source_id: 'src_lab',
+  name: 'Lab Readings DB',
+  source_type: 'EXTERNAL_SQL',
+  status: 'ACTIVE',
+  created_by: 'principal_1',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+};
 
 /** Lab sample flow — domain-agnostic fixtures for tests only. */
 export const labRequirement: FormaDataRequirement = {
@@ -183,4 +217,21 @@ export const activeRevision: FormaDataContractRevision = {
   version: 2,
   status: 'ACTIVE',
   name: 'Lab Contract v2',
+};
+
+export const draftRevision: FormaDataContractRevision = {
+  ...staleRevision,
+  revision_id: 'rev_lab_draft',
+  version: 3,
+  status: 'DRAFT',
+  name: 'Lab Contract draft',
+  binding_refs: [],
+};
+
+export const validatedRevision: FormaDataContractRevision = {
+  ...draftRevision,
+  revision_id: 'rev_lab_validated',
+  version: 4,
+  status: 'VALIDATED',
+  name: 'Lab Contract validated',
 };

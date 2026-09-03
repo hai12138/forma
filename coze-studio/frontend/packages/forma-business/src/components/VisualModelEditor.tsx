@@ -888,7 +888,7 @@ function PropertyPanel({
   onDelete,
 }: {
   readOnly?: boolean;
-  nameInputRef?: RefObject<HTMLInputElement | null>;
+  nameInputRef?: RefObject<HTMLInputElement>;
   model: FormaSemanticModel;
   selectedNode?: FormaSemanticNode;
   selectedEdge?: FormaSemanticEdge;

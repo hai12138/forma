@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react';
 
 import type { FormaApiClient, FormaCredentialRef } from '@forma/api-client';
 
+import { safeMutate } from '../utils/errors';
+
 export interface SecretCredentialFormProps {
   client: FormaApiClient;
   canEdit: boolean;
@@ -28,22 +30,27 @@ export function SecretCredentialForm({
     return null;
   }
 
-  const onSubmit = async (e: FormEvent) => {
+  const onSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (busy) return;
+    const submittedSecret = password;
     setBusy(true);
-    try {
-      const resp = await client.createDataCredential({
-        secret_type: secretType,
-        secret: { password },
-      });
+    void safeMutate(
+      async () => {
+        const resp = await client.createDataCredential({
+          secret_type: secretType,
+          secret: { password: submittedSecret },
+        });
+        setPassword('');
+        setLastRefId(resp.data.credential_ref_id);
+        onCreated?.(resp.data);
+      },
+      message => onError?.(message),
+      [submittedSecret],
+    ).finally(() => {
       setPassword('');
-      setLastRefId(resp.data.credential_ref_id);
-      onCreated?.(resp.data);
-    } catch (err) {
-      onError?.(err instanceof Error ? err.message : '创建凭证失败');
-    } finally {
       setBusy(false);
-    }
+    });
   };
 
   return (

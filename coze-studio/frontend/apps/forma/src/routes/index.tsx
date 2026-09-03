@@ -37,7 +37,6 @@ export function AppRouter() {
         <Route path="/analyst" element={<AnalystRoute />} />
         <Route path="/business" element={<BusinessListRoute />} />
         <Route path="/business/:businessId" element={<BusinessEditorRoute />} />
-        {/* Data plane nested paths: /data /data/requirements /data/sources /data/mappings /data/contracts /data/health */}
         <Route path="/data/*" element={<DataPlaneRoute />} />
         <Route path="/capabilities" element={<PlaceholderPage title="能力资产" />} />
         <Route path="/agents" element={<PlaceholderPage title="业务 Agent" />} />

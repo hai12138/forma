@@ -4,6 +4,7 @@ import type { FormaBusiness, FormaDataRequirement } from '@forma/api-client';
 
 import { EmptyState } from '../components/EmptyState';
 import { StatusBadge } from '../components/StatusBadge';
+import { safeMutate } from '../utils/errors';
 import { isEditor } from '../utils/roles';
 import { useDataPlaneContext } from './useDataPlaneContext';
 
@@ -18,6 +19,7 @@ export function DataRequirementsPage() {
   const [manualName, setManualName] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const business: FormaBusiness | undefined = businesses.find(b => b.business_id === businessId);
 
@@ -42,10 +44,17 @@ export function DataRequirementsPage() {
 
   const proposed = items.filter(i => i.status === 'PROPOSED');
 
-  const analyze = async () => {
+  const run = (fn: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    void safeMutate(fn, setError).finally(() => setBusy(false));
+  };
+
+  const analyze = () => {
     if (!business) return;
     setMessage(null);
-    try {
+    run(async () => {
       const resp = await client.analyzeDataRequirements(businessId, {
         business_model_revision: business.current_revision,
         client_request_id: `ui-${Date.now()}`,
@@ -56,49 +65,55 @@ export function DataRequirementsPage() {
           : '已有进行中的分析任务',
       );
       await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '分析失败');
-    }
-  };
-
-  const confirm = async (id: string) => {
-    await client.confirmDataRequirement(businessId, id, { reason: 'ui-confirm' });
-    await load();
-  };
-  const reject = async (id: string) => {
-    await client.rejectDataRequirement(businessId, id, { reason: 'ui-reject' });
-    await load();
-  };
-  const editConfirm = async (req: FormaDataRequirement) => {
-    await client.editConfirmDataRequirement(businessId, req.requirement_id, {
-      reason: 'ui-edit-confirm',
-      requirement_kind: req.requirement_kind,
-      semantic_name: editName || req.semantic_name,
-      description: req.description,
-      business_element_refs: req.business_element_refs,
-      requiredness: req.requiredness,
-      freshness_requirement: req.freshness_requirement,
-      access_need: req.access_need,
     });
-    setEditId(null);
-    await load();
   };
 
-  const createManual = async () => {
+  const confirm = (id: string) => {
+    run(async () => {
+      await client.confirmDataRequirement(businessId, id, { reason: 'ui-confirm' });
+      await load();
+    });
+  };
+  const reject = (id: string) => {
+    run(async () => {
+      await client.rejectDataRequirement(businessId, id, { reason: 'ui-reject' });
+      await load();
+    });
+  };
+  const editConfirm = (req: FormaDataRequirement) => {
+    run(async () => {
+      await client.editConfirmDataRequirement(businessId, req.requirement_id, {
+        reason: 'ui-edit-confirm',
+        requirement_kind: req.requirement_kind,
+        semantic_name: editName || req.semantic_name,
+        description: req.description,
+        business_element_refs: req.business_element_refs,
+        requiredness: req.requiredness,
+        freshness_requirement: req.freshness_requirement,
+        access_need: req.access_need,
+      });
+      setEditId(null);
+      await load();
+    });
+  };
+
+  const createManual = () => {
     if (!business || !manualName.trim()) return;
-    await client.createManualDataRequirement(businessId, {
-      business_model_revision: business.current_revision,
-      requirement_kind: 'ENTITY',
-      semantic_name: manualName.trim(),
-      description: manualName.trim(),
-      business_element_refs: [],
-      requiredness: 'REQUIRED',
-      freshness_requirement: 'DAILY',
-      access_need: 'READ',
+    run(async () => {
+      await client.createManualDataRequirement(businessId, {
+        business_model_revision: business.current_revision,
+        requirement_kind: 'ENTITY',
+        semantic_name: manualName.trim(),
+        description: manualName.trim(),
+        business_element_refs: [],
+        requiredness: 'REQUIRED',
+        freshness_requirement: 'DAILY',
+        access_need: 'READ',
+      });
+      setManualName('');
+      setShowManual(false);
+      await load();
     });
-    setManualName('');
-    setShowManual(false);
-    await load();
   };
 
   if (!businessId) {
@@ -111,7 +126,13 @@ export function DataRequirementsPage() {
         <h2 style={{ margin: 0 }}>数据需求</h2>
         {canEdit ? (
           <>
-            <button className="forma-btn forma-btn-primary" type="button" onClick={() => void analyze()}>
+            <button
+              className="forma-btn forma-btn-primary"
+              type="button"
+              data-testid="analyze-requirements"
+              disabled={busy}
+              onClick={analyze}
+            >
               从业务模型分析
             </button>
             <button className="forma-btn" type="button" onClick={() => setShowManual(v => !v)}>
@@ -133,7 +154,13 @@ export function DataRequirementsPage() {
             <label>语义名称</label>
             <input value={manualName} onChange={e => setManualName(e.target.value)} />
           </div>
-          <button className="forma-btn forma-btn-primary" type="button" onClick={() => void createManual()}>
+          <button
+            className="forma-btn forma-btn-primary"
+            type="button"
+            data-testid="create-manual-requirement"
+            disabled={busy}
+            onClick={createManual}
+          >
             创建
           </button>
         </div>
@@ -157,7 +184,8 @@ export function DataRequirementsPage() {
                     className="forma-btn forma-btn-primary"
                     type="button"
                     data-testid="confirm-requirement"
-                    onClick={() => void confirm(req.requirement_id)}
+                    disabled={busy}
+                    onClick={() => confirm(req.requirement_id)}
                   >
                     确认
                   </button>
@@ -165,7 +193,8 @@ export function DataRequirementsPage() {
                     className="forma-btn forma-btn-danger"
                     type="button"
                     data-testid="reject-requirement"
-                    onClick={() => void reject(req.requirement_id)}
+                    disabled={busy}
+                    onClick={() => reject(req.requirement_id)}
                   >
                     拒绝
                   </button>
@@ -185,7 +214,13 @@ export function DataRequirementsPage() {
               {editId === req.requirement_id && canEdit ? (
                 <div className="forma-form-row" style={{ marginTop: 8 }}>
                   <input value={editName} onChange={e => setEditName(e.target.value)} />
-                  <button className="forma-btn forma-btn-primary" type="button" onClick={() => void editConfirm(req)}>
+                  <button
+                    className="forma-btn forma-btn-primary"
+                    type="button"
+                    data-testid="submit-edit-confirm"
+                    disabled={busy}
+                    onClick={() => editConfirm(req)}
+                  >
                     提交编辑确认
                   </button>
                 </div>
