@@ -1,6 +1,6 @@
 ## Status
 
-**S4-G5-F1 = PASS (pending exact HEAD Forma CI ALL GREEN)**
+**S4-G5-F1 = PASS**
 
 ## Baseline
 
@@ -93,8 +93,11 @@ S4-G6 Live E2E / Security / Freeze. Do **not** create `forma-s4-frozen`.
 
 | Item | Value |
 |------|-------|
-| Commit SHA | TBD after push |
-| Forma CI | TBD |
+| Commit SHA | `a3c14697a04954e0fdba92c8912dcd772f658d7d` |
+| Forma CI | [33700145745](https://github.com/hai12138/forma/actions/runs/33700145745) **ALL GREEN** |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
 
 ## STOP
 
