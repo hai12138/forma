@@ -37,11 +37,10 @@ import (
 var noNeedSessionCheckPath = map[string]bool{
 	"/api/passport/web/email/login/":       true,
 	"/api/passport/web/email/register/v2/": true,
-	"/api/passport/web/logout/":            true,
 	// FORMA-BEGIN
-	"/api/forma/v1/health":        true,
-	"/api/forma/v1/version":       true,
-	"/api/forma/v1/meta/baseline": true,
+	"/api/forma/v1/health":         true,
+	"/api/forma/v1/version":        true,
+	"/api/forma/v1/meta/baseline":  true,
 	// FORMA-END
 }
 

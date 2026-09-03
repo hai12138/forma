@@ -35,10 +35,14 @@ export async function passportLogin(email: string, password: string): Promise<Pa
   return { ok: true };
 }
 
+/**
+ * Forma-owned logout facade → POST /api/forma/v1/auth/logout
+ * (revokes Coze session + expires HttpOnly cookie; does not call Coze passport UI).
+ */
 export async function passportLogout(): Promise<void> {
   try {
-    await fetch('/api/passport/web/logout/', {
-      method: 'GET',
+    await fetch('/api/forma/v1/auth/logout', {
+      method: 'POST',
       credentials: 'include',
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(8000),

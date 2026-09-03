@@ -9,23 +9,24 @@ export default defineConfig({
         context: ['/api/forma'],
         target: 'http://localhost:8888/',
         changeOrigin: true,
+        onProxyRes(proxyRes) {
+          // Strip illegal Domain=host:port so browsers accept Forma logout Set-Cookie.
+          const cookies = proxyRes.headers['set-cookie'];
+          if (cookies) {
+            const list = Array.isArray(cookies) ? cookies : [cookies];
+            proxyRes.headers['set-cookie'] = list.map(c =>
+              String(c).replace(/;\s*domain=[^;]*/gi, ''),
+            );
+          }
+        },
       },
       {
-        // Coze SessionAuth passport (login / logout / register) — same-origin to Forma UI.
+        // Coze SessionAuth passport (login / register) — same-origin to Forma UI.
+        // Logout uses Forma-owned /api/forma/v1/auth/logout — do not patch Coze core.
         context: ['/api/passport'],
         target: 'http://localhost:8888/',
         changeOrigin: true,
-        onProxyRes(proxyRes, req) {
-          // Ensure logout always expires HttpOnly session_key for the Forma UI origin.
-          if (req.url && req.url.includes('/logout')) {
-            const cleared = 'session_key=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax';
-            const existing = proxyRes.headers['set-cookie'];
-            proxyRes.headers['set-cookie'] = Array.isArray(existing)
-              ? [...existing, cleared]
-              : existing
-                ? [existing, cleared]
-                : [cleared];
-          }
+        onProxyRes(proxyRes) {
           // Strip illegal Domain=host:port from Set-Cookie so browsers accept session_key.
           const cookies = proxyRes.headers['set-cookie'];
           if (cookies) {

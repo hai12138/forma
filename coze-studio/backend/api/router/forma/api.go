@@ -20,6 +20,9 @@ func Register(r *server.Hertz) {
 		v1.GET("/version", formahandler.Version)
 		v1.GET("/meta/baseline", formahandler.Baseline)
 
+		// Forma-owned auth facade (SoT remains Coze SessionAuth).
+		v1.POST("/auth/logout", formahandler.Logout)
+
 		v1.GET("/me", formahandler.Me)
 		v1.GET("/tenants", formahandler.ListTenants)
 		v1.POST("/tenants", formahandler.CreateTenant)

@@ -143,6 +143,28 @@ export async function registerLoginBootstrap(email, password) {
   };
 }
 
+export async function loginExisting(email, password) {
+  const cookies = jar();
+  const r = await api('/api/passport/web/email/login/', {
+    method: 'POST',
+    body: { email, password },
+    cookies,
+  });
+  if (!cookies.header().includes('session_key')) {
+    throw new Error(`login failed: ${JSON.stringify(r.json)}`);
+  }
+  const me = await api('/api/forma/v1/me', { cookies });
+  const tenants = me.json?.data?.tenants || [];
+  const tenantId = tenants[0]?.tenant_id;
+  return {
+    cookies,
+    tenantId,
+    principalId: me.json?.data?.principal?.principal_id,
+    role: tenants[0]?.role,
+    tenants,
+  };
+}
+
 export function mysqlExec(sql, database = mysqlDatabase) {
   const result = spawnSync(
     'docker',

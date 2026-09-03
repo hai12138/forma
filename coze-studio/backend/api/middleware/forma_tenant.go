@@ -56,6 +56,8 @@ func isFormaAuthOnlyPath(path, method string) bool {
 	switch path {
 	case "/api/forma/v1/me", "/api/forma/v1/bootstrap":
 		return true
+	case "/api/forma/v1/auth/logout":
+		return method == http.MethodPost
 	case "/api/forma/v1/tenants":
 		return method == http.MethodGet || method == http.MethodPost
 	default:

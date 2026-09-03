@@ -252,7 +252,7 @@ curl -c /tmp/forma-cookies.txt -X POST http://localhost:8888/api/passport/web/em
 
 4. 回到 Forma 登录页，用同一邮箱/密码登录。前端经 same-origin 代理调用 `/api/passport/web/email/login/`，依赖 Cookie，**不要**把 Token 写入 localStorage。
 5. 登录后若尚无 Tenant → `/onboarding` 创建第一个 Workspace；否则进入原 `returnTo` 或 `/`。
-6. 退出：用户菜单 →「退出登录」→ 真实 Coze Logout → `/login`。
+6. 退出：用户菜单 →「退出登录」→ Forma `/api/forma/v1/auth/logout`（复用 Coze Session revoke + 过期 Cookie）→ `/login`。
 
 未登录访问受保护路由会重定向到 `/login?returnTo=…`，**不会**渲染 AppShell。
 ---
