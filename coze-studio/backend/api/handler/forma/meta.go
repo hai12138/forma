@@ -49,8 +49,12 @@ func envelope(ctx context.Context, c *app.RequestContext, data any) apiEnvelope 
 
 func errorEnvelope(c *app.RequestContext, err error) (int, apiEnvelope) {
 	fe, ok := formaerrors.AsFormaError(err)
-	if !ok {
+	if !ok || fe == nil {
 		fe = formaerrors.MapDomainError(err)
+	}
+	// Defensive: typed-nil *FormaError can satisfy error without being usable.
+	if fe == nil {
+		fe = formaerrors.Internal("unknown error")
 	}
 	msg := fe.Msg
 	if fe.Key != "" {

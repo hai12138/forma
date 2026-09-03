@@ -115,7 +115,7 @@ type EditConfirmDataRequirementResponse struct {
 }
 
 func (s *ApplicationService) AnalyzeDataRequirements(ctx context.Context, businessID string, in *AnalyzeDataRequirementsInput) (*AnalyzeDataRequirementsResponse, error) {
-	tc, err := s.requireDataTenant(ctx)
+	tc, err := s.requireDataEdit(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (s *ApplicationService) GetDataAnalysisRun(ctx context.Context, businessID,
 }
 
 func (s *ApplicationService) RetryFailedDataAnalysis(ctx context.Context, businessID, analysisRunID string) (*AnalyzeDataRequirementsResponse, error) {
-	tc, err := s.requireDataTenant(ctx)
+	tc, err := s.requireDataEdit(ctx)
 	if err != nil {
 		return nil, err
 	}

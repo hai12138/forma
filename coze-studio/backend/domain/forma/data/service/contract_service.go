@@ -133,6 +133,9 @@ func (s *contractService) CreateContract(ctx context.Context, in *CreateContract
 	if err := ValidateRequirementIDsUnique(in.RequirementIDs); err != nil {
 		return nil, nil, err
 	}
+	if err := ValidateQueryCapabilities(in.QueryCapabilities); err != nil {
+		return nil, nil, err
+	}
 	bindings, err := s.materializeBindings(ctx, in.TenantID, in.BusinessID, in.BusinessModelRevision, in.MappingIDs)
 	if err != nil {
 		return nil, nil, err
@@ -204,6 +207,9 @@ func (s *contractService) CreateRevision(ctx context.Context, in *CreateRevision
 		return nil, entity.ErrContractInvalidPayload
 	}
 	if err := ValidateRequirementIDsUnique(in.RequirementIDs); err != nil {
+		return nil, err
+	}
+	if err := ValidateQueryCapabilities(in.QueryCapabilities); err != nil {
 		return nil, err
 	}
 	contract, err := s.contracts.GetContract(ctx, in.TenantID, in.ContractID)

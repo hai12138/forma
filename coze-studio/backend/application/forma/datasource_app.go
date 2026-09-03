@@ -285,7 +285,10 @@ func (s *ApplicationService) TestDataConnection(ctx context.Context, sourceID, i
 	if e != nil {
 		return e
 	}
-	return formaerrors.MapDomainError(s.DatasourceSVC.TestConnection(ctx, tc.TenantID, sourceID, id))
+	if e = s.DatasourceSVC.TestConnection(ctx, tc.TenantID, sourceID, id); e != nil {
+		return formaerrors.MapDomainError(e)
+	}
+	return nil
 }
 func (s *ApplicationService) DiscoverDataAssets(ctx context.Context, sourceID, id string) ([]*DataAssetDTO, error) {
 	tc, e := s.requireDatasourceAdmin(ctx)

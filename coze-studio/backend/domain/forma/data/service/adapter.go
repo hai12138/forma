@@ -222,7 +222,7 @@ func (a *sqlAdapter) GetSchema(ctx context.Context, req *AdapterRequest, locator
 		CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 1 ELSE 0 END
 		FROM information_schema.columns c
 		LEFT JOIN information_schema.key_column_usage kcu ON c.table_schema=kcu.table_schema AND c.table_name=kcu.table_name AND c.column_name=kcu.column_name
-		LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name=tc.constraint_name AND kcu.table_schema=tc.table_schema
+		LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name=tc.constraint_name AND kcu.table_schema=tc.table_schema AND kcu.table_name=tc.table_name
 		WHERE c.table_schema=? AND c.table_name=? ORDER BY c.ordinal_position`
 	if a.driver != "mysql" {
 		query = `SELECT c.column_name, c.data_type, c.udt_name, c.is_nullable, c.ordinal_position,
@@ -230,7 +230,7 @@ func (a *sqlAdapter) GetSchema(ctx context.Context, req *AdapterRequest, locator
 			CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 1 ELSE 0 END
 			FROM information_schema.columns c
 			LEFT JOIN information_schema.key_column_usage kcu ON c.table_schema=kcu.table_schema AND c.table_name=kcu.table_name AND c.column_name=kcu.column_name
-			LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name=tc.constraint_name AND kcu.table_schema=tc.table_schema
+			LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name=tc.constraint_name AND kcu.table_schema=tc.table_schema AND kcu.table_name=tc.table_name
 			WHERE c.table_schema=? AND c.table_name=? ORDER BY c.ordinal_position`
 		query = strings.Replace(query, "?", "$1", 1)
 		query = strings.Replace(query, "?", "$2", 1)
@@ -241,6 +241,7 @@ func (a *sqlAdapter) GetSchema(ctx context.Context, req *AdapterRequest, locator
 	}
 	defer rows.Close()
 	out := &entity.PhysicalSchema{Name: schema + "." + table, Fields: []entity.PhysicalField{}, Relationships: []entity.PhysicalRelationship{}}
+	seenPaths := map[string]int{}
 	for rows.Next() {
 		var f entity.PhysicalField
 		var nullable string
@@ -251,6 +252,13 @@ func (a *sqlAdapter) GetSchema(ctx context.Context, req *AdapterRequest, locator
 		f.Nullable = strings.EqualFold(nullable, "YES")
 		f.PrimaryKey = pk == 1
 		f.Path = schema + "." + table + "." + f.Name
+		if idx, ok := seenPaths[f.Path]; ok {
+			if f.PrimaryKey {
+				out.Fields[idx].PrimaryKey = true
+			}
+			continue
+		}
+		seenPaths[f.Path] = len(out.Fields)
 		out.Fields = append(out.Fields, f)
 	}
 	if rows.Err() != nil {

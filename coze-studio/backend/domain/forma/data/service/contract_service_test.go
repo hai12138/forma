@@ -686,17 +686,18 @@ func TestContractSourceIndependenceMySQLToHTTP(t *testing.T) {
 	}
 }
 
-func TestContractWriteCapabilitiesDeniedOnValidate(t *testing.T) {
+func TestContractWriteCapabilitiesDeniedOnCreate(t *testing.T) {
 	f := newContractFixture(t)
 	in := f.defaultCreateInput()
 	in.QueryCapabilities = []entity.QueryCapability{entity.QueryCapabilityRead, "WRITE"}
-	_, rev, err := f.svc.CreateContract(context.Background(), in)
-	if err != nil {
-		t.Fatal(err)
+	_, _, err := f.svc.CreateContract(context.Background(), in)
+	if err == nil {
+		t.Fatal("expected create denied for write capability")
 	}
-	_, result, err := f.svc.ValidateRevision(context.Background(), "tenant", rev.RevisionID, "actor")
-	if err != nil || result.Status != entity.ValidationStatusFail {
-		t.Fatalf("expected fail on write cap: %+v %v", result, err)
+	in.QueryCapabilities = []entity.QueryCapability{"CREATE", "UPDATE", "DELETE", "EXECUTE", "COMMAND", "MUTATE"}
+	_, _, err = f.svc.CreateContract(context.Background(), in)
+	if err == nil {
+		t.Fatal("expected create denied for mutate capabilities")
 	}
 }
 
