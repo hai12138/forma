@@ -105,6 +105,16 @@ stop   → app DOWN, middleware left up
 - Mapping EditConfirm UI pending G6-F2
 - Drift Snapshot Picker pending G6-F2
 
+## Delivery
+
+| Item | Value |
+|---|---|
+| COMMIT_SHA | `c3feae76ac53a4e2915cd23b7e620d7171cb0199` |
+| CI_RUN | [33727360670](https://github.com/hai12138/forma/actions/runs/33727360670) |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+
 ## Commands
 
 **Windows**
@@ -125,3 +135,8 @@ cd <repo>/coze-studio
 
 FRONTEND_URL = http://localhost:3001  
 BACKEND_URL = http://localhost:8888
+
+## STOP
+
+Do **not** start S4-G6-F2. Do **not** start S5. Do **not** move `forma-s4-frozen`.
+Await human local start check.
