@@ -11,19 +11,20 @@
 | COZE_AUTH_CORE_CHANGE | NONE |
 | S4_REGRESSION | LOCAL_PASS |
 | REAL_MODEL_CALLS | 0 |
-| CI | PENDING (awaiting GitHub Forma CI after F1 push) |
+| CI | PENDING (awaiting GitHub Forma CI on tip) |
 | S5_G1_READY | NO |
 
-> Truthfulness rule: `S5_G0_STATUS = PASS` / `S5_G1_READY = YES` only after new exact commit CI is ALL GREEN.
+> Truthfulness rule: `S5_G0_STATUS = PASS` / `S5_G1_READY = YES` only after tip commit CI is ALL GREEN.
 
-## Baseline
+## Commits
 
 | Key | Value |
 |---|---|
 | S4_BASELINE | `forma-s4-frozen-r2` |
-| FREEZE_COMMIT | `7c05fc5da16e0f3c256ad06aaa5d2c76b9ebc7ae` |
-| IMPLEMENTATION_COMMIT (S5-G0) | `cb6500b02072e056ca450efec5a8f6b92431e58b` |
-| F1_FIX_COMMIT | _(filled after push)_ |
+| IMPLEMENTATION_COMMIT | `cb6500b02072e056ca450efec5a8f6b92431e58b` |
+| F1_FIX_COMMIT | `da20a7b83e094fa382b12a2aa81a218b86651b0e` |
+| F1_TEST_ALIGN_COMMIT | `b6950e01fc47f89d53302c4649cd2da8c0776981` |
+| TIP_COMMIT | _(filled after this push)_ |
 
 ## Login Account Contract (LOCKED)
 
@@ -38,41 +39,40 @@
 
 Rules:
 
-- Local aliases and `@forma.local` emails are the **same identity** (no duplicate principals).
+- Local aliases and `@forma.local` emails are the **same identity**.
 - Reject whitespace, control characters, path characters (`/`, `\`), invalid local formats.
-- Not “bootstrap alias only” — product supports local accounts for admin-created users.
+- Not “bootstrap alias only”.
 
 ## F1 Fixes
 
-1. **Backend test contract** — `memPrincipalRepo` implements `UpdateStatus` + `ListAll`; `memPlatformRoleRepo` added.
-2. **Frontend typecheck** — shell nav rendering uses shared `NavItem`/`NavGroup` helpers (fixes TS2367).
-3. **Atlas checksum** — regenerated via `atlas migrate hash` for `20250903000000_s5_g0_platform_admin.sql`.
-4. **Alias contract** — centralized `NormalizeAccount` + docs/result alignment.
-5. **Security tests** — bootstrap, password-change-required, create/disable/enable/reset, last SUPER_ADMIN protection.
+1. Backend test doubles: `UpdateStatus` + `ListAll` + `memPlatformRoleRepo`
+2. Frontend shell TS2367: shared `NavItem`/`NavGroup` renderer
+3. Atlas checksum regenerated for `20250903000000_s5_g0_platform_admin.sql`
+4. Locked Forma Local Account Alias via `NormalizeAccount`
+5. Admin security tests + passport unit test alignment
+6. Disabled-user login denied after session creation
 
-## Architecture
+## Local regression (pre-CI)
 
-```
-Forma UI → Forma Auth Adapter (login / change-password / logout)
-    ↓
-Coze User Domain (email/password, Argon2id, session)
-    ↓
-Forma Principal + PlatformRole (SUPER_ADMIN / USER)
-    ↓
-Forma Tenant Membership (OWNER / ADMIN / MEMBER / VIEWER)
-```
+| Check | Result |
+|---|---|
+| `go test ./domain/forma/tenancy/... ./application/forma/...` | PASS |
+| `node scripts/forma/typecheck.mjs` | PASS |
+| `node scripts/forma/migration-apply-test.mjs` (CASE A/B/C) | PASS |
+| `@forma/app` vitest | PASS |
+| `COZE_AUTH_CORE_CHANGE` vs `forma-s4-frozen-r2` | NONE |
 
 ## Security Invariants
 
 - `admin` / `admin123` = INITIAL PASSWORD ONLY
 - First login → `PASSWORD_CHANGE_REQUIRED`
-- Bootstrap = `CREATE_IF_ABSENT` (restart must not reset changed password)
-- SUPER_ADMIN enforced backend-side
-- Last SUPER_ADMIN cannot be disabled/demoted
-- Disabled user login/access denied
+- Bootstrap = `CREATE_IF_ABSENT`
+- SUPER_ADMIN backend authorization
+- Last SUPER_ADMIN protection
+- Disabled user denied
 - `COZE_AUTH_CORE_CHANGE = NONE`
 
-## Final Gate (after CI)
+## Final Gate (after CI ALL GREEN)
 
 ```
 S5_G0_F1_STATUS = PASS
