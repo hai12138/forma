@@ -2,9 +2,23 @@
 
 ## Status
 
-**S4_G6_STATUS = PASS** (pending annotated tag push verification in freeze commit notes)
+**S4_G6_STATUS = PASS**
 
-**S4_STATUS = PASS / FROZEN** (after `forma-s4-frozen` annotated tag on freeze commit)
+**S4_STATUS = PASS / FROZEN**
+
+**FREEZE_TAG = `forma-s4-frozen`**
+
+**FREEZE_COMMIT_SHA = `3f45d8bc31862da7304bc5d99a858f41ff3e300e`**
+
+**FREEZE_TAG_OBJECT_SHA = `fb8749540e994623f65e451adb472be75b1c4f06`** (annotated)
+
+**CANDIDATE_SHA = `de810b15df2d9dbd0b130918820761dd705f9800`**
+
+**CANDIDATE_CI = [33710829010](https://github.com/hai12138/forma/actions/runs/33710829010) ALL GREEN**
+
+**FREEZE_CI = [33711307076](https://github.com/hai12138/forma/actions/runs/33711307076) ALL GREEN**
+
+**TAG_CI = NOT_CONFIGURED / pending** (tag push verified on origin; freeze commit CI green)
 
 ## Baseline
 
@@ -124,16 +138,17 @@ Routes verified with direct navigation + refresh: `/data`, `/data/requirements`,
 5. Annotated tag `forma-s4-frozen` → push tag → verify object/target  
 6. **STOP** — do not start S5
 
-## Final status block (filled after freeze)
+## Final status block
 
 ```
 S4_G6_STATUS = PASS
 S4_STATUS = PASS / FROZEN
 FREEZE_TAG = forma-s4-frozen
-FREEZE_COMMIT_SHA = (see freeze record)
-FREEZE_TAG_OBJECT_SHA = (see freeze record)
-CI_RUN = (see freeze record)
-TAG_CI = (see freeze record / NOT_CONFIGURED if workflows ignore tags)
+FREEZE_COMMIT_SHA = 3f45d8bc31862da7304bc5d99a858f41ff3e300e
+FREEZE_TAG_OBJECT_SHA = fb8749540e994623f65e451adb472be75b1c4f06
+CI_RUN = 33711307076
+CANDIDATE_CI_RUN = 33710829010
+TAG_CI = NOT_CONFIGURED
 REAL_MODEL_CALLS = 2
 BUSINESS_A_E2E = PASS
 BUSINESS_B_E2E = PASS
@@ -155,3 +170,7 @@ BROWSER_E2E = PASS
 SECURITY = PASS
 BUSINESS_MODEL_MUTATION = NONE
 ```
+
+## STOP
+
+S4 is frozen. Do **not** start S5 / S6 / S7 / S8 / S9 until human confirms `forma-s4-frozen` target.
