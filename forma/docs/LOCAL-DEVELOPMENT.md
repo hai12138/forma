@@ -3,15 +3,9 @@
 本文档是 Forma 本地开发的正式入口。目标：拉取仓库后，尽可能通过**一个命令**完成环境检查、中间件、Forma Migration、Backend、Frontend，并拿到可访问地址。
 
 > **当前开发状态（重要）**  
-> 当前处于 **S4-G6-F1 → 等待 G6-F2 Browser acceptance correction**。  
-> **不是** S4 production complete，**不是** S5 ready。  
-> 已知产品 UI 缺口（**不是启动失败**）：
->
-> 1. Semantic Mapping **Edit & Confirm UI** 当前缺失  
-> 2. Data Health Drift **fresh SchemaSnapshot mapping** 当前 UI 不完整  
->
-> 这两个问题留给下一轮 **FORMA-S4-G6-F2**，不要在本地启动成功后误判为环境坏了。
-
+> 当前处于 **S4-G6-F2 PRODUCT UI + AUTH CLOSEOUT**（候选 SHA，等待人工 freeze）。  
+> **不是** S5 ready。  
+> `forma-s4-frozen` 标签**不要移动**。
 ---
 
 ## 1. 适用范围
@@ -116,16 +110,20 @@ Forma Local Development READY
 Frontend:
   http://localhost:3001
 
+NEXT STEP:
+  打开 http://localhost:3001
+  系统自动进入 Forma 登录页。
+  （无需先手动访问 Coze UI 登录。）
+
 Backend:
   http://localhost:8888
 
-Pages:
+Pages (登录后):
   http://localhost:3001/business
   http://localhost:3001/analyst
   http://localhost:3001/data
   ...
 ```
-
 可选 Make 薄封装（Linux/macOS；Windows 用户不依赖 Make）：
 
 ```bash
@@ -229,12 +227,13 @@ Backend 健康：`http://localhost:8888/api/forma/v1/health`
 
 ---
 
-## 10. 测试账号 / 首次注册说明
+## 10. 测试账号 / 首次登录说明
 
-Forma **复用 Coze Passport Session**，仓库内**没有**写死的 `admin/admin`。
+Forma **拥有自己的登录页**（`/login`），认证 SoT **继续复用 Coze Passport Session**（HttpOnly `session_key`）。仓库内**没有**写死的 `admin/admin`，也**没有**第二套 Forma 认证系统。
 
 1. 确认注册未关闭（`docker/.env.debug` 中 `DISABLE_USER_REGISTRATION` 为空或非 `true`）。
-2. 用任意邮箱注册（示例，自行替换邮箱与密码）：
+2. 打开 `http://localhost:3001` → 自动进入 **Forma 登录页**（无 Sidebar / AppShell）。
+3. 若尚无账号，可用 API 注册一次（示例，自行替换邮箱与密码）：
 
 ```powershell
 # Windows PowerShell
@@ -251,12 +250,11 @@ curl -c /tmp/forma-cookies.txt -X POST http://localhost:8888/api/passport/web/em
   -d '{"email":"you@example.com","password":"YourLocalPass1!"}'
 ```
 
-3. 若已注册则改走 login：`/api/passport/web/email/login/`。
-4. 将响应中的 `session_key` Cookie 写入浏览器对 `localhost:3001` 的 Cookie（DevTools → Application → Cookies）。
-5. 打开 Forma 页面；首次进入若无 Tenant，产品会尝试 `POST /api/forma/v1/bootstrap` 创建默认 Workspace（OWNER）。
+4. 回到 Forma 登录页，用同一邮箱/密码登录。前端经 same-origin 代理调用 `/api/passport/web/email/login/`，依赖 Cookie，**不要**把 Token 写入 localStorage。
+5. 登录后若尚无 Tenant → `/onboarding` 创建第一个 Workspace；否则进入原 `returnTo` 或 `/`。
+6. 退出：用户菜单 →「退出登录」→ 真实 Coze Logout → `/login`。
 
-未登录时页面仍可打开，Shell 会显示「未登录」横幅——这表示前端已起来，不是启动失败。
-
+未登录访问受保护路由会重定向到 `/login?returnTo=…`，**不会**渲染 AppShell。
 ---
 
 ## 11. AI 功能如何开启

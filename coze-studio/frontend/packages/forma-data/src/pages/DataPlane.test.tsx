@@ -11,6 +11,7 @@ import { SecretCredentialForm } from '../components/SecretCredentialForm';
 import {
   activeRevision,
   draftRevision,
+  labBinding,
   labBusiness,
   labDescriptor,
   labHttpSource,
@@ -792,5 +793,241 @@ describe('Credential form — no secret echo', () => {
     );
     expect(html).toBe('');
     expect(html).not.toContain(SECRET);
+  });
+});
+
+describe('mapping EditConfirm UI', () => {
+  it('edit-confirm submits controlled DSL and shows MANUAL_MODIFIED replacement', async () => {
+    let maps = [labMapping];
+    const client = mockClient({
+      listSemanticMappings: vi.fn(async () => ({ data: maps })),
+      editConfirmSemanticMapping: vi.fn(async () => {
+        const original = { ...labMapping, status: 'SUPERSEDED' };
+        const replacement = {
+          ...labMapping,
+          mapping_id: 'map_lab_edit',
+          status: 'CONFIRMED',
+          source: 'MANUAL_MODIFIED',
+          derived_from_mapping_id: labMapping.mapping_id,
+          mapping_type: 'CAST',
+          transform_spec: { type: 'CAST', from_type: 'string', to_type: 'number' },
+        };
+        maps = [original, replacement];
+        return { data: { original, replacement, decision: { decision: 'EDIT_CONFIRM' } } };
+      }),
+    });
+    const { container } = await mount('/data/mappings?businessId=biz_lab', { client });
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="edit-confirm-mapping"]')).not.toBeNull();
+    });
+    expect(container.querySelector('[data-testid="confirm-mapping"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="reject-mapping"]')).not.toBeNull();
+    await click(container.querySelector('[data-testid="edit-confirm-mapping"]'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="edit-confirm-mapping-panel"]')).not.toBeNull();
+    });
+    await setValue(
+      container.querySelector('[data-testid="edit-mapping-type-select"]') as HTMLSelectElement,
+      'CAST',
+    );
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="dsl-from-type"]')).not.toBeNull();
+    });
+    await setValue(container.querySelector('[data-testid="dsl-from-type"]') as HTMLInputElement, 'string');
+    await setValue(container.querySelector('[data-testid="dsl-to-type"]') as HTMLInputElement, 'number');
+    await setValue(
+      container.querySelector('[data-testid="edit-target-path-input"]') as HTMLInputElement,
+      'temp_c',
+    );
+    await click(container.querySelector('[data-testid="submit-edit-confirm-mapping"]'));
+    await waitFor(() => {
+      expect(client.editConfirmSemanticMapping).toHaveBeenCalled();
+    });
+    const body = (client.editConfirmSemanticMapping as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(body.mapping_type).toBe('CAST');
+    expect(body.transform_spec).toEqual({
+      type: 'CAST',
+      from_type: 'string',
+      to_type: 'number',
+    });
+    await waitFor(() => {
+      expect(container.textContent).toContain('人工修改并确认');
+      expect(container.textContent).toContain('已替代');
+    });
+  });
+});
+
+describe('drift snapshot picker', () => {
+  it('disables evaluate-drift until all pinned snapshots have fresh selection', async () => {
+    const client = mockClient();
+    const { container } = await mount('/data/health?businessId=biz_lab', { client });
+    await setValue(
+      container.querySelector('[data-testid="health-contract-id"]') as HTMLInputElement,
+      'ctr_lab',
+    );
+    await setValue(
+      container.querySelector('[data-testid="health-revision-id"]') as HTMLInputElement,
+      'rev_lab_2',
+    );
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="evaluate-drift"]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="drift-snapshot-picker"]')).not.toBeNull();
+    });
+    const btn = container.querySelector('[data-testid="evaluate-drift"]') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-testid="fresh-snapshot-select-snap_lab"]'),
+      ).not.toBeNull();
+    });
+    const select = container.querySelector(
+      '[data-testid="fresh-snapshot-select-snap_lab"]',
+    ) as HTMLSelectElement;
+    expect(Array.from(select.options).map(o => o.value)).toContain('snap_lab_fresh');
+    expect(Array.from(select.options).map(o => o.value)).not.toContain('snap_other_asset');
+    await setValue(select, 'snap_lab_fresh');
+    expect((container.querySelector('[data-testid="evaluate-drift"]') as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
+  it('submits real new_snapshot_ids and renders COMPATIBLE / BREAKING', async () => {
+    const client = mockClient({
+      evaluateDataContractDrift: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            result: {
+              DriftResultID: 'dr1',
+              Severity: 'COMPATIBLE',
+              Findings: [],
+            },
+            revision: activeRevision,
+          },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            result: {
+              DriftResultID: 'dr2',
+              Severity: 'BREAKING',
+              Findings: [{ code: 'FIELD_REMOVED', message: 'x', binding_mapping_id: 'm', field_path: 'a' }],
+            },
+            revision: { ...activeRevision, status: 'STALE' },
+          },
+        }),
+      getDataContract: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            contract_id: 'ctr_lab',
+            business_id: 'biz_lab',
+            active_revision_id: 'rev_lab_2',
+            created_by: 'p',
+            created_at: '',
+            updated_at: '',
+          },
+        })
+        .mockResolvedValue({
+          data: {
+            contract_id: 'ctr_lab',
+            business_id: 'biz_lab',
+            active_revision_id: '',
+            created_by: 'p',
+            created_at: '',
+            updated_at: '',
+          },
+        }),
+    });
+    const { container } = await mount('/data/health?businessId=biz_lab', { client });
+    await setValue(
+      container.querySelector('[data-testid="health-contract-id"]') as HTMLInputElement,
+      'ctr_lab',
+    );
+    await setValue(
+      container.querySelector('[data-testid="health-revision-id"]') as HTMLInputElement,
+      'rev_lab_2',
+    );
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-testid="fresh-snapshot-select-snap_lab"]'),
+      ).not.toBeNull();
+    });
+    await setValue(
+      container.querySelector('[data-testid="fresh-snapshot-select-snap_lab"]') as HTMLSelectElement,
+      'snap_lab_fresh',
+    );
+    await click(container.querySelector('[data-testid="evaluate-drift"]'));
+    await waitFor(() => {
+      expect(client.evaluateDataContractDrift).toHaveBeenCalledWith(
+        'biz_lab',
+        'ctr_lab',
+        'rev_lab_2',
+        { new_snapshot_ids: { snap_lab: 'snap_lab_fresh' } },
+      );
+      expect(container.querySelector('[data-testid="drift-severity-banner"]')?.textContent).toContain(
+        'COMPATIBLE',
+      );
+    });
+    await click(container.querySelector('[data-testid="evaluate-drift"]'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="drift-severity-banner"]')?.textContent).toContain(
+        'BREAKING',
+      );
+      expect(container.querySelector('[data-testid="health-contract-status"]')?.textContent).toMatch(
+        /active_revision_id=（空）|STALE/,
+      );
+    });
+  });
+
+  it('multi pinned snapshot mapping requires every fresh selection', async () => {
+    const binding2 = {
+      requirement_id: 'req_2',
+      mapping_id: 'map_2',
+      source_id: 'src_lab',
+      connection_id: 'conn_lab',
+      asset_id: 'asset_lab',
+      schema_snapshot_id: 'snap_lab_b',
+    };
+    const client = mockClient({
+      getDataContractRevision: vi.fn().mockResolvedValue({
+        data: {
+          ...activeRevision,
+          binding_refs: [labBinding, binding2],
+        },
+      }),
+      listSchemaSnapshots: vi.fn().mockImplementation(async (params: { assetId: string }) => ({
+        data: [
+          { ...labSchemaSnapshot, snapshot_id: 'snap_lab', asset_id: params.assetId },
+          { ...labSchemaSnapshot, snapshot_id: 'snap_lab_b', asset_id: params.assetId },
+          { ...labSchemaSnapshot, snapshot_id: 'snap_lab_fresh', asset_id: params.assetId },
+        ],
+      })),
+    });
+    const { container } = await mount('/data/health?businessId=biz_lab', { client });
+    await setValue(
+      container.querySelector('[data-testid="health-contract-id"]') as HTMLInputElement,
+      'ctr_lab',
+    );
+    await setValue(
+      container.querySelector('[data-testid="health-revision-id"]') as HTMLInputElement,
+      'rev_lab_2',
+    );
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="fresh-snapshot-select-snap_lab"]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="fresh-snapshot-select-snap_lab_b"]')).not.toBeNull();
+    });
+    const btn = () => container.querySelector('[data-testid="evaluate-drift"]') as HTMLButtonElement;
+    expect(btn().disabled).toBe(true);
+    await setValue(
+      container.querySelector('[data-testid="fresh-snapshot-select-snap_lab"]') as HTMLSelectElement,
+      'snap_lab_fresh',
+    );
+    // Second pinned still missing → must stay disabled (multi-mapping gate).
+    await waitFor(() => {
+      expect(btn().disabled).toBe(true);
+    });
+    expect(
+      container.querySelector('[data-testid="fresh-snapshot-select-snap_lab_b"]'),
+    ).not.toBeNull();
   });
 });

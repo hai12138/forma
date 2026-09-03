@@ -142,6 +142,41 @@ export function mockClient(overrides: Partial<FormaApiClient> = {}): FormaApiCli
     evaluateDataContractDrift: vi.fn().mockResolvedValue({ data: { result: {}, revision: activeRevision } }),
     evaluateDataContractGap: vi.fn().mockResolvedValue({ data: {} }),
     getSchemaSnapshot: vi.fn().mockResolvedValue({ data: labSchemaSnapshot }),
+    listSchemaSnapshots: vi.fn().mockResolvedValue({
+      data: [
+        labSchemaSnapshot,
+        {
+          ...labSchemaSnapshot,
+          snapshot_id: 'snap_lab_fresh',
+          fingerprint: 'fp_lab_fresh',
+        },
+      ],
+    }),
+    getDataContract: vi.fn().mockResolvedValue({
+      data: {
+        contract_id: 'ctr_lab',
+        business_id: 'biz_lab',
+        active_revision_id: 'rev_lab_2',
+        created_by: 'p',
+        created_at: '',
+        updated_at: '',
+      },
+    }),
+    editConfirmSemanticMapping: vi.fn().mockResolvedValue({
+      data: {
+        original: { ...labMapping, status: 'SUPERSEDED' },
+        replacement: {
+          ...labMapping,
+          mapping_id: 'map_lab_edit',
+          status: 'CONFIRMED',
+          source: 'MANUAL_MODIFIED',
+          derived_from_mapping_id: labMapping.mapping_id,
+          mapping_type: 'CAST',
+          transform_spec: { type: 'CAST', from_type: 'string', to_type: 'number' },
+        },
+        decision: { decision: 'EDIT_CONFIRM' },
+      },
+    }),
     ...overrides,
   };
   return new Proxy(base, {

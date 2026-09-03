@@ -345,6 +345,21 @@ func (s *ApplicationService) GetDataSchemaSnapshot(ctx context.Context, id strin
 	}
 	return schemaSnapshotDTO(v), nil
 }
+func (s *ApplicationService) ListDataSchemaSnapshots(ctx context.Context, sourceID, connectionID, assetID string) ([]*SchemaSnapshotDTO, error) {
+	tc, e := s.requireDatasourceTenant(ctx)
+	if e != nil {
+		return nil, e
+	}
+	vs, e := s.DatasourceSVC.ListSnapshotsByAsset(ctx, tc.TenantID, sourceID, connectionID, assetID)
+	if e != nil {
+		return nil, formaerrors.MapDomainError(e)
+	}
+	out := make([]*SchemaSnapshotDTO, 0, len(vs))
+	for _, v := range vs {
+		out = append(out, schemaSnapshotDTO(v))
+	}
+	return out, nil
+}
 
 func dataSourceDTO(v *datasourceentity.DataSource) *DataSourceDTO {
 	return &DataSourceDTO{SourceID: v.SourceID, Name: v.Name, SourceType: string(v.SourceType), Status: string(v.Status), CreatedBy: v.CreatedBy, CreatedAt: v.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: v.UpdatedAt.UTC().Format(time.RFC3339Nano)}

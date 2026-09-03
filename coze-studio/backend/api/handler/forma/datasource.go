@@ -185,3 +185,16 @@ func GetDataSchemaSnapshot(ctx context.Context, c *app.RequestContext) {
 	}
 	writeOK(ctx, c, v)
 }
+func ListDataSchemaSnapshots(ctx context.Context, c *app.RequestContext) {
+	vs, e := formaapp.ApplicationSVC.ListDataSchemaSnapshots(
+		ctx,
+		string(c.Query("source_id")),
+		string(c.Query("connection_id")),
+		string(c.Query("asset_id")),
+	)
+	if e != nil {
+		writeError(ctx, c, e)
+		return
+	}
+	writeOK(ctx, c, vs)
+}

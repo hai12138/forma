@@ -82,6 +82,14 @@ func PassportWebLogoutGet(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
+	// FORMA: expire session cookie so browser cannot keep a revoked session_key.
+	c.SetCookie(entity.SessionKey,
+		"",
+		-1,
+		"/", domain.GetOriginHost(c),
+		protocol.CookieSameSiteDefaultMode,
+		false, true)
+
 	c.JSON(http.StatusOK, resp)
 }
 

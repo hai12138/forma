@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 
 import { navigation } from '@/lib/navigation';
+import { passportLogout } from '@/lib/passport';
 import { useFormaSession } from '@/hooks/use-forma-session';
 
 import './shell.css';
+import '../pages/auth.css';
 
 function TenantSwitcher() {
   const { state, tenants, currentTenant, switchTenant } = useFormaSession();
@@ -43,44 +46,79 @@ function TenantSwitcher() {
   );
 }
 
+/** Non-auth banners only — unauthenticated / empty are AuthGuard routes. */
 function SessionBanner() {
-  const { state, error, bootstrap, refresh } = useFormaSession();
+  const { state, error, refresh } = useFormaSession();
 
-  if (state === 'ready' || state === 'loading') {
+  if (state === 'ready' || state === 'loading' || state === 'unauthenticated' || state === 'empty') {
+    return null;
+  }
+
+  if (state !== 'network_error' && state !== 'suspended' && state !== 'forbidden') {
     return null;
   }
 
   const messages: Record<string, string> = {
-    unauthenticated: '未登录。请先完成 Coze Session 认证，再进入 Forma。',
-    forbidden: '当前身份无权访问所选 Tenant。',
-    suspended: 'Tenant 已暂停，业务 API 已拒绝。',
-    empty: '尚未加入任何 Tenant。可执行 Bootstrap 创建默认 Workspace。',
-    network_error: `网络错误：${error || 'unknown'}`,
+    forbidden: '当前身份无权访问所选 Workspace。',
+    suspended: 'Workspace 已暂停，业务 API 已拒绝。',
+    network_error: '网络异常，请检查连接后重试。',
   };
 
   return (
-    <div className="forma-banner" role="status">
+    <div className="forma-banner" role="status" data-testid="session-banner">
       <span>{messages[state] || error}</span>
       <div className="forma-banner-actions">
-        {state === 'empty' && (
-          <button type="button" onClick={() => void bootstrap()}>
-            Bootstrap
-          </button>
-        )}
         <button type="button" onClick={() => void refresh()}>
-          Retry
+          重试
         </button>
       </div>
     </div>
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const { state, me, currentTenant } = useFormaSession();
+function UserMenu() {
+  const { me, clearLocalSession } = useFormaSession();
+  const [open, setOpen] = useState(false);
+  const label = me?.principal?.display_name || me?.principal?.principal_id || '用户';
 
   return (
-    <div className="forma-shell">
-      <aside className="forma-sidebar">
+    <div className="forma-user-menu" data-testid="user-menu">
+      <button
+        type="button"
+        className="forma-user-menu-btn"
+        data-testid="user-menu-trigger"
+        onClick={() => setOpen(v => !v)}
+      >
+        {label}
+      </button>
+      {open ? (
+        <div className="forma-user-menu-panel" data-testid="user-menu-panel">
+          <button
+            type="button"
+            data-testid="logout-button"
+            onClick={() => {
+              void (async () => {
+                setOpen(false);
+                await passportLogout();
+                clearLocalSession();
+                window.location.assign('/login');
+              })();
+            }}
+          >
+            退出登录
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const { me, currentTenant } = useFormaSession();
+
+  return (
+    <div className="forma-shell" data-testid="forma-app-shell">
+      <aside className="forma-sidebar" data-testid="forma-sidebar">
         <div className="forma-brand">
           <span className="forma-brand-mark">F</span>
           <div>
@@ -118,12 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="forma-topbar-meta">
-            {state === 'loading' && <span>Loading identity…</span>}
-            {me?.principal && (
-              <span>
-                {me.principal.display_name || me.principal.principal_id}
-              </span>
-            )}
+            {me?.principal ? <UserMenu /> : null}
           </div>
         </header>
         <SessionBanner />

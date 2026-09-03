@@ -96,6 +96,7 @@ vi.mock('@/hooks/use-forma-session', () => {
       switchTenant: vi.fn(),
       refresh: vi.fn(),
       bootstrap: vi.fn(),
+      clearLocalSession: vi.fn(),
     }),
   };
 });

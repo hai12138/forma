@@ -101,6 +101,7 @@ func main() {
 
 	h.POST("/api/passport/web/email/register/v2/", coze.PassportWebEmailRegisterV2Post)
 	h.POST("/api/passport/web/email/login/", coze.PassportWebEmailLoginPost)
+	h.GET("/api/passport/web/logout/", coze.PassportWebLogoutGet)
 
 	formaRouter.Register(h)
 

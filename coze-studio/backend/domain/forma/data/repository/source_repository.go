@@ -36,6 +36,7 @@ type DataSourceRepository interface {
 
 	CreateSnapshot(context.Context, *entity.SchemaSnapshot) error
 	GetSnapshot(context.Context, string, string) (*entity.SchemaSnapshot, error)
+	ListSnapshotsByAsset(ctx context.Context, tenantID, sourceID, connectionID, assetID string) ([]*entity.SchemaSnapshot, error)
 }
 
 type gormRepository struct{ dao *dal.DataSourceDAO }
@@ -97,4 +98,7 @@ func (r *gormRepository) CreateSnapshot(c context.Context, v *entity.SchemaSnaps
 }
 func (r *gormRepository) GetSnapshot(c context.Context, t, id string) (*entity.SchemaSnapshot, error) {
 	return r.dao.GetSnapshot(c, t, id)
+}
+func (r *gormRepository) ListSnapshotsByAsset(c context.Context, tenantID, sourceID, connectionID, assetID string) ([]*entity.SchemaSnapshot, error) {
+	return r.dao.ListSnapshotsByAsset(c, tenantID, sourceID, connectionID, assetID)
 }

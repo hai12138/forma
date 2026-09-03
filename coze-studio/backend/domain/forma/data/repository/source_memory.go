@@ -248,3 +248,15 @@ func (r *memoryRepository) GetSnapshot(_ context.Context, t, id string) (*entity
 	}
 	return cloneSnapshot(v), nil
 }
+func (r *memoryRepository) ListSnapshotsByAsset(_ context.Context, tenantID, sourceID, connectionID, assetID string) ([]*entity.SchemaSnapshot, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := []*entity.SchemaSnapshot{}
+	for _, v := range r.snapshots {
+		if v.TenantID == tenantID && v.SourceID == sourceID && v.ConnectionID == connectionID && v.AssetID == assetID {
+			out = append(out, cloneSnapshot(v))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}

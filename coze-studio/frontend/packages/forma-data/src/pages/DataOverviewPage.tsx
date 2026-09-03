@@ -7,7 +7,8 @@ import { readinessLabel } from '../utils/labels';
 import { useDataPlaneContext } from './useDataPlaneContext';
 
 export function DataOverviewPage() {
-  const { client, businessId } = useDataPlaneContext();
+  const { client, businessId, businesses } = useDataPlaneContext();
+  const business = businesses.find(b => b.business_id === businessId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(0);
@@ -23,7 +24,10 @@ export function DataOverviewPage() {
       setError(null);
       try {
         const [reqs, cov, contracts] = await Promise.all([
-          client.listDataRequirements(businessId, { status: 'CONFIRMED' }),
+          client.listDataRequirements(businessId, {
+            status: 'CONFIRMED',
+            business_model_revision: business?.current_revision,
+          }),
           client.getSemanticMappingCoverage(businessId),
           client.listDataContracts(businessId),
         ]);
@@ -59,7 +63,7 @@ export function DataOverviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [client, businessId]);
+  }, [client, businessId, business?.current_revision]);
 
   if (!businessId) {
     return <EmptyState title="请选择业务资产" hint="数据平面按业务展示需求、映射与契约就绪状态。" />;

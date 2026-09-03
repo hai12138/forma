@@ -791,6 +791,8 @@ export interface FormaApiClientOptions {
   fetchImpl?: typeof fetch;
   getRequestId?: () => string;
   getTenantId?: () => string | undefined;
+  /** Fired once per 401 — Forma AuthGuard uses this for session expiry UX. */
+  onUnauthorized?: () => void;
 }
 
 export class FormaApiClient {
@@ -798,6 +800,7 @@ export class FormaApiClient {
   private readonly fetchImpl: typeof fetch;
   private readonly getRequestId: () => string;
   private readonly getTenantId?: () => string | undefined;
+  private readonly onUnauthorized?: () => void;
 
   constructor(options: FormaApiClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? '';
@@ -806,6 +809,7 @@ export class FormaApiClient {
       options.getRequestId ??
       (() => `forma-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     this.getTenantId = options.getTenantId;
+    this.onUnauthorized = options.onUnauthorized;
   }
 
   async health(): Promise<FormaApiEnvelope<FormaHealthData>> {
@@ -1091,10 +1095,11 @@ export class FormaApiClient {
 
   async listDataRequirements(
     businessId: string,
-    opts?: { revision?: number; status?: string },
+    opts?: { revision?: number; business_model_revision?: number; status?: string },
   ): Promise<FormaApiEnvelope<FormaDataRequirement[]>> {
     const q = new URLSearchParams();
-    if (opts?.revision != null) q.set('revision', String(opts.revision));
+    const rev = opts?.business_model_revision ?? opts?.revision;
+    if (rev != null) q.set('business_model_revision', String(rev));
     if (opts?.status) q.set('status', opts.status);
     const qs = q.toString();
     return this.request<FormaDataRequirement[]>(
@@ -1215,8 +1220,18 @@ export class FormaApiClient {
 
   async listSemanticMappings(
     businessId: string,
+    opts?: { business_model_revision?: number; status?: string },
   ): Promise<FormaApiEnvelope<FormaSemanticMapping[]>> {
-    return this.request('GET', `/api/forma/v1/businesses/${businessId}/semantic-mappings`);
+    const q = new URLSearchParams();
+    if (opts?.business_model_revision != null) {
+      q.set('business_model_revision', String(opts.business_model_revision));
+    }
+    if (opts?.status) q.set('status', opts.status);
+    const qs = q.toString();
+    return this.request(
+      'GET',
+      `/api/forma/v1/businesses/${businessId}/semantic-mappings${qs ? `?${qs}` : ''}`,
+    );
   }
 
   async createManualSemanticMapping(
@@ -1543,6 +1558,20 @@ export class FormaApiClient {
     return this.request('GET', `/api/forma/v1/schema-snapshots/${snapshotId}`);
   }
 
+  /** Tenant-scoped list of schema snapshots for one asset (MEMBER readable). */
+  async listSchemaSnapshots(params: {
+    sourceId: string;
+    connectionId: string;
+    assetId: string;
+  }): Promise<FormaApiEnvelope<FormaSchemaSnapshot[]>> {
+    const q = new URLSearchParams({
+      source_id: params.sourceId,
+      connection_id: params.connectionId,
+      asset_id: params.assetId,
+    });
+    return this.request('GET', `/api/forma/v1/schema-snapshots?${q.toString()}`);
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -1585,6 +1614,11 @@ export class FormaApiClient {
     }
 
     if (response.status === 401) {
+      try {
+        this.onUnauthorized?.();
+      } catch {
+        // never let auth side-effects break error path
+      }
       throw new FormaApiError('UNAUTHORIZED', envelope?.msg || 'Unauthorized', {
         status: 401,
         requestId: envelope?.request_id || requestId,

@@ -28,7 +28,10 @@ export function DataRequirementsPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await client.listDataRequirements(businessId);
+      const revision = business?.current_revision;
+      const resp = await client.listDataRequirements(businessId, {
+        business_model_revision: revision,
+      });
       setItems(resp.data ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
@@ -36,7 +39,7 @@ export function DataRequirementsPage() {
     } finally {
       setLoading(false);
     }
-  }, [client, businessId]);
+  }, [client, businessId, business?.current_revision]);
 
   useEffect(() => {
     void load();

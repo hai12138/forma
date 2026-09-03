@@ -11,9 +11,10 @@ import type {
 import { EmptyState } from '../components/EmptyState';
 import { MappingDslForm } from '../components/MappingDslForm';
 import { StatusBadge } from '../components/StatusBadge';
-import { confidenceDisclaimer } from '../utils/labels';
+import { confidenceDisclaimer, mappingSourceLabel } from '../utils/labels';
 import { mappingLineageFromSnapshot } from '../utils/mapping-lineage';
 import { buildTransformSpec, MAPPING_TYPES } from '../utils/mapping-dsl';
+import { parseTransformSpecToForm } from '../utils/mapping-dsl-parse';
 import { isEditor } from '../utils/roles';
 import { safeMutate, sanitizedErrorMessage } from '../utils/errors';
 import { useDataPlaneContext } from './useDataPlaneContext';
@@ -32,6 +33,10 @@ export function MappingStudioPage() {
   const [mappingType, setMappingType] = useState<string>('DIRECT');
   const [targetPath, setTargetPath] = useState('');
   const [dslForm, setDslForm] = useState<Record<string, string>>({});
+  const [editMappingId, setEditMappingId] = useState<string | null>(null);
+  const [editType, setEditType] = useState('DIRECT');
+  const [editTargetPath, setEditTargetPath] = useState('');
+  const [editDsl, setEditDsl] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -42,8 +47,13 @@ export function MappingStudioPage() {
     setError(null);
     try {
       const [reqs, maps] = await Promise.all([
-        client.listDataRequirements(businessId, { status: 'CONFIRMED' }),
-        client.listSemanticMappings(businessId),
+        client.listDataRequirements(businessId, {
+          status: 'CONFIRMED',
+          business_model_revision: business?.current_revision,
+        }),
+        client.listSemanticMappings(businessId, {
+          business_model_revision: business?.current_revision,
+        }),
       ]);
       setRequirements(reqs.data ?? []);
       setMappings(maps.data ?? []);
@@ -52,7 +62,7 @@ export function MappingStudioPage() {
     } finally {
       setLoading(false);
     }
-  }, [client, businessId]);
+  }, [client, businessId, business?.current_revision]);
 
   useEffect(() => {
     void load();
@@ -77,6 +87,35 @@ export function MappingStudioPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMapping?.mapping_id]);
+
+  const openEditConfirm = (m: FormaSemanticMapping) => {
+    setEditMappingId(m.mapping_id);
+    setEditType(m.mapping_type);
+    setEditTargetPath(m.target_field_paths?.[0] ?? '');
+    setEditDsl(parseTransformSpecToForm(m.transform_spec));
+    setSelectedMapping(m);
+  };
+
+  const submitEditConfirm = (m: FormaSemanticMapping) => {
+    if (!editTargetPath.trim() || busy) return;
+    setBusy(true);
+    void safeMutate(async () => {
+      const form = { ...editDsl, path: editDsl.path || editTargetPath };
+      await client.editConfirmSemanticMapping(businessId, m.mapping_id, {
+        source_id: m.source_id,
+        connection_id: m.connection_id,
+        asset_id: m.asset_id,
+        schema_snapshot_id: m.schema_snapshot_id,
+        target_field_paths: [editTargetPath.trim()],
+        mapping_type: editType,
+        transform_spec: buildTransformSpec(editType, form),
+        confidence: 1,
+        reason: 'ui-edit-confirm',
+      });
+      setEditMappingId(null);
+      await load();
+    }, setError).finally(() => setBusy(false));
+  };
 
   const analyze = () => {
     if (!business || busy) return;
@@ -200,14 +239,19 @@ export function MappingStudioPage() {
               className="forma-card"
               key={m.mapping_id}
               data-testid="mapping-card"
+              data-mapping-id={m.mapping_id}
+              data-mapping-source={m.source}
               onClick={() => setSelectedMapping(m)}
               onKeyDown={() => setSelectedMapping(m)}
               role="button"
               tabIndex={0}
             >
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <StatusBadge status={m.status} />
                 <span>{m.mapping_type}</span>
+                <span className="forma-muted" data-testid="mapping-source-label">
+                  {mappingSourceLabel(m.source)}
+                </span>
               </div>
               <div>
                 置信度：{(m.confidence * 100).toFixed(0)}%
@@ -248,6 +292,63 @@ export function MappingStudioPage() {
                     }}
                   >
                     拒绝
+                  </button>
+                  <button
+                    className="forma-btn"
+                    type="button"
+                    data-testid="edit-confirm-mapping"
+                    disabled={busy}
+                    onClick={e => {
+                      e.stopPropagation();
+                      openEditConfirm(m);
+                    }}
+                  >
+                    修改并确认
+                  </button>
+                </div>
+              ) : null}
+              {editMappingId === m.mapping_id && canEdit ? (
+                <div
+                  className="forma-panel"
+                  style={{ marginTop: 12 }}
+                  data-testid="edit-confirm-mapping-panel"
+                  onClick={e => e.stopPropagation()}
+                  onKeyDown={e => e.stopPropagation()}
+                  role="presentation"
+                >
+                  <div className="forma-form-row">
+                    <label htmlFor={`edit-mapping-type-${m.mapping_id}`}>映射类型</label>
+                    <select
+                      id={`edit-mapping-type-${m.mapping_id}`}
+                      data-testid="edit-mapping-type-select"
+                      value={editType}
+                      onChange={e => setEditType(e.target.value)}
+                    >
+                      {MAPPING_TYPES.map(t => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="forma-form-row">
+                    <label htmlFor={`edit-target-path-${m.mapping_id}`}>目标字段路径</label>
+                    <input
+                      id={`edit-target-path-${m.mapping_id}`}
+                      data-testid="edit-target-path-input"
+                      value={editTargetPath}
+                      onChange={e => setEditTargetPath(e.target.value)}
+                    />
+                  </div>
+                  <MappingDslForm mappingType={editType} form={editDsl} onChange={setEditDsl} />
+                  <button
+                    className="forma-btn forma-btn-primary"
+                    type="button"
+                    data-testid="submit-edit-confirm-mapping"
+                    disabled={busy}
+                    onClick={() => submitEditConfirm(m)}
+                  >
+                    提交修改并确认
                   </button>
                 </div>
               ) : null}

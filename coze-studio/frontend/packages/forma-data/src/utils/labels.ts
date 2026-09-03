@@ -48,3 +48,17 @@ export function readinessLabel(opts: {
 export function confidenceDisclaimer(): string {
   return '置信度不代表已确认';
 }
+
+/** Product-facing provenance label — never expose runtime vendor names. */
+export function mappingSourceLabel(source: string | undefined | null): string {
+  switch (source) {
+    case 'AI_GENERATED':
+      return 'AI 建议';
+    case 'MANUAL':
+      return '人工创建';
+    case 'MANUAL_MODIFIED':
+      return '人工修改并确认';
+    default:
+      return source || '未知来源';
+  }
+}

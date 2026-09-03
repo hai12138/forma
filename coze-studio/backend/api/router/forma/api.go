@@ -118,6 +118,7 @@ func Register(r *server.Hertz) {
 		v1.GET("/data-sources/:sourceId/assets", formahandler.ListDataAssets)
 		v1.GET("/data-assets/:assetId", formahandler.GetDataAsset)
 		v1.POST("/data-sources/:sourceId/connections/:connectionId/assets/:assetId/capture-schema", formahandler.CaptureDataSchema)
+		v1.GET("/schema-snapshots", formahandler.ListDataSchemaSnapshots)
 		v1.GET("/schema-snapshots/:snapshotId", formahandler.GetDataSchemaSnapshot)
 	}
 }

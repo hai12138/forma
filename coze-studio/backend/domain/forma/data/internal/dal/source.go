@@ -255,3 +255,15 @@ func (d *DataSourceDAO) GetSnapshot(c context.Context, t, id string) (*entity.Sc
 	}
 	return snapshotTo(&r), e
 }
+func (d *DataSourceDAO) ListSnapshotsByAsset(c context.Context, tenantID, sourceID, connectionID, assetID string) ([]*entity.SchemaSnapshot, error) {
+	var rs []snapshotRow
+	e := d.db.WithContext(c).
+		Where("tenant_id=? AND source_id=? AND connection_id=? AND asset_id=?", tenantID, sourceID, connectionID, assetID).
+		Order("created_at DESC").
+		Find(&rs).Error
+	out := make([]*entity.SchemaSnapshot, 0, len(rs))
+	for i := range rs {
+		out = append(out, snapshotTo(&rs[i]))
+	}
+	return out, e
+}

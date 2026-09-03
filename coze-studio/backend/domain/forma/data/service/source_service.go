@@ -38,6 +38,7 @@ type DataSourceService interface {
 	ListAssets(context.Context, string, string) ([]*entity.DataAsset, error)
 	CaptureSchema(context.Context, string, string, string, string, string) (*entity.SchemaSnapshot, error)
 	GetSnapshot(context.Context, string, string) (*entity.SchemaSnapshot, error)
+	ListSnapshotsByAsset(ctx context.Context, tenantID, sourceID, connectionID, assetID string) ([]*entity.SchemaSnapshot, error)
 }
 
 type SourceComponents struct {
@@ -449,4 +450,17 @@ func (s *dataSourceService) CaptureSchema(ctx context.Context, t, sourceID, conn
 }
 func (s *dataSourceService) GetSnapshot(ctx context.Context, t, id string) (*entity.SchemaSnapshot, error) {
 	return s.repo.GetSnapshot(ctx, t, id)
+}
+func (s *dataSourceService) ListSnapshotsByAsset(ctx context.Context, tenantID, sourceID, connectionID, assetID string) ([]*entity.SchemaSnapshot, error) {
+	if tenantID == "" || sourceID == "" || connectionID == "" || assetID == "" {
+		return nil, entity.ErrDataAssetNotFound
+	}
+	asset, err := s.repo.GetAsset(ctx, tenantID, assetID)
+	if err != nil {
+		return nil, err
+	}
+	if asset.SourceID != sourceID || asset.ConnectionID != connectionID {
+		return nil, entity.ErrDataAssetNotFound
+	}
+	return s.repo.ListSnapshotsByAsset(ctx, tenantID, sourceID, connectionID, assetID)
 }

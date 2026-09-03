@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -20,13 +21,14 @@ import {
 
 const TENANT_STORAGE_KEY = 'forma.selectedTenantId';
 
-type SessionState =
+export type SessionState =
   | 'loading'
   | 'ready'
   | 'unauthenticated'
   | 'forbidden'
   | 'suspended'
   | 'empty'
+  | 'authenticated_no_tenant'
   | 'network_error';
 
 interface FormaSessionValue {
@@ -38,8 +40,9 @@ interface FormaSessionValue {
   assetCounts: FormaAssetCounts | null;
   client: FormaApiClient;
   switchTenant: (tenantId: string) => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<SessionState>;
   bootstrap: () => Promise<void>;
+  clearLocalSession: () => void;
 }
 
 const FormaSessionContext = createContext<FormaSessionValue | null>(null);
@@ -71,37 +74,51 @@ export function FormaSessionProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<FormaMeData | null>(null);
   const [assetCounts, setAssetCounts] = useState<FormaAssetCounts | null>(null);
   const [cacheEpoch, setCacheEpoch] = useState(0);
+  const unauthorizedNavRef = useRef(false);
+  const wasReadyRef = useRef(false);
+
+  const handleUnauthorized = useCallback(() => {
+    // Only treat mid-session 401 as expiry — initial unauthenticated /me must not flash "expired".
+    if (!wasReadyRef.current) return;
+    if (unauthorizedNavRef.current) return;
+    if (typeof window === 'undefined') return;
+    const path = `${window.location.pathname}${window.location.search}`;
+    if (path.startsWith('/login')) return;
+    unauthorizedNavRef.current = true;
+    wasReadyRef.current = false;
+    writeStoredTenantId(undefined);
+    setTenantId(undefined);
+    setMe(null);
+    setAssetCounts(null);
+    setState('unauthenticated');
+    const returnTo = encodeURIComponent(path.startsWith('/') && !path.startsWith('//') ? path : '/');
+    window.location.assign(`/login?expired=1&returnTo=${returnTo}`);
+  }, []);
 
   const client = useMemo(
     () =>
       createFormaApiClient({
         getTenantId: () => tenantId,
+        onUnauthorized: handleUnauthorized,
       }),
-    [tenantId, cacheEpoch],
+    [tenantId, cacheEpoch, handleUnauthorized],
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<SessionState> => {
     setState('loading');
     setError(null);
+    unauthorizedNavRef.current = false;
     try {
-      let meResp = await client.me();
-      let data = meResp.data;
-
-      if ((!data.tenants || data.tenants.length === 0) && !data.current_tenant) {
-        try {
-          await client.bootstrap({});
-          meResp = await client.me();
-          data = meResp.data;
-        } catch {
-          // bootstrap may fail without session spaces; surface empty state
-        }
-      }
+      const meResp = await client.me();
+      const data = meResp.data;
 
       if (!data.tenants?.length) {
         setMe(data);
         setAssetCounts(null);
-        setState('empty');
-        return;
+        wasReadyRef.current = false;
+        const next: SessionState = 'empty';
+        setState(next);
+        return next;
       }
 
       let selected =
@@ -113,7 +130,7 @@ export function FormaSessionProvider({ children }: { children: ReactNode }) {
         setMe(data);
         setState('suspended');
         setError('FORMA_TENANT_SUSPENDED');
-        return;
+        return 'suspended';
       }
 
       if (selected && selected.tenant_id !== tenantId) {
@@ -126,6 +143,7 @@ export function FormaSessionProvider({ children }: { children: ReactNode }) {
       try {
         const counts = await createFormaApiClient({
           getTenantId: () => selected?.tenant_id,
+          onUnauthorized: handleUnauthorized,
         }).assetCounts();
         setAssetCounts(counts.data);
       } catch {
@@ -133,28 +151,36 @@ export function FormaSessionProvider({ children }: { children: ReactNode }) {
       }
 
       setState('ready');
+      wasReadyRef.current = true;
+      return 'ready';
     } catch (err) {
+      wasReadyRef.current = false;
       if (err instanceof FormaApiError) {
         if (err.code === 'UNAUTHORIZED') {
+          setMe(null);
+          setAssetCounts(null);
           setState('unauthenticated');
-          setError(err.message);
-          return;
+          setError(null);
+          return 'unauthenticated';
         }
         if (err.code === 'FORBIDDEN') {
-          setState(err.errorKey === 'FORMA_TENANT_SUSPENDED' ? 'suspended' : 'forbidden');
+          const next: SessionState =
+            err.errorKey === 'FORMA_TENANT_SUSPENDED' ? 'suspended' : 'forbidden';
+          setState(next);
           setError(err.errorKey || err.message);
-          return;
+          return next;
         }
         if (err.code === 'NETWORK_ERROR') {
           setState('network_error');
           setError(err.message);
-          return;
+          return 'network_error';
         }
       }
       setState('network_error');
       setError(err instanceof Error ? err.message : 'Unknown error');
+      return 'network_error';
     }
-  }, [client, tenantId]);
+  }, [client, tenantId, handleUnauthorized]);
 
   useEffect(() => {
     void load();
@@ -172,6 +198,16 @@ export function FormaSessionProvider({ children }: { children: ReactNode }) {
     setCacheEpoch(v => v + 1);
   }, [client]);
 
+  const clearLocalSession = useCallback(() => {
+    wasReadyRef.current = false;
+    writeStoredTenantId(undefined);
+    setTenantId(undefined);
+    setMe(null);
+    setAssetCounts(null);
+    setState('unauthenticated');
+    setCacheEpoch(v => v + 1);
+  }, []);
+
   const value: FormaSessionValue = {
     state,
     error,
@@ -183,6 +219,7 @@ export function FormaSessionProvider({ children }: { children: ReactNode }) {
     switchTenant,
     refresh: load,
     bootstrap,
+    clearLocalSession,
   };
 
   return createElement(FormaSessionContext.Provider, { value }, children);
