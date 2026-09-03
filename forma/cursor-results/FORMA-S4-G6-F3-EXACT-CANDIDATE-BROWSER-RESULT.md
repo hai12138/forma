@@ -23,7 +23,7 @@ AUTH_DOMAIN_CHANGE = NONE
 | BROWSER_SUMMARY_SHA | `9db03944455eef26bd15706ea71962e3d42dfcbd5e07fad9a31a165b0a058c23` |
 | GIT_WORKTREE_CLEAN at browser start | `true` |
 | Frozen tag (immutable) | `forma-s4-frozen` → `3f45d8bc31862da7304bc5d99a858f41ff3e300e` |
-| CI_RUN | *(filled after CI)* |
+| CI_RUN | https://github.com/hai12138/forma/actions/runs/33760794665 (tip `d6e9161e` includes candidate; forma-backend / forma-migration-apply / forma-frontend ALL GREEN) |
 
 ## Auth boundary
 
