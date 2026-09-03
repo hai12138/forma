@@ -4,17 +4,15 @@
 
 | Gate | Status |
 |---|---|
-| **S5_G0_STATUS** | **PENDING_CI** |
-| **S5_G0_F1_STATUS** | **PENDING_CI** |
-| DEFAULT_ADMIN | LOCAL_PASS |
-| ADMIN_USER_MANAGEMENT | LOCAL_PASS |
+| **S5_G0_STATUS** | **PASS** |
+| **S5_G0_F1_STATUS** | **PASS** |
+| DEFAULT_ADMIN | PASS |
+| ADMIN_USER_MANAGEMENT | PASS |
 | COZE_AUTH_CORE_CHANGE | NONE |
-| S4_REGRESSION | LOCAL_PASS |
+| S4_REGRESSION | PASS |
 | REAL_MODEL_CALLS | 0 |
-| CI | PENDING (awaiting GitHub Forma CI on tip) |
-| S5_G1_READY | NO |
-
-> Truthfulness rule: `S5_G0_STATUS = PASS` / `S5_G1_READY = YES` only after tip commit CI is ALL GREEN.
+| CI | `33785041392` PASS |
+| S5_G1_READY | YES |
 
 ## Commits
 
@@ -24,7 +22,17 @@
 | IMPLEMENTATION_COMMIT | `cb6500b02072e056ca450efec5a8f6b92431e58b` |
 | F1_FIX_COMMIT | `da20a7b83e094fa382b12a2aa81a218b86651b0e` |
 | F1_TEST_ALIGN_COMMIT | `b6950e01fc47f89d53302c4649cd2da8c0776981` |
-| TIP_COMMIT | _(filled after this push)_ |
+| COMMIT_SHA (tip) | `c2c48eb01b93ccf0a23d42d7d77f65114426a2e9` |
+| CI_RUN | `33785041392` |
+
+## CI Jobs
+
+| Job | Result |
+|---|---|
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| **CI** | **ALL GREEN** |
 
 ## Login Account Contract (LOCKED)
 
@@ -52,16 +60,6 @@ Rules:
 5. Admin security tests + passport unit test alignment
 6. Disabled-user login denied after session creation
 
-## Local regression (pre-CI)
-
-| Check | Result |
-|---|---|
-| `go test ./domain/forma/tenancy/... ./application/forma/...` | PASS |
-| `node scripts/forma/typecheck.mjs` | PASS |
-| `node scripts/forma/migration-apply-test.mjs` (CASE A/B/C) | PASS |
-| `@forma/app` vitest | PASS |
-| `COZE_AUTH_CORE_CHANGE` vs `forma-s4-frozen-r2` | NONE |
-
 ## Security Invariants
 
 - `admin` / `admin123` = INITIAL PASSWORD ONLY
@@ -72,7 +70,7 @@ Rules:
 - Disabled user denied
 - `COZE_AUTH_CORE_CHANGE = NONE`
 
-## Final Gate (after CI ALL GREEN)
+## Final Gate
 
 ```
 S5_G0_F1_STATUS = PASS
@@ -82,8 +80,8 @@ ADMIN_USER_MANAGEMENT = PASS
 COZE_AUTH_CORE_CHANGE = NONE
 S4_REGRESSION = PASS
 REAL_MODEL_CALLS = 0
-COMMIT_SHA = ...
-CI_RUN = ...
+COMMIT_SHA = c2c48eb01b93ccf0a23d42d7d77f65114426a2e9
+CI_RUN = 33785041392
 CI = ALL GREEN
 S5_G1_READY = YES
 ```
