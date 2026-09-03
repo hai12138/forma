@@ -16,8 +16,8 @@ COZE_AUTH_CORE_CHANGE = NONE (logout cookie expire + session allowlist for /logo
 
 | Field | Value |
 |---|---|
-| CANDIDATE_SHA | d332acc038b9937a9b71362e3b683eefd8e10654 |
-| CI_RUN | *(filled after CI)* |
+| CANDIDATE_SHA | 7ca59ba87329c01b4ecb8b1a7e880dcefc9988cd |
+| CI_RUN | https://github.com/hai12138/forma/actions/runs/33745037115 (forma-backend / forma-migration-apply / forma-frontend ALL GREEN) |
 | Frozen tag (immutable) | `forma-s4-frozen` → `3f45d8bc31862da7304bc5d99a858f41ff3e300e` |
 
 ## Gate matrix
