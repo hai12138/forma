@@ -1,8 +1,8 @@
 # FORMA-S5-G1 — Business Capability Architecture & Stage Contract Freeze
 # RESULT
 
-**Gate:** S5-G1  
-**Date:** 2026-04-09  
+**Gate:** S5-G1
+**Date:** 2026-09-10
 **Status:** **PASS** (docs-only; Forma CI ALL GREEN; await human architecture review before S5-G2)
 
 ---
@@ -83,7 +83,7 @@
 
 ## 5. Roadmap Diff Note
 
-No prior formal in-repo **Business Capability** gate roadmap document existed.  
+No prior formal in-repo **Business Capability** gate roadmap document existed.
 This Stage Contract locks G1–G6 as authorized by the S5-G1 brief, and records **S5-G0** as the already-PASS Platform Admin prerequisite.
 
 No silent rewrite of an existing conflicting Capability roadmap was required.
