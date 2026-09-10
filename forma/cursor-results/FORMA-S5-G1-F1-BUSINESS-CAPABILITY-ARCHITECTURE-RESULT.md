@@ -3,7 +3,7 @@
 
 **Gate:** S5-G1-F1
 **Date:** 2026-09-10
-**Status:** PENDING_CI (docs committed; awaiting Forma CI ALL GREEN + human architecture review)
+**Status:** **PASS** (docs-only; Forma CI ALL GREEN; await human architecture review before S5-G2)
 
 ---
 
@@ -27,7 +27,7 @@
 |----------|--------|
 | `forma/docs/stages/FORMA-S5-BUSINESS-CAPABILITY-STAGE-CONTRACT.md` | AMENDED (G1-F1 consistency locks) |
 | `forma/cursor-results/FORMA-S5-G1-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | DATE fixed to `2026-09-10` |
-| `forma/cursor-results/FORMA-S5-G1-F1-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED |
+| `forma/cursor-results/FORMA-S5-G1-F1-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED / FINALIZED |
 
 ---
 
@@ -50,6 +50,7 @@
 - Removed “or remains history per activate policy”
 - Removed fuzzy `MEMBER+` / `ADMIN+`
 - Soft `SHOULD align` identity → locked `capability_id == asset_id`
+- Trailing whitespace cleaned (`git diff --check` clean)
 
 ---
 
@@ -57,19 +58,20 @@
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA | _pending push_ |
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| COMMIT_SHA | `f0c3dce9e88ba4138308526fae4348971aeb82d8` |
+| CI_RUN | `34499324660` |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| CI | **ALL GREEN** |
+| CI URL | https://github.com/hai12138/forma/actions/runs/34499324660 |
 
 ---
 
-## 5. Gate Summary (pre-CI)
+## 5. Gate Summary
 
 ```text
-S5_G1_F1_STATUS = PENDING_CI
+S5_G1_F1_STATUS = PASS
 PROPOSAL_REVISION_SEAM = PASS
 HUMAN_CONFIRM_INVARIANT = PASS
 REVISION_IMMUTABILITY = PASS
@@ -81,8 +83,8 @@ ROLE_MATRIX = PASS
 PRODUCT_CODE_CHANGE = NONE
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
-CI = pending
+CI = ALL GREEN
 S5_G2_READY = NO
 ```
 
-**Stop:** After CI ALL GREEN, finalize §4/§5, then **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`.
+**Stop:** **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`. Await human architecture review.
