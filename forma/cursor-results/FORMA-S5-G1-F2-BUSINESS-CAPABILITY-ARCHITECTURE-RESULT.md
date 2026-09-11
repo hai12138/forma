@@ -3,7 +3,7 @@
 
 **Gate:** S5-G1-F2
 **Date:** 2026-09-11
-**Status:** PENDING_CI (docs committed; awaiting Forma CI ALL GREEN + human architecture review)
+**Status:** **PASS** (docs-only; Forma CI ALL GREEN; await human architecture review before S5-G2)
 
 ---
 
@@ -25,7 +25,7 @@
 | Artifact | Action |
 |----------|--------|
 | `forma/docs/stages/FORMA-S5-BUSINESS-CAPABILITY-STAGE-CONTRACT.md` | AMENDED (G1-F2) |
-| `forma/cursor-results/FORMA-S5-G1-F2-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED |
+| `forma/cursor-results/FORMA-S5-G1-F2-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED / FINALIZED |
 
 ---
 
@@ -40,25 +40,28 @@
 | CapabilityAnalysisRun | PASS — PENDING/SUCCEEDED/FAILED; same key+digest return matrix; FAILED explicit retry + attempt/audit; ≤1 concurrent model executor |
 | V1 QUERY compatibility | PASS — required/optional input binding direction; cardinality enum ONE/MANY/AGGREGATE mapped to READ/LOOKUP/LIST/FILTER/AGGREGATE; incompat → Validation FAIL |
 
+`git diff --check`: PASS (clean)
+
 ---
 
 ## 4. Commit & CI
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA | _pending push_ |
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| COMMIT_SHA | `1e387273f2af22e271223ba547c7bfb049d19809` |
+| CI_RUN | `34552281433` |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| CI | **ALL GREEN** |
+| CI URL | https://github.com/hai12138/forma/actions/runs/34552281433 |
 
 ---
 
-## 5. Gate Summary (pre-CI)
+## 5. Gate Summary
 
 ```text
-S5_G1_F2_STATUS = PENDING_CI
+S5_G1_F2_STATUS = PASS
 DERIVED_EDIT_LIFECYCLE = PASS
 REJECT_AUDIT = PASS
 FIELD_SOT = PASS
@@ -68,8 +71,8 @@ QUERY_COMPATIBILITY = PASS
 PRODUCT_CODE_CHANGE = NONE
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
-CI = pending
+CI = ALL GREEN
 S5_G2_READY = NO
 ```
 
-**Stop:** After CI ALL GREEN, finalize §4/§5, then **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`.
+**Stop:** **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`. Await human architecture review.
