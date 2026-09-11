@@ -3,7 +3,7 @@
 
 **Gate:** S5-G1-F5
 **Date:** 2026-09-11
-**Status:** PENDING_CI (docs committed; awaiting Forma CI ALL GREEN + human architecture review)
+**Status:** **PASS** (docs-only; Forma CI ALL GREEN; await human architecture review before S5-G2)
 
 ---
 
@@ -25,7 +25,7 @@
 | Artifact | Action |
 |----------|--------|
 | `forma/docs/stages/FORMA-S5-BUSINESS-CAPABILITY-STAGE-CONTRACT.md` | AMENDED (G1-F5) |
-| `forma/cursor-results/FORMA-S5-G1-F5-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED |
+| `forma/cursor-results/FORMA-S5-G1-F5-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED / FINALIZED |
 
 ---
 
@@ -40,25 +40,28 @@
 | QUERY V1 | PASS — AGGREGATE deferred with LOOKUP; cardinality table READ/LIST/FILTER only; FILTER requires required input + required predicate |
 | AssetRef.SchemaVersion | PASS — fixed "1.0" at create; unchanged in V1 lifecycle |
 
+`git diff --check`: PASS (clean)
+
 ---
 
 ## 4. Commit & CI
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA | _pending push_ |
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| COMMIT_SHA | `49e8dcedd61a25ea3885423a68cde87339585675` |
+| CI_RUN | `34588551428` |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| CI | **ALL GREEN** |
+| CI URL | https://github.com/hai12138/forma/actions/runs/34588551428 |
 
 ---
 
-## 5. Gate Summary (pre-CI)
+## 5. Gate Summary
 
 ```text
-S5_G1_F5_STATUS = PENDING_CI
+S5_G1_F5_STATUS = PASS
 AGGREGATE_PROJECTION = PASS
 EXISTING_CAPABILITY_DRAFT = PASS
 PAYLOAD_DIGEST = PASS
@@ -68,8 +71,8 @@ SCHEMA_VERSION = PASS
 PRODUCT_CODE_CHANGE = NONE
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
-CI = pending
+CI = ALL GREEN
 S5_G2_READY = NO
 ```
 
-**Stop:** After CI ALL GREEN, finalize §4/§5, then **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`.
+**Stop:** **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`. Await human architecture review.
