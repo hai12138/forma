@@ -2,13 +2,13 @@
 # STAGE CONTRACT (Architecture Freeze)
 
 **Gate:** S5-G1 — Business Capability Architecture & Stage Contract Freeze
-**Amendment:** S5-G1-F3 — Architecture Consistency Fix (2026-09-11) — supersedes F1/F2 wording where amended
-**Prior amendments:** S5-G1-F1 (2026-09-10), S5-G1-F2 (2026-09-11)
+**Amendment:** S5-G1-F4 — Architecture Consistency Fix (2026-09-11) — supersedes F1–F3 wording where amended
+**Prior amendments:** S5-G1-F1 (2026-09-10), S5-G1-F2 (2026-09-11), S5-G1-F3 (2026-09-11)
 **Status:** CONTRACT_READY (awaiting human architecture review)
 **S4 Baseline:** `forma-s4-frozen-r2` → `7c05fc5da16e0f3c256ad06aaa5d2c76b9ebc7ae`
 **S5-G0 Baseline:** Platform Admin / User Management Foundation — PASS (`S5_G1_READY = YES`)
 **Scope of this document:** Architecture invariants, domain model, boundaries, hard gates, and G2–G6 roadmap for Business Capability.
-**Code change rule for G1 / G1-F1 / G1-F2 / G1-F3:** Documentation and static verification only. No domain code, migrations, adapters, APIs, UI modules, or model calls.
+**Code change rule for G1 / G1-F1 / G1-F2 / G1-F3 / G1-F4:** Documentation and static verification only. No domain code, migrations, adapters, APIs, UI modules, or model calls.
 
 ---
 
@@ -132,32 +132,40 @@ When Business Model or Data Contract changes:
 
 #### 3.4.1 AssetRef projection field sources (LOCKED — no “as applicable”)
 
-When refreshing the Asset header from a Capability Revision `R` (the revision being projected):
+V1 uses a **single stable AssetRef header row** per Capability (`capability_id == asset_id`).
+**Forbidden:** inserting a new AssetRef header row on each Capability Activate.
+**Forbidden:** treating `AssetRef.Revision` as an activation counter.
+
+When refreshing the Asset header projection from Capability Revision `R` (the revision being projected — ACTIVE when released, otherwise the revision that drove the Status transition):
 
 | AssetRef field | Exact source |
 |----------------|--------------|
 | `Name` | `R.name` |
-| `SemanticVersion` | decimal string of `R.version` with no prefix (example: version `3` → `"3"`) |
-| `Revision` | Asset Registry monotonic header counter (`int32`): set to `1` on Asset create; increment by `1` on each successful Activate that changes `active_revision_id`; unchanged on Validate / STALE / historical handling that does not change the active pointer |
+| `SemanticVersion` | SemVer string `0.{N}.0` where `N = R.version` (example: version `3` → `"0.3.0"`). **Not** a bare integer string. **Display projection only** of the projected Capability revision’s version — **not** revision identity (`revision_id` / `version` remain on `BusinessCapabilityRevision`) |
+| `Revision` | Always `1` after Asset create. **Never** modified by Activate, Validate, STALE, or Deprecate |
 | `ContentDigest` | Hex-encoded SHA-256 of the canonical serialization of `R`’s semantic payload (schemas, bindings, preconditions, effects, name, description, kind, pins, query_operation, output_cardinality). Algorithm and canonicalization fixed in G2 to match existing Forma digest conventions if already present; digest MUST change when projected semantics change |
 | `Kind` | always `CAPABILITY` |
 | `Status` | per §3.4.2 only |
 
+**Capability revision identity / version SoT:** only `BusinessCapabilityRevision` (`revision_id`, `version`, …).
+**CozeResourceRef.AssetRevision:** continues to reference the stable `AssetRef.Revision = 1` (does not track Capability Activate count).
+
 #### 3.4.2 AssetRef.Status ↔ Capability lifecycle mapping (LOCKED)
 
-| Situation | `active_revision_id` | AssetRef.Status |
-|-----------|----------------------|-----------------|
-| Initial create / Confirm bind (only DRAFT revisions exist) | `null` | `DRAFT` |
-| At least one VALIDATED revision exists and none is ACTIVE | `null` | `VERIFIED` |
-| A revision is ACTIVE | equals that ACTIVE `revision_id` | `RELEASED` |
-| Current ACTIVE → STALE (pointer referenced that revision) | cleared to `null` | `VERIFIED` |
-| Current ACTIVE → DEPRECATED with no replacement ACTIVE (human Deprecate) | cleared to `null` | `DEPRECATED` |
-| Historical STALE / DEPRECATED while a **newer** ACTIVE exists | remains the newer ACTIVE id | stays `RELEASED`; do **not** clear pointer or demote Asset due to historical rows |
+| Situation | `active_revision_id` | AssetRef.Status | Transaction coupling |
+|-----------|----------------------|-----------------|----------------------|
+| Initial create / Confirm bind (DRAFT only) | `null` | `DRAFT` | Same UoW as create/Confirm |
+| Validate succeeds and no revision is ACTIVE | `null` | `VERIFIED` | **Same transaction as Validate** |
+| A revision is ACTIVE | equals that ACTIVE `revision_id` | `RELEASED` | Same transaction as Activate (§8.4) |
+| Current ACTIVE → STALE (pointer referenced that revision) | cleared to `null` | `VERIFIED` | Same transaction as STALE transition |
+| STALE → DEPRECATED and no ACTIVE remains | `null` | `DEPRECATED` | Same transaction as that Deprecate |
+| Current ACTIVE → DEPRECATED with no replacement ACTIVE | cleared to `null` | `DEPRECATED` | Same transaction as Deprecate |
+| Historical STALE / DEPRECATED while a **newer** ACTIVE exists | remains the newer ACTIVE id | stays `RELEASED` | Must **not** clear pointer or demote Asset |
 
 **Hard invariant:** `AssetRef.Status == RELEASED` **requires** non-empty `active_revision_id`.
 **Forbidden:** `RELEASED` + empty/null `active_revision_id`.
 
-Activate / STALE / Deprecate transactions that change pointer or projected revision MUST update AssetRef projection fields (§3.4.1) and Status (§3.4.2) in the **same** transaction as the Capability mutation (§8.4).
+All Status / `active_revision_id` / Name / SemanticVersion / ContentDigest updates for a lifecycle action MUST be **atomic** with that Capability mutation (Validate, Activate, STALE, Deprecate, Confirm create). `AssetRef.Revision` stays `1`.
 
 ---
 
@@ -322,10 +330,10 @@ These must not redefine Business Model or Data Contract semantics.
 `revision_id`, `capability_id`, `tenant_id`, `business_id`, `version`, `status`, `name`, `description`, `business_model_revision`, `capability_kind`, `input_schema`, `output_schema`, `preconditions[]`, `effects[]`, `data_contract_bindings[]`, `query_operation` (QUERY), `output_cardinality` (QUERY), `derived_from_revision_id` (nullable), `analysis_run_id` (nullable), `proposal_id` (nullable), `source` (`AI_PROPOSAL` / `MANUAL_CREATED` / `DERIVED_EDIT`), `created_by`, `created_at`
 
 **CapabilityProposal:**
-`proposal_id`, `tenant_id`, `business_id`, `analysis_run_id`, `capability_id` (nullable until CONFIRM/EDIT_CONFIRM binds), `status` (`PROPOSED` / `REJECTED` / `CONFIRMED` / `EDIT_CONFIRMED`), `payload` (proposed semantic content), `materialized_revision_id` (nullable), `created_at`
+`proposal_id`, `tenant_id`, `business_id`, `analysis_run_id`, `capability_id` (nullable until CONFIRM/EDIT_CONFIRM binds), `status` (`PROPOSED` / `REJECTED` / `CONFIRMED` / `EDIT_CONFIRMED`), `payload` (**immutable** proposed semantic content; never updated after create), `materialized_revision_id` (nullable), `created_at`
 
 **CapabilityDecision:**
-`decision_id`, `tenant_id`, `business_id`, `capability_id` (nullable **only** for unbound-Proposal REJECT — §9.9), `proposal_id` (required when `capability_id` is null), `source_revision_id` (required for EDIT/DERIVE), `target_revision_id` (required for EDIT/DERIVE; set for CONFIRM/EDIT_CONFIRM materialization), `action`, `actor_principal_id`, `reason` (nullable), `created_at`
+`decision_id`, `tenant_id`, `business_id`, `capability_id` (nullable **only** for unbound-Proposal REJECT — §9.9), `proposal_id` (required when `capability_id` is null; required for CONFIRM/EDIT_CONFIRM), `source_revision_id` (required for EDIT/DERIVE), `target_revision_id` (required for EDIT/DERIVE; set for CONFIRM/EDIT_CONFIRM materialization), `action`, `effective_payload_digest` (required for CONFIRM/EDIT_CONFIRM; for DERIVE stores `request_digest`), `client_request_id` (when used for idempotency), `actor_principal_id`, `reason` (nullable), `created_at`
 Decisions are immutable after create. AI must not create human decisions.
 
 **CapabilityAnalysisRun:**
@@ -399,7 +407,7 @@ STALE → DEPRECATED
 | From | To | Actor | Notes |
 |------|----|-------|-------|
 | — | DRAFT | Human CONFIRM / EDIT_CONFIRM (Proposal) · MANUAL_CREATE · EDIT/DERIVE | See §9; AI never creates Revision |
-| DRAFT | VALIDATED | Human-triggered Validate | Requires §9.6 prerequisite + successful `CapabilityValidationResult` |
+| DRAFT | VALIDATED | Human-triggered Validate | Requires §9.6 prerequisite + successful `CapabilityValidationResult`; AssetRef Status → `VERIFIED` when no ACTIVE (§3.4.2) in **same** transaction |
 | VALIDATED | ACTIVE | Human Activate | Single transaction per §8.4 (+ Asset header projection §3.4) |
 | ACTIVE | DEPRECATED | Human Deprecate **or** Activate supersession | Auditable |
 | ACTIVE | STALE | System/human impact evaluation | Only via §8.3 triggers + recorded `CapabilityImpactResult` |
@@ -438,7 +446,7 @@ Activating a new VALIDATED revision **MUST** occur in **one transaction**:
 2. Current old ACTIVE revision (if any) → `DEPRECATED`
 3. New revision → `ACTIVE`
 4. `active_revision_id` → new revision
-5. Refresh Asset header projection + Asset status mapping per §3.4
+5. Refresh AssetRef projection fields (Name / SemanticVersion / ContentDigest) + Status mapping per §3.4 (`Revision` remains `1`)
 6. Write lifecycle / decision audit
 
 When the current ACTIVE becomes `STALE` or `DEPRECATED`:
@@ -459,20 +467,30 @@ OWNER/ADMIN DeriveRevision
   → atomically create target DRAFT (source=DERIVED_EDIT)
        + CapabilityDecision(EDIT|DERIVE)
          with source_revision_id + target_revision_id
+         + request_digest / idempotency fields
 ```
 
 **Unit of Work (mandatory):**
 
 1. Lock Capability aggregate and the source `BusinessCapabilityRevision`
 2. Create immutable target `BusinessCapabilityRevision(DRAFT, source=DERIVED_EDIT, derived_from_revision_id=source)`
-3. Create immutable `CapabilityDecision(action=EDIT|DERIVE)` with both `source_revision_id` and `target_revision_id`
+3. Create immutable `CapabilityDecision(action=EDIT|DERIVE)` with both `source_revision_id` and `target_revision_id`, plus persisted `request_digest` (and logical key fields) so the original `target_revision_id` is always recoverable from the Decision / operation record
 4. Commit
 
 **Failure:** any step fails → full rollback; no orphan DRAFT or Decision.
 
-**Idempotency:** DeriveRevision accepts a client idempotency key (minimum: `tenant_id + capability_id + source_revision_id + client_request_id` + digest of requested semantic delta). Same key replay → return the original target Revision; **no** duplicate derived Revision or Decision.
+**Idempotency (LOCKED — key and digest separated):**
 
-**Concurrency:** concurrent DeriveRevision for the same source + key → at most one creates; others observe the winner or conflict. Concurrent distinct keys may create distinct derived DRAFTs.
+- **Logical key:** `tenant_id + capability_id + source_revision_id + client_request_id`
+- **`request_digest`:** persisted independently; covers the requested semantic delta / target payload
+
+| Case | Behavior |
+|------|----------|
+| Same key + same digest | Return the original target Revision (and original Decision); **no** duplicate |
+| Same key + different digest | Stable **idempotency conflict** |
+| Concurrent same key | At most one create; others observe winner or conflict |
+
+**Concurrency:** concurrent DeriveRevision with distinct keys may create distinct derived DRAFTs.
 
 Rules:
 
@@ -615,11 +633,30 @@ Forma Capability Domain
 
 **Forbidden in Capability Domain:** provider-specific SDKs (OpenAI / DeepSeek / Qwen / …).
 
-**S5-G1 / S5-G1-F1 / S5-G1-F2 / S5-G1-F3: REAL_MODEL_CALLS = 0**
+**S5-G1 / S5-G1-F1 / S5-G1-F2 / S5-G1-F3 / S5-G1-F4: REAL_MODEL_CALLS = 0**
 
 ### 9.8 ConfirmProposal atomic boundary & replay (LOCKED)
 
 CONFIRM / EDIT_CONFIRM **MUST** execute as **one Unit of Work**.
+
+**Payload rules (LOCKED):**
+
+- `CapabilityProposal.payload` is **immutable** after Proposal create (AI or system must not rewrite it).
+- **CONFIRM** effective payload = `Proposal.payload` (caller must not substitute a different body).
+- **EDIT_CONFIRM** MUST carry a **complete** `effective_payload` (full semantic document, not a patch). The materialized Revision is created from that `effective_payload`.
+- Persist `effective_payload_digest` = digest of the effective payload used for materialization, and store it on the `CapabilityDecision`.
+
+**Idempotency (LOCKED — logical key separated from digest):**
+
+- **Logical key:** `tenant_id + proposal_id + client_request_id`
+- **Action:** `CONFIRM` or `EDIT_CONFIRM` (matched separately from the key)
+- **Digest:** `effective_payload_digest`
+
+| Case | Behavior |
+|------|----------|
+| Same key + same action + same digest | Return the original `materialized_revision_id` / Revision; **no** new Asset/Capability/Revision/Decision |
+| Same key + same action + different digest | Stable **idempotency conflict** |
+| Terminal status ≠ requested action | Stable **conflict** (unchanged from F3) |
 
 **Lock rule:** begin transaction and **lock the Proposal row first**. Do **not** require the pre-lock observed status to be `PROPOSED` before locking; decide behavior **after** the lock using the locked row.
 
@@ -627,9 +664,9 @@ CONFIRM / EDIT_CONFIRM **MUST** execute as **one Unit of Work**.
 
 | Locked Proposal status | Requested action | Behavior |
 |------------------------|------------------|----------|
-| `PROPOSED` | CONFIRM or EDIT_CONFIRM | **First materialization** (steps below) |
-| `CONFIRMED` | CONFIRM | Idempotent replay → return existing `materialized_revision_id` (and original Decision); **no** new Asset/Capability/Revision/Decision |
-| `EDIT_CONFIRMED` | EDIT_CONFIRM | Idempotent replay → return existing `materialized_revision_id` (and original Decision); **no** duplicates |
+| `PROPOSED` | CONFIRM or EDIT_CONFIRM | **First materialization** (steps below), subject to key/action/digest rules |
+| `CONFIRMED` | CONFIRM | If digest matches Decision → idempotent replay of original Revision; if digest differs → idempotency conflict |
+| `EDIT_CONFIRMED` | EDIT_CONFIRM | If digest matches Decision → idempotent replay; if digest differs → idempotency conflict |
 | `CONFIRMED` | EDIT_CONFIRM (or vice versa) | Stable **conflict** (terminal status ≠ requested action) |
 | `REJECTED` | CONFIRM or EDIT_CONFIRM | Stable **conflict** |
 | `CONFIRMED` / `EDIT_CONFIRMED` | matching action | If `materialized_revision_id` **or** the corresponding Decision is **missing** → stable **consistency error** (do not invent replacements) |
@@ -637,10 +674,11 @@ CONFIRM / EDIT_CONFIRM **MUST** execute as **one Unit of Work**.
 
 **First materialization steps (only when locked status is `PROPOSED`):**
 
-1. Allocate / bind `capability_id == asset_id` (create AssetRef + BusinessCapability if first bind; or bind to an existing Capability when EDIT_CONFIRM targets an existing capability — payload must declare target). Initial AssetRef projection per §3.4 (`Status=DRAFT`, `Revision=1`, Name/SemanticVersion/ContentDigest from the new DRAFT revision).
-2. Create immutable `BusinessCapabilityRevision(DRAFT, source=AI_PROPOSAL)`
-3. Create immutable `CapabilityDecision` (CONFIRM or EDIT_CONFIRM) with `capability_id`, `proposal_id`, `target_revision_id`
-4. Update Proposal to terminal status (`CONFIRMED` / `EDIT_CONFIRMED`) and set `materialized_revision_id`
+1. Resolve effective payload (CONFIRM → Proposal.payload; EDIT_CONFIRM → request `effective_payload`) and compute `effective_payload_digest`
+2. Allocate / bind `capability_id == asset_id` (create **one** AssetRef header + BusinessCapability if first bind; or bind to an existing Capability when EDIT_CONFIRM targets an existing capability — payload must declare target). Initial AssetRef projection per §3.4 (`Status=DRAFT`, `Revision=1`, Name/SemanticVersion/ContentDigest from the new DRAFT revision). **Never** insert an additional AssetRef header for the same `asset_id`
+3. Create immutable `BusinessCapabilityRevision(DRAFT, source=AI_PROPOSAL)` from the effective payload
+4. Create immutable `CapabilityDecision` (CONFIRM or EDIT_CONFIRM) with `capability_id`, `proposal_id`, `target_revision_id`, `client_request_id`, `effective_payload_digest`
+5. Update Proposal to terminal status (`CONFIRMED` / `EDIT_CONFIRMED`) and set `materialized_revision_id` (**do not** mutate `Proposal.payload`)
 
 **Failure:** any step fails → **no** partial Asset, Capability, Revision, Decision, or Proposal terminal update remains (rollback / idempotent compensation).
 
@@ -689,13 +727,38 @@ Compatibility direction: **Capability requirements ⊆ Contract guarantees** exp
 - Capability **nullable** output → may bind to nullable or non-null Contract field
 - Missing binding, unknown `logical_key`, type mismatch, or weakened nullability/type guarantees → **Validation FAIL**
 
-#### 10.1.2 Operations, filters, sort, pagination
+#### 10.1.2 Operations, filters, sort, pagination (LOCKED per operation)
 
 - Requested QUERY operation MUST be listed in Contract `query_capabilities`
-- **FILTER** (and any Capability filter predicates): each filter field/operator MUST be a **subset** of Contract `filter_schema` (field must appear; operator must be allowed for that field)
-- Sort field/direction MUST be a **subset** of Contract `sort_schema`
-- Pagination limit MUST NOT exceed Contract `pagination_policy.max_limit`
-- An **optional** Capability input MUST NOT be the **sole** parameter that would be required to make the underlying Contract operation executable. If the operation needs a key/filter value, that binding MUST be a **required** Capability input (or Validation FAIL)
+- Sort field/direction, when used, MUST be a **subset** of Contract `sort_schema`
+- Pagination limit, when used, MUST NOT exceed Contract `pagination_policy.max_limit`
+
+**FILTER**
+
+- MUST declare **at least one required** Capability input
+- Every filter field/operator used by the Capability MUST belong to Contract `filter_schema` (field present; operator allowed for that field)
+- Optional Capability inputs may bind additional FilterSchema fields but cannot replace the required-input rule above
+
+**READ** (`output_cardinality=ONE`)
+
+- MUST NOT require FilterSchema membership for success when no filters are declared
+- If any filter predicates are declared, each field/operator MUST belong to Contract `filter_schema`
+- Optional inputs, if present, MUST bind to existing `logical_schema` fields
+- Pagination: if present, `limit` MUST be `1` and MUST NOT exceed Contract max limit; otherwise omit pagination
+
+**LIST** (`output_cardinality=MANY`)
+
+- Filter predicates are optional; if present, each field/operator MUST belong to Contract `filter_schema`
+- Optional/required inputs that act as filters MUST bind to FilterSchema fields; other inputs MUST still bind to `logical_schema` fields
+- Pagination MAY be declared; `limit` MUST be within Contract `pagination_policy` (default may follow Contract default_limit)
+- Sort, if declared, MUST be a subset of Contract `sort_schema`
+
+**AGGREGATE** (`output_cardinality=AGGREGATE`)
+
+- Filter predicates are optional; if present, each field/operator MUST belong to Contract `filter_schema`
+- Inputs MUST bind to existing `logical_schema` fields
+- Pagination MUST NOT be used to page multi-row dumps; if a limit is present it MUST be `1`
+- Sort is only allowed when it is a subset of Contract `sort_schema` and does not imply multi-row listing semantics beyond the single aggregate result
 
 #### 10.1.3 LOOKUP (V1 deferred)
 
@@ -816,7 +879,7 @@ AI suggestions must never look like confirmed configuration.
 - Real model only when a later gate must prove AI proposal quality
 - Confirm / Validate / Activate / Auth / Tenant / UI / Impact **must not** depend on real model for correctness
 
-**S5-G1 / S5-G1-F1 / S5-G1-F2 / S5-G1-F3: REAL_MODEL_CALLS = 0**
+**S5-G1 / S5-G1-F1 / S5-G1-F2 / S5-G1-F3 / S5-G1-F4: REAL_MODEL_CALLS = 0**
 
 ### Generality acceptance (later E2E gates)
 
@@ -851,7 +914,7 @@ At least two dissimilar businesses. Domain implementation must not change per bu
 | 8 | ROLE_AUTHORIZATION | Actions enforced server-side via exact role matrix (§11.2) |
 | 9 | COMMAND_EXECUTION_BOUNDARY | COMMAND is intent only; no arbitrary write/exec in S5 Capability gates |
 | 10 | NO_ARBITRARY_CODE | No JS/Python/SQL/Shell expressions in Capability definitions |
-| 11 | IDEMPOTENCY | Same analysis key + digest must not duplicate model work / proposals / revisions; Confirm / Derive / Reject atomic & idempotent |
+| 11 | IDEMPOTENCY | Same analysis / Confirm / Derive key + digest must not duplicate model work / proposals / revisions |
 | 12 | AUDITABILITY | Activate / Deprecate / STALE / decisions are auditable |
 | 13 | SECRET_ISOLATION | No secret leakage into LLM/logs/audit/errors |
 | 14 | CONSUMER_VERSION_PINNING | Consumers pin explicit Capability versions |
@@ -867,7 +930,8 @@ At least two dissimilar businesses. Domain implementation must not change per bu
 | **S5-G1** | Architecture & Stage Contract Freeze |
 | **S5-G1-F1** | Architecture Consistency Fix |
 | **S5-G1-F2** | Architecture Consistency Fix |
-| **S5-G1-F3** | Architecture Consistency Fix (**this amendment**) |
+| **S5-G1-F3** | Architecture Consistency Fix |
+| **S5-G1-F4** | Architecture Consistency Fix (**this amendment**) |
 | **S5-G2** | Capability Domain, Revision, state machine, human decisions, idempotent analysis runs |
 | **S5-G3** | Business Model / Data Contract binding & validation |
 | **S5-G4** | Capability API, authorization, audit, concurrency consistency |
@@ -881,13 +945,14 @@ Each gate: Implement → Test → Review → PASS.
 
 ---
 
-## 18. G1 / G1-F1 / G1-F2 / G1-F3 Exit Criteria
+## 18. G1 / G1-F1 / G1-F2 / G1-F3 / G1-F4 Exit Criteria
 
 - Stage Contract published at `forma/docs/stages/FORMA-S5-BUSINESS-CAPABILITY-STAGE-CONTRACT.md`
 - G1 Result at `forma/cursor-results/FORMA-S5-G1-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md`
 - G1-F1 Result at `forma/cursor-results/FORMA-S5-G1-F1-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md`
 - G1-F2 Result at `forma/cursor-results/FORMA-S5-G1-F2-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md`
 - G1-F3 Result at `forma/cursor-results/FORMA-S5-G1-F3-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md`
+- G1-F4 Result at `forma/cursor-results/FORMA-S5-G1-F4-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md`
 - Docs-only commit; Forma CI ALL GREEN
 - No Capability domain / migration / adapter / UI implementation
 - `REAL_MODEL_CALLS = 0`
@@ -897,7 +962,7 @@ Each gate: Implement → Test → Review → PASS.
 - Human architecture review required before S5-G2
 - **DO NOT START S5-G2** until review PASS
 - **DO NOT** create `forma-s5-frozen`
-- **S5_G2_READY = NO** until human review after G1-F3
+- **S5_G2_READY = NO** until human review after G1-F4
 
 ---
 
@@ -920,8 +985,8 @@ Each gate: Implement → Test → Review → PASS.
 | Field | Value |
 |-------|-------|
 | Document | FORMA-S5 Business Capability Stage Contract |
-| Gate | S5-G1 / S5-G1-F1 / S5-G1-F2 / S5-G1-F3 |
+| Gate | S5-G1 / S5-G1-F1 / S5-G1-F2 / S5-G1-F3 / S5-G1-F4 |
 | Baseline tags | `forma-s4-frozen-r2` |
 | Related ADRs | ADR-002, ADR-006, ADR-013 |
 | Related contracts | FORMA-S4 Data Plane / Data Contract Stage Contract |
-| Related results | FORMA-S4-FINAL-FREEZE-R2, FORMA-S5-G0-ADMIN-USER-MANAGEMENT, FORMA-S5-G1, FORMA-S5-G1-F1, FORMA-S5-G1-F2, FORMA-S5-G1-F3 |
+| Related results | FORMA-S4-FINAL-FREEZE-R2, FORMA-S5-G0-ADMIN-USER-MANAGEMENT, FORMA-S5-G1, FORMA-S5-G1-F1, FORMA-S5-G1-F2, FORMA-S5-G1-F3, FORMA-S5-G1-F4 |
