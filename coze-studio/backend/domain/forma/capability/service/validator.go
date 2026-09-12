@@ -25,13 +25,24 @@ var (
 		entity.PredicateGT: {}, entity.PredicateGTE: {}, entity.PredicateLT: {}, entity.PredicateLTE: {},
 		entity.PredicateExists: {}, entity.PredicateEmpty: {}, entity.PredicateNotEmpty: {},
 	}
+	scalarComparandPredicates = map[entity.PredicateKind]struct{}{
+		entity.PredicateEQ: {}, entity.PredicateNEQ: {},
+		entity.PredicateGT: {}, entity.PredicateGTE: {}, entity.PredicateLT: {}, entity.PredicateLTE: {},
+	}
+	listComparandPredicates = map[entity.PredicateKind]struct{}{
+		entity.PredicateIN: {}, entity.PredicateNotIn: {},
+	}
+	nilComparandPredicates = map[entity.PredicateKind]struct{}{
+		entity.PredicateExists: {}, entity.PredicateEmpty: {}, entity.PredicateNotEmpty: {},
+	}
 	allowedEffectKinds = map[entity.EffectKind]struct{}{
 		entity.EffectReadOnly: {}, entity.EffectIntent: {}, entity.EffectStateChange: {}, entity.EffectNotify: {},
 	}
 	executablePattern = regexp.MustCompile(`(?i)(SELECT\s|;|\$\(|eval\(|os\.system|import\s|require\(|Function\(|` + "`[^`]*\\$[^`]*`)")
 	shellPattern      = regexp.MustCompile(`(?i)(\brm\s+-rf\b|\bcurl\s+|\bwget\s+|\|.*sh\b|/bin/sh|/bin/bash)`)
-	// Secret shapes — do NOT ban "password" as a substring of business names (GetPasswordReset).
-	secretPatterns = []*regexp.Regexp{
+	// Free-text secret shapes — includes bare word "secret". Do NOT apply to opaque analysis IDs.
+	// Do NOT ban "password" as a substring of business names (GetPasswordReset).
+	freeTextSecretPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\bsecret\b`),
 		regexp.MustCompile(`(?i)(api[_-]?key|authorization)\s*[:=]`),
 		regexp.MustCompile(`(?i)bearer\s+[a-z0-9._\-]{8,}`),
@@ -40,7 +51,26 @@ var (
 		regexp.MustCompile(`(?i)(session|sid|jsessionid)\s*=\s*\S+`),
 		regexp.MustCompile(`(?i)-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----`),
 		regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.`),
-		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`), // whole-string long base64-ish token
+		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`),
+		regexp.MustCompile(`(?i)client_secret\s*=`),
+		regexp.MustCompile(`(?i)access_token\s*=`),
+		regexp.MustCompile(`(?i)refresh_token\s*=`),
+		regexp.MustCompile(`(?i)api_key\s*=`),
+	}
+	// Credential shapes for opaque analysis pin/ref strings — no bare \bsecret\b.
+	credentialShapePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)(api[_-]?key|authorization)\s*[:=]`),
+		regexp.MustCompile(`(?i)bearer\s+[a-z0-9._\-]{8,}`),
+		regexp.MustCompile(`(?i)password\s*[:=]\s*\S+`),
+		regexp.MustCompile(`(?i)authorization\s*:`),
+		regexp.MustCompile(`(?i)(session|sid|jsessionid)\s*=\s*\S+`),
+		regexp.MustCompile(`(?i)-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----`),
+		regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.`),
+		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`),
+		regexp.MustCompile(`(?i)client_secret\s*=`),
+		regexp.MustCompile(`(?i)access_token\s*=`),
+		regexp.MustCompile(`(?i)refresh_token\s*=`),
+		regexp.MustCompile(`(?i)api_key\s*=`),
 	}
 	credentialKeyName = regexp.MustCompile(`(?i)^(api[_-]?key|token|password|authorization|secret|cookie|bearer|access_token|refresh_token)$`)
 	opaqueIDPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$`)
@@ -71,6 +101,24 @@ func ValidateAnalysisRequestIDs(a entity.AnalysisRequest) error {
 	for _, ref := range a.RequirementRefs {
 		if err := ValidateOpaqueID(ref); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// ValidateAnalysisRequest validates opaque IDs plus credential-shape secret checks on each pin/ref.
+func ValidateAnalysisRequest(a entity.AnalysisRequest) error {
+	if err := ValidateAnalysisRequestIDs(a); err != nil {
+		return err
+	}
+	for _, pin := range a.DataContractPins {
+		if containsCredentialShape(pin.DataContractID) {
+			return entity.ErrInvalidPayload
+		}
+	}
+	for _, ref := range a.RequirementRefs {
+		if containsCredentialShape(ref) {
+			return entity.ErrInvalidPayload
 		}
 	}
 	return nil
@@ -146,33 +194,46 @@ func validateLogicalSchema(schema entity.LogicalSchema) error {
 		if isCredentialKeyName(f.LogicalKey) {
 			return entity.ErrInvalidPayload
 		}
+		if f.LogicalKey != "" {
+			if err := ValidateOpaqueID(f.LogicalKey); err != nil {
+				return entity.ErrInvalidPayload
+			}
+		}
 		for _, s := range []string{f.LogicalKey, f.LogicalType, f.Description} {
 			if containsSecret(s) || containsExecutable(s) || shellPattern.MatchString(s) {
 				return entity.ErrInvalidPayload
 			}
-		}
-		if f.LogicalKey != "" && ValidateOpaqueID(f.LogicalKey) != nil {
-			return entity.ErrInvalidPayload
 		}
 	}
 	return nil
 }
 
 func validateBinding(b entity.DataContractBinding) error {
-	for _, s := range []string{b.DataContractID, b.DataContractRevisionID} {
-		if strings.TrimSpace(s) == "" {
-			continue
-		}
-		if isCredentialKeyName(s) || containsSecret(s) {
-			return entity.ErrInvalidPayload
-		}
-		if err := ValidateOpaqueID(s); err != nil {
-			return err
-		}
+	if err := ValidateOpaqueID(b.DataContractID); err != nil {
+		return entity.ErrInvalidPayload
+	}
+	if err := ValidateOpaqueID(b.DataContractRevisionID); err != nil {
+		return entity.ErrInvalidPayload
+	}
+	if isCredentialKeyName(b.DataContractID) || isCredentialKeyName(b.DataContractRevisionID) {
+		return entity.ErrInvalidPayload
+	}
+	if containsSecret(b.DataContractID) || containsSecret(b.DataContractRevisionID) {
+		return entity.ErrInvalidPayload
+	}
+	// Version > 0 if set (zero means unset).
+	if b.DataContractVersion < 0 {
+		return entity.ErrInvalidPayload
 	}
 	for _, m := range b.LogicalFieldMappings {
+		if err := ValidateOpaqueID(m.CapabilityLogicalKey); err != nil {
+			return entity.ErrInvalidPayload
+		}
+		if err := ValidateOpaqueID(m.ContractLogicalKey); err != nil {
+			return entity.ErrInvalidPayload
+		}
 		for _, s := range []string{m.CapabilityLogicalKey, m.ContractLogicalKey} {
-			if isCredentialKeyName(s) || containsSecret(s) || containsExecutable(s) || strings.ContainsAny(s, " \t\n") {
+			if isCredentialKeyName(s) || containsSecret(s) || containsExecutable(s) {
 				return entity.ErrInvalidPayload
 			}
 		}
@@ -181,16 +242,29 @@ func validateBinding(b entity.DataContractBinding) error {
 }
 
 func validatePrecondition(pc entity.Precondition) error {
-	pred := entity.PredicateKind(strings.TrimSpace(string(pc.Predicate)))
-	if _, ok := allowedPredicates[pred]; !ok {
+	// Exact match — NO TrimSpace for allowlist (" EQ " must fail).
+	if _, ok := allowedPredicates[pc.Predicate]; !ok {
 		return entity.ErrInvalidPayload
 	}
-	if _, ok := fieldBasedPredicates[pred]; ok {
+	if err := ValidateOpaqueID(pc.ID); err != nil {
+		return entity.ErrInvalidPayload
+	}
+	if isCredentialKeyName(pc.ID) {
+		return entity.ErrInvalidPayload
+	}
+	if _, ok := fieldBasedPredicates[pc.Predicate]; ok {
 		if strings.TrimSpace(pc.LogicalKey) == "" {
 			return entity.ErrInvalidPayload
 		}
+		if err := ValidateOpaqueID(pc.LogicalKey); err != nil {
+			return entity.ErrInvalidPayload
+		}
+	} else if pc.LogicalKey != "" {
+		if err := ValidateOpaqueID(pc.LogicalKey); err != nil {
+			return entity.ErrInvalidPayload
+		}
 	}
-	if isCredentialKeyName(pc.LogicalKey) || isCredentialKeyName(pc.ID) {
+	if isCredentialKeyName(pc.LogicalKey) {
 		return entity.ErrInvalidPayload
 	}
 	for _, s := range []string{pc.ID, pc.LogicalKey, pc.Description} {
@@ -198,8 +272,23 @@ func validatePrecondition(pc entity.Precondition) error {
 			return entity.ErrInvalidPayload
 		}
 	}
-	if strings.TrimSpace(pc.ID) == "" {
-		return entity.ErrInvalidPayload
+	if _, ok := nilComparandPredicates[pc.Predicate]; ok {
+		if pc.Comparand != nil {
+			return entity.ErrInvalidPayload
+		}
+	}
+	if _, ok := listComparandPredicates[pc.Predicate]; ok {
+		if err := validateListComparand(pc.Comparand); err != nil {
+			return err
+		}
+	}
+	if _, ok := scalarComparandPredicates[pc.Predicate]; ok {
+		if pc.Comparand == nil || !isScalarLiteral(pc.Comparand) {
+			return entity.ErrInvalidPayload
+		}
+		if err := validateComparandSecrets(pc.Comparand); err != nil {
+			return err
+		}
 	}
 	if pc.Comparand != nil {
 		if !isLiteralComparand(pc.Comparand) {
@@ -212,21 +301,59 @@ func validatePrecondition(pc entity.Precondition) error {
 	return nil
 }
 
-func validateEffect(ef entity.Effect) error {
-	kind := entity.EffectKind(strings.TrimSpace(string(ef.Kind)))
-	if _, ok := allowedEffectKinds[kind]; !ok {
+func validateListComparand(v any) error {
+	switch t := v.(type) {
+	case []string:
+		if len(t) == 0 {
+			return entity.ErrInvalidPayload
+		}
+		for _, s := range t {
+			if err := validateComparandSecrets(s); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []any:
+		if len(t) == 0 {
+			return entity.ErrInvalidPayload
+		}
+		for _, item := range t {
+			if !isScalarLiteral(item) {
+				return entity.ErrInvalidPayload
+			}
+			if err := validateComparandSecrets(item); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
 		return entity.ErrInvalidPayload
 	}
-	if isCredentialKeyName(ef.LogicalKey) || isCredentialKeyName(ef.ID) {
+}
+
+func validateEffect(ef entity.Effect) error {
+	// Exact match — NO TrimSpace for allowlist.
+	if _, ok := allowedEffectKinds[ef.Kind]; !ok {
+		return entity.ErrInvalidPayload
+	}
+	if err := ValidateOpaqueID(ef.ID); err != nil {
+		return entity.ErrInvalidPayload
+	}
+	if isCredentialKeyName(ef.ID) {
+		return entity.ErrInvalidPayload
+	}
+	if ef.LogicalKey != "" {
+		if err := ValidateOpaqueID(ef.LogicalKey); err != nil {
+			return entity.ErrInvalidPayload
+		}
+	}
+	if isCredentialKeyName(ef.LogicalKey) {
 		return entity.ErrInvalidPayload
 	}
 	for _, s := range []string{ef.ID, ef.LogicalKey, ef.Description} {
 		if containsSecret(s) || containsExecutable(s) || shellPattern.MatchString(s) {
 			return entity.ErrInvalidPayload
 		}
-	}
-	if strings.TrimSpace(ef.ID) == "" {
-		return entity.ErrInvalidPayload
 	}
 	return nil
 }
@@ -257,6 +384,15 @@ func validateComparandSecrets(v any) error {
 	return nil
 }
 
+func isScalarLiteral(v any) bool {
+	switch v.(type) {
+	case string, bool, float64, float32, int, int32, int64, uint, uint32, uint64:
+		return true
+	default:
+		return false
+	}
+}
+
 func isLiteralComparand(v any) bool {
 	switch v.(type) {
 	case nil, string, bool, float64, float32, int, int32, int64, uint, uint32, uint64:
@@ -266,6 +402,9 @@ func isLiteralComparand(v any) bool {
 	case []any:
 		items := v.([]any)
 		for _, item := range items {
+			if !isScalarLiteral(item) && item != nil {
+				return false
+			}
 			switch item.(type) {
 			case nil, string, bool, float64, float32, int, int32, int64, uint, uint32, uint64:
 				continue
@@ -287,7 +426,21 @@ func containsSecret(s string) bool {
 	if strings.TrimSpace(s) == "" {
 		return false
 	}
-	for _, re := range secretPatterns {
+	for _, re := range freeTextSecretPatterns {
+		if re.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsCredentialShape blocks credential-like tokens in opaque analysis IDs.
+// Does NOT reject the bare word "secret" alone.
+func containsCredentialShape(s string) bool {
+	if strings.TrimSpace(s) == "" {
+		return false
+	}
+	for _, re := range credentialShapePatterns {
 		if re.MatchString(s) {
 			return true
 		}
@@ -306,7 +459,8 @@ func SanitizeAnalysisError(err error) error {
 		return mapped
 	}
 	if err == entity.ErrStaleGeneration || err == entity.ErrInvalidPayload || err == entity.ErrConsistency ||
-		err == entity.ErrIdempotencyConflict || err == entity.ErrNotConfigured || err == entity.ErrUoWNotConfigured {
+		err == entity.ErrIdempotencyConflict || err == entity.ErrNotConfigured || err == entity.ErrUoWNotConfigured ||
+		err == entity.ErrUoWCommitFailed {
 		return err
 	}
 	return entity.ErrAnalysisFailed

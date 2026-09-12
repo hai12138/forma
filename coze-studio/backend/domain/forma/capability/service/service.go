@@ -334,9 +334,12 @@ func (s *capabilityService) StartAnalysis(ctx context.Context, in *StartAnalysis
 	if in == nil || in.TenantID == "" || in.BusinessID == "" || in.ClientRequestID == "" || in.BusinessModelRevision <= 0 {
 		return nil, entity.ErrInvalidPayload
 	}
+	if strings.TrimSpace(in.ActorID) == "" {
+		return nil, entity.ErrInvalidPayload
+	}
 	analysis := in.Analysis
 	analysis.BusinessModelRevision = in.BusinessModelRevision
-	if err := ValidateAnalysisRequestIDs(analysis); err != nil {
+	if err := ValidateAnalysisRequest(analysis); err != nil {
 		return nil, err
 	}
 	digest, err := AnalysisRequestDigest(analysis)
@@ -385,6 +388,7 @@ func (s *capabilityService) StartAnalysis(ctx context.Context, in *StartAnalysis
 func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing *entity.CapabilityAnalysisRun, analysis entity.AnalysisRequest, actorID string) (*AnalysisResult, error) {
 	now := s.now()
 	if existing.Status == entity.AnalysisPending && analysisLeaseExpired(existing, now) {
+		priorAttempt := existing.Attempt
 		var claimed *entity.CapabilityAnalysisRun
 		var owned bool
 		err := s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
@@ -394,6 +398,9 @@ func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing
 				return MapRepoError(cerr)
 			}
 			if owned {
+				if serr := tx.Repo().SupersedeAnalysisAttempt(ctx, claimed.TenantID, claimed.AnalysisRunID, priorAttempt); serr != nil {
+					return MapRepoError(serr)
+				}
 				att := &entity.CapabilityAnalysisAttempt{
 					AttemptID: newID("caatt"), AnalysisRunID: claimed.AnalysisRunID, TenantID: claimed.TenantID,
 					Attempt: claimed.Attempt, ActorPrincipalID: actorID,
@@ -407,21 +414,9 @@ func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing
 			return nil, MapRepoError(err)
 		}
 		if owned {
-			var persisted entity.AnalysisRequest
-			if err := json.Unmarshal([]byte(claimed.RequestJSON), &persisted); err != nil {
-				failErr := s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
-					if markErr := tx.Repo().MarkAnalysisFailed(ctx, claimed.TenantID, claimed.AnalysisRunID, "FORMA_CAPABILITY_INVALID_REQUEST", claimed.Attempt); markErr != nil {
-						return MapRepoError(markErr)
-					}
-					if attErr := tx.Repo().CompleteAnalysisAttempt(ctx, claimed.TenantID, claimed.AnalysisRunID, claimed.Attempt, entity.AttemptResultFailed, "FORMA_CAPABILITY_INVALID_REQUEST"); attErr != nil {
-						return MapRepoError(attErr)
-					}
-					return nil
-				})
-				if failErr != nil {
-					return nil, MapRepoError(failErr)
-				}
-				return nil, entity.ErrConsistency
+			persisted, loadErr := s.loadValidatedPersistedAnalysisRequest(ctx, claimed)
+			if loadErr != nil {
+				return nil, loadErr
 			}
 			return s.executeAnalysis(ctx, claimed, persisted) // NOT caller analysis
 		}
@@ -435,6 +430,42 @@ func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing
 		return nil, entity.ErrConsistency
 	}
 	return &AnalysisResult{Run: existing, Proposals: props, OwnedExecute: false}, nil
+}
+
+// loadValidatedPersistedAnalysisRequest unmarshals and validates RequestJSON; marks failed on any error.
+// Never calls the generator.
+func (s *capabilityService) loadValidatedPersistedAnalysisRequest(ctx context.Context, run *entity.CapabilityAnalysisRun) (entity.AnalysisRequest, error) {
+	var empty entity.AnalysisRequest
+	if run == nil {
+		return empty, entity.ErrConsistency
+	}
+	fail := func(code string, retErr error) (entity.AnalysisRequest, error) {
+		failErr := s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
+			if markErr := tx.Repo().MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, code, run.Attempt); markErr != nil {
+				return MapRepoError(markErr)
+			}
+			if attErr := tx.Repo().CompleteAnalysisAttempt(ctx, run.TenantID, run.AnalysisRunID, run.Attempt, entity.AttemptResultFailed, code); attErr != nil {
+				return MapRepoError(attErr)
+			}
+			return nil
+		})
+		if failErr != nil {
+			return empty, MapRepoError(failErr)
+		}
+		return empty, retErr
+	}
+	var req entity.AnalysisRequest
+	if err := json.Unmarshal([]byte(run.RequestJSON), &req); err != nil {
+		return fail("FORMA_CAPABILITY_INVALID_REQUEST", entity.ErrConsistency)
+	}
+	if err := ValidateAnalysisRequest(req); err != nil {
+		return fail("FORMA_CAPABILITY_INVALID_REQUEST", entity.ErrInvalidPayload)
+	}
+	digest, err := AnalysisRequestDigest(req)
+	if err != nil || digest != run.RequestDigest {
+		return fail("FORMA_CAPABILITY_INVALID_REQUEST", entity.ErrConsistency)
+	}
+	return req, nil
 }
 
 func (s *capabilityService) executeAnalysis(ctx context.Context, run *entity.CapabilityAnalysisRun, analysis entity.AnalysisRequest) (*AnalysisResult, error) {
@@ -529,6 +560,9 @@ func (s *capabilityService) RetryFailedAnalysis(ctx context.Context, tenantID, a
 	if !s.configured() || s.generator == nil {
 		return nil, entity.ErrNotConfigured
 	}
+	if strings.TrimSpace(actorID) == "" {
+		return nil, entity.ErrInvalidPayload
+	}
 	run, err := s.root().GetAnalysisRun(ctx, tenantID, analysisRunID)
 	if err != nil {
 		return nil, MapRepoError(err)
@@ -566,12 +600,9 @@ func (s *capabilityService) RetryFailedAnalysis(ctx context.Context, tenantID, a
 		return nil, entity.ErrConsistency
 	}
 	run.Attempt = attempt
-	var analysis entity.AnalysisRequest
-	if err := json.Unmarshal([]byte(run.RequestJSON), &analysis); err != nil {
-		if markErr := s.markAnalysisFailedWithAttempt(ctx, tenantID, analysisRunID, "FORMA_CAPABILITY_INVALID_REQUEST", attempt); markErr != nil {
-			return nil, MapRepoError(markErr)
-		}
-		return nil, entity.ErrConsistency
+	analysis, loadErr := s.loadValidatedPersistedAnalysisRequest(ctx, run)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 	return s.executeAnalysis(ctx, run, analysis)
 }

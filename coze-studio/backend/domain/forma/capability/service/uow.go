@@ -7,7 +7,10 @@ package service
 
 import (
 	"context"
+	"errors"
 
+	assetentity "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/entity"
+	"github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/capability/repository"
 	"gorm.io/gorm"
 )
@@ -15,7 +18,6 @@ import (
 // CapabilityUnitOfWork coordinates Cap DAO + AssetProjection atomicity.
 type CapabilityUnitOfWork interface {
 	WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error
-	// Root returns a repository bound to the same store (auto-commit / single ops outside explicit txn).
 	Root() repository.CapabilityRepository
 }
 
@@ -55,41 +57,102 @@ func (u *gormUoW) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx
 	})
 }
 
-// memoryUoW snap/restores BOTH repo and assets on failure; commits only on success.
-type memoryUoW struct {
+// MemoryUoWOptions injects failures for tests without losing ownership of repo/assets.
+type MemoryUoWOptions struct {
+	FailAssetCreate bool
+	FailAssetUpdate bool
+	FailCommit      bool // after successful callback, before commit — restore both
+	OnCommitFail    func()
+	OnAssetFail     func()
+}
+
+// MemoryUnitOfWork owns both the in-memory Cap repo and AssetProjection.
+type MemoryUnitOfWork struct {
 	repo      repository.CapabilityRepository
 	memAssets *MemoryAssetProjection
-	assets    AssetProjection
+	opts      MemoryUoWOptions
 }
 
-// NewMemoryUnitOfWork returns an in-memory UoW and the asset projection for inspection.
-func NewMemoryUnitOfWork() (CapabilityUnitOfWork, *MemoryAssetProjection) {
-	repo := repository.NewMemoryCapabilityRepository()
-	assets := NewMemoryAssetProjection()
-	return &memoryUoW{repo: repo, memAssets: assets, assets: assets}, assets
+// NewMemoryUnitOfWork returns a UoW that owns memRepo + memAssets.
+func NewMemoryUnitOfWork() *MemoryUnitOfWork {
+	return NewMemoryUnitOfWorkWithOptions(MemoryUoWOptions{})
 }
 
-// NewMemoryUnitOfWorkWith wires a custom root (e.g. test wrappers) and optional asset view
-// over the same MemoryAssetProjection used for snap/restore.
-// Root MUST be the same backing store as used by WithinTransaction (documented contract).
-func NewMemoryUnitOfWorkWith(repo repository.CapabilityRepository, memAssets *MemoryAssetProjection, assets AssetProjection) CapabilityUnitOfWork {
-	if assets == nil {
-		assets = memAssets
+// NewMemoryUnitOfWorkWithOptions returns a UoW with optional failure injection seams.
+func NewMemoryUnitOfWorkWithOptions(opts MemoryUoWOptions) *MemoryUnitOfWork {
+	return &MemoryUnitOfWork{
+		repo:      repository.NewMemoryCapabilityRepository(),
+		memAssets: NewMemoryAssetProjection(),
+		opts:      opts,
 	}
-	return &memoryUoW{repo: repo, memAssets: memAssets, assets: assets}
 }
 
-func (u *memoryUoW) Root() repository.CapabilityRepository { return u.repo }
+func (u *MemoryUnitOfWork) Root() repository.CapabilityRepository { return u.repo }
 
-func (u *memoryUoW) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
+// AssetsView exposes the owned asset projection for test inspection.
+func (u *MemoryUnitOfWork) AssetsView() *MemoryAssetProjection { return u.memAssets }
+
+func (u *MemoryUnitOfWork) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
 	// Snapshot assets inside repo.Transaction so concurrent losers restore to a snap
 	// that already includes winners' commits (repo lock serializes Memory UoW).
 	return u.repo.Transaction(ctx, func(txRepo repository.CapabilityRepository) error {
 		assetSnap := u.memAssets.snapshot()
-		err := fn(&capabilityTx{repo: txRepo, assets: u.assets})
+		assets := AssetProjection(u.memAssets)
+		if u.opts.FailAssetCreate || u.opts.FailAssetUpdate {
+			assets = &txnFailingAssets{
+				inner:      u.memAssets,
+				failCreate: u.opts.FailAssetCreate,
+				failUpdate: u.opts.FailAssetUpdate,
+				onFail:     u.opts.OnAssetFail,
+			}
+		}
+		err := fn(&capabilityTx{repo: txRepo, assets: assets})
 		if err != nil {
 			u.memAssets.restore(assetSnap)
+			return err
 		}
-		return err
+		if u.opts.FailCommit {
+			u.memAssets.restore(assetSnap)
+			if u.opts.OnCommitFail != nil {
+				u.opts.OnCommitFail()
+			}
+			return entity.ErrUoWCommitFailed
+		}
+		return nil
 	})
 }
+
+// txnFailingAssets wraps owned MemoryAssetProjection for a single transaction only.
+type txnFailingAssets struct {
+	inner      *MemoryAssetProjection
+	failCreate bool
+	failUpdate bool
+	onFail     func()
+}
+
+func (f *txnFailingAssets) CreateCapabilityAsset(ctx context.Context, asset *assetentity.AssetRef) error {
+	if f.failCreate {
+		if f.onFail != nil {
+			f.onFail()
+		}
+		return errors.New("injected asset create failure")
+	}
+	return f.inner.CreateCapabilityAsset(ctx, asset)
+}
+
+func (f *txnFailingAssets) UpdateCapabilityProjection(ctx context.Context, tenantID, assetID, name, semanticVersion, contentDigest string, status assetentity.AssetStatus) error {
+	if f.failUpdate {
+		if f.onFail != nil {
+			f.onFail()
+		}
+		return errors.New("injected asset update failure")
+	}
+	return f.inner.UpdateCapabilityProjection(ctx, tenantID, assetID, name, semanticVersion, contentDigest, status)
+}
+
+func (f *txnFailingAssets) GetCapabilityAsset(ctx context.Context, tenantID, assetID string) (*assetentity.AssetRef, error) {
+	return f.inner.GetCapabilityAsset(ctx, tenantID, assetID)
+}
+
+var _ CapabilityUnitOfWork = (*MemoryUnitOfWork)(nil)
+var _ AssetProjection = (*txnFailingAssets)(nil)

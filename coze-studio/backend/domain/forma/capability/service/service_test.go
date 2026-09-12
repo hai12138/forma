@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,9 +27,20 @@ import (
 const testActor = "1001"
 
 func newTestService(gen ProposalGenerator) (CapabilityService, repository.CapabilityRepository, *MemoryAssetProjection) {
-	uow, assets := NewMemoryUnitOfWork()
+	uow := NewMemoryUnitOfWork()
 	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen})
-	return svc, uow.Root(), assets
+	return svc, uow.Root(), uow.AssetsView()
+}
+
+// rootOverrideUoW overrides Root() for peek/list test seams while keeping owned UoW transactions.
+type rootOverrideUoW struct {
+	inner CapabilityUnitOfWork
+	root  repository.CapabilityRepository
+}
+
+func (u *rootOverrideUoW) Root() repository.CapabilityRepository { return u.root }
+func (u *rootOverrideUoW) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
+	return u.inner.WithinTransaction(ctx, fn)
 }
 
 // forceStatusForTest seeds a revision status via repository (Validate is fail-closed until G3).
@@ -509,10 +521,11 @@ func TestUoWFailClosedWithoutUoW(t *testing.T) {
 }
 
 func TestAssetProjectionFailureFullRollback(t *testing.T) {
-	repo := repository.NewMemoryCapabilityRepository()
-	inner := NewMemoryAssetProjection()
-	failing := &FailingAssetProjection{Inner: inner, FailUpdate: true}
-	uow := NewMemoryUnitOfWorkWith(repo, inner, failing)
+	var assetFails atomic.Int32
+	uow := NewMemoryUnitOfWorkWithOptions(MemoryUoWOptions{
+		FailAssetUpdate: true,
+		OnAssetFail:     func() { assetFails.Add(1) },
+	})
 	svc := NewCapabilityService(&Components{UoW: uow})
 
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
@@ -520,17 +533,19 @@ func TestAssetProjectionFailureFullRollback(t *testing.T) {
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.Error(t, err)
-	_, err = repo.GetCapability(context.Background(), "t1", "cap-rb")
+	require.GreaterOrEqual(t, assetFails.Load(), int32(1))
+	_, err = uow.Root().GetCapability(context.Background(), "t1", "cap-rb")
 	require.ErrorIs(t, err, entity.ErrNotFound)
-	_, err = inner.GetCapabilityAsset(context.Background(), "t1", "cap-rb")
+	_, err = uow.AssetsView().GetCapabilityAsset(context.Background(), "t1", "cap-rb")
 	require.ErrorIs(t, err, entity.ErrNotFound)
 }
 
 func TestAssetCreateFailureFullRollback(t *testing.T) {
-	repo := repository.NewMemoryCapabilityRepository()
-	inner := NewMemoryAssetProjection()
-	failing := &FailingAssetProjection{Inner: inner, FailCreate: true}
-	uow := NewMemoryUnitOfWorkWith(repo, inner, failing)
+	var assetFails atomic.Int32
+	uow := NewMemoryUnitOfWorkWithOptions(MemoryUoWOptions{
+		FailAssetCreate: true,
+		OnAssetFail:     func() { assetFails.Add(1) },
+	})
 	svc := NewCapabilityService(&Components{UoW: uow})
 
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
@@ -538,15 +553,17 @@ func TestAssetCreateFailureFullRollback(t *testing.T) {
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.Error(t, err)
-	_, err = repo.GetCapability(context.Background(), "t1", "cap-cr")
+	require.Equal(t, int32(1), assetFails.Load())
+	_, err = uow.Root().GetCapability(context.Background(), "t1", "cap-cr")
 	require.ErrorIs(t, err, entity.ErrNotFound)
-	_, err = inner.GetCapabilityAsset(context.Background(), "t1", "cap-cr")
+	_, err = uow.AssetsView().GetCapabilityAsset(context.Background(), "t1", "cap-cr")
 	require.ErrorIs(t, err, entity.ErrNotFound)
 }
 
 func TestMemoryUoWCallbackFailureRollsBackCapAndAsset(t *testing.T) {
-	uow, assets := NewMemoryUnitOfWork()
+	uow := NewMemoryUnitOfWork()
 	repo := uow.Root()
+	assets := uow.AssetsView()
 	err := uow.WithinTransaction(context.Background(), func(tx CapabilityTx) error {
 		cap := &entity.BusinessCapability{
 			CapabilityID: "cap-uow", TenantID: "t1", BusinessID: "biz",
@@ -566,13 +583,38 @@ func TestMemoryUoWCallbackFailureRollsBackCapAndAsset(t *testing.T) {
 	require.ErrorIs(t, err, entity.ErrNotFound)
 }
 
+func TestMemoryUoWCommitFailureRollsBackCapAndAsset(t *testing.T) {
+	var commitFails atomic.Int32
+	uow := NewMemoryUnitOfWorkWithOptions(MemoryUoWOptions{
+		FailCommit:   true,
+		OnCommitFail: func() { commitFails.Add(1) },
+	})
+	err := uow.WithinTransaction(context.Background(), func(tx CapabilityTx) error {
+		cap := &entity.BusinessCapability{
+			CapabilityID: "cap-commit", TenantID: "t1", BusinessID: "biz",
+			CreatedBy: testActor, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		}
+		require.NoError(t, tx.Repo().CreateCapability(context.Background(), cap))
+		require.NoError(t, tx.Assets().CreateCapabilityAsset(context.Background(), &assetentity.AssetRef{
+			TenantID: "t1", AssetID: "cap-commit", Kind: assetentity.AssetKindCapability, Name: "x",
+			SemanticVersion: "0.0.0", Revision: 1, SchemaVersion: "1.0", Status: assetentity.AssetStatusDraft,
+		}))
+		return nil
+	})
+	require.ErrorIs(t, err, entity.ErrUoWCommitFailed)
+	require.Equal(t, int32(1), commitFails.Load())
+	_, err = uow.Root().GetCapability(context.Background(), "t1", "cap-commit")
+	require.ErrorIs(t, err, entity.ErrNotFound)
+	_, err = uow.AssetsView().GetCapabilityAsset(context.Background(), "t1", "cap-commit")
+	require.ErrorIs(t, err, entity.ErrNotFound)
+}
+
 func TestConcurrentActivateExactlyOneSuccess(t *testing.T) {
-	base := repository.NewMemoryCapabilityRepository()
-	assets := NewMemoryAssetProjection()
+	inner := NewMemoryUnitOfWork()
 	gate := make(chan struct{})
 	var peeks atomic.Int32
-	repo := &activatePeekBarrierRepo{CapabilityRepository: base, peeks: &peeks, gate: gate}
-	uow := NewMemoryUnitOfWorkWith(repo, assets, assets)
+	repo := &activatePeekBarrierRepo{CapabilityRepository: inner.Root(), peeks: &peeks, gate: gate}
+	uow := &rootOverrideUoW{inner: inner, root: repo}
 	svc := NewCapabilityService(&Components{UoW: uow})
 
 	cap, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
@@ -587,8 +629,8 @@ func TestConcurrentActivateExactlyOneSuccess(t *testing.T) {
 		ClientRequestID: "d2", ActorID: testActor, Payload: payload2,
 	})
 	require.NoError(t, err)
-	forceStatusForTest(t, base, "t1", rev1.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
-	forceStatusForTest(t, base, "t1", rev2.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
+	forceStatusForTest(t, inner.Root(), "t1", rev1.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
+	forceStatusForTest(t, inner.Root(), "t1", rev2.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
@@ -614,7 +656,7 @@ func TestConcurrentActivateExactlyOneSuccess(t *testing.T) {
 	}
 	require.Equal(t, 1, wins)
 	require.Equal(t, 1, conflicts)
-	got, err := base.GetCapability(context.Background(), "t1", cap.CapabilityID)
+	got, err := inner.Root().GetCapability(context.Background(), "t1", cap.CapabilityID)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), got.AggregateGeneration)
 	require.NotEmpty(t, got.ActiveRevisionID)
@@ -844,11 +886,10 @@ func (r *listFailRepo) ListProposalsByAnalysisRun(ctx context.Context, tenantID,
 }
 
 func TestAnalysisRepoErrorPropagation(t *testing.T) {
-	base := repository.NewMemoryCapabilityRepository()
-	assets := NewMemoryAssetProjection()
+	inner := NewMemoryUnitOfWork()
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
-	wrapped := &listFailRepo{CapabilityRepository: base}
-	uow := NewMemoryUnitOfWorkWith(wrapped, assets, assets)
+	wrapped := &listFailRepo{CapabilityRepository: inner.Root()}
+	uow := &rootOverrideUoW{inner: inner, root: wrapped}
 	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen})
 
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
@@ -1004,25 +1045,25 @@ func TestAnalysisOpaqueIDRejection(t *testing.T) {
 
 func TestLeaseTakeoverUsesPersistedRequestJSON(t *testing.T) {
 	fixed := &fixedClock{t: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)}
-	uow, _ := NewMemoryUnitOfWork()
+	uow := NewMemoryUnitOfWork()
 	gen := &recordingGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
 	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen, Clock: fixed})
 
-	caller := entity.AnalysisRequest{
+	persisted := entity.AnalysisRequest{
 		BusinessModelRevision: 1,
-		DataContractPins:      []entity.DataContractPin{{DataContractID: "dc_caller", DataContractVersion: 1}},
+		DataContractPins:      []entity.DataContractPin{{DataContractID: "dc_persisted", DataContractVersion: 1}},
 	}
-	digest, err := AnalysisRequestDigest(caller)
+	digest, err := AnalysisRequestDigest(persisted)
+	require.NoError(t, err)
+	persistedJSON, err := json.Marshal(persisted)
 	require.NoError(t, err)
 
-	// Persisted JSON differs from caller body but RequestDigest matches caller's digest (forged for takeover test).
-	persistedJSON := `{"business_model_revision":1,"data_contract_pins":[{"data_contract_id":"dc_persisted","data_contract_version":1}],"requirement_refs":null}`
 	exp := fixed.Now().Add(-time.Minute)
 	claimedAt := fixed.Now().Add(-10 * time.Minute)
 	seed := &entity.CapabilityAnalysisRun{
 		AnalysisRunID: "run-expired", TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
 		ClientRequestID: "lease-exp", RequestDigest: digest, Status: entity.AnalysisPending, Attempt: 1,
-		RequestJSON: persistedJSON, ExecutionClaimedAt: &claimedAt, LeaseExpiresAt: &exp,
+		RequestJSON: string(persistedJSON), ExecutionClaimedAt: &claimedAt, LeaseExpiresAt: &exp,
 		CreatedBy: testActor, CreatedAt: fixed.Now(), UpdatedAt: fixed.Now(),
 	}
 	_, created, err := uow.Root().CreateOrClaimAnalysisRun(context.Background(), seed)
@@ -1036,12 +1077,62 @@ func TestLeaseTakeoverUsesPersistedRequestJSON(t *testing.T) {
 
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "lease-exp", ActorID: testActor,
-		Analysis: caller,
+		Analysis: persisted,
 	})
 	require.NoError(t, err)
 	require.True(t, res.OwnedExecute)
 	require.Equal(t, "dc_persisted", gen.lastAnalysis.DataContractPins[0].DataContractID)
-	require.NotEqual(t, "dc_caller", gen.lastAnalysis.DataContractPins[0].DataContractID)
+
+	atts, err := uow.Root().ListAnalysisAttempts(context.Background(), "t1", "run-expired")
+	require.NoError(t, err)
+	require.Len(t, atts, 2)
+	require.Equal(t, entity.AttemptResultSuperseded, atts[0].ResultStatus)
+	require.NotNil(t, atts[0].CompletedAt)
+	require.Equal(t, entity.AttemptTriggerLeaseTakeover, atts[1].TriggerKind)
+	require.Equal(t, entity.AttemptResultSucceeded, atts[1].ResultStatus)
+	require.NotNil(t, atts[1].CompletedAt)
+}
+
+func TestLeaseTakeoverDigestMismatchFailsClosed(t *testing.T) {
+	fixed := &fixedClock{t: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)}
+	uow := NewMemoryUnitOfWork()
+	gen := &recordingGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen, Clock: fixed})
+
+	caller := entity.AnalysisRequest{
+		BusinessModelRevision: 1,
+		DataContractPins:      []entity.DataContractPin{{DataContractID: "dc_caller", DataContractVersion: 1}},
+	}
+	digest, err := AnalysisRequestDigest(caller)
+	require.NoError(t, err)
+	// Forged: RequestDigest matches caller, but JSON body differs.
+	persistedJSON := `{"business_model_revision":1,"data_contract_pins":[{"data_contract_id":"dc_persisted","data_contract_version":1}],"requirement_refs":null}`
+	exp := fixed.Now().Add(-time.Minute)
+	claimedAt := fixed.Now().Add(-10 * time.Minute)
+	seed := &entity.CapabilityAnalysisRun{
+		AnalysisRunID: "run-forged", TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
+		ClientRequestID: "lease-forge", RequestDigest: digest, Status: entity.AnalysisPending, Attempt: 1,
+		RequestJSON: persistedJSON, ExecutionClaimedAt: &claimedAt, LeaseExpiresAt: &exp,
+		CreatedBy: testActor, CreatedAt: fixed.Now(), UpdatedAt: fixed.Now(),
+	}
+	_, created, err := uow.Root().CreateOrClaimAnalysisRun(context.Background(), seed)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NoError(t, uow.Root().CreateAnalysisAttempt(context.Background(), &entity.CapabilityAnalysisAttempt{
+		AttemptID: "att-forge", AnalysisRunID: "run-forged", TenantID: "t1", Attempt: 1,
+		ActorPrincipalID: testActor, TriggerKind: entity.AttemptTriggerFirst,
+		ResultStatus: entity.AttemptResultPending, CreatedAt: fixed.Now(),
+	}))
+
+	_, err = svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "lease-forge", ActorID: testActor,
+		Analysis: caller,
+	})
+	require.ErrorIs(t, err, entity.ErrConsistency)
+	require.Empty(t, gen.lastAnalysis.DataContractPins) // generator never called
+	failed, err := uow.Root().GetAnalysisRun(context.Background(), "t1", "run-forged")
+	require.NoError(t, err)
+	require.Equal(t, entity.AnalysisFailed, failed.Status)
 }
 
 type fixedClock struct{ t time.Time }
@@ -1063,7 +1154,7 @@ func (g *recordingGenerator) Generate(_ context.Context, req GenerateRequest) (*
 }
 
 func TestCorruptRequestJSONMarkFailedPropagates(t *testing.T) {
-	uow, _ := NewMemoryUnitOfWork()
+	uow := NewMemoryUnitOfWork()
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
 	now := time.Now().UTC()
 	exp := now.Add(-time.Minute)
@@ -1085,56 +1176,15 @@ func TestCorruptRequestJSONMarkFailedPropagates(t *testing.T) {
 		ResultStatus: entity.AttemptResultPending, CreatedAt: now,
 	}))
 
-	failingMark := &markFailRepo{CapabilityRepository: uow.Root(), failMark: true}
-	assets := NewMemoryAssetProjection()
-	badUoW := NewMemoryUnitOfWorkWith(failingMark, assets, assets)
-	badSvc := NewCapabilityService(&Components{UoW: badUoW, Generator: gen})
-	_, err = badSvc.StartAnalysis(context.Background(), &StartAnalysisInput{
+	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen})
+	_, err = svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "corrupt", ActorID: testActor,
 		Analysis: caller,
 	})
-	require.Error(t, err)
-	require.ErrorIs(t, MapRepoError(err), entity.ErrConsistency)
-
-	// When MarkAnalysisFailed succeeds, ErrConsistency is returned.
-	okUoW, _ := NewMemoryUnitOfWork()
-	okSvc := NewCapabilityService(&Components{UoW: okUoW, Generator: gen})
-	caller2 := entity.AnalysisRequest{BusinessModelRevision: 1}
-	digest2, derr := AnalysisRequestDigest(caller2)
-	require.NoError(t, derr)
-	seed2 := &entity.CapabilityAnalysisRun{
-		AnalysisRunID: "run-corrupt2", TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
-		ClientRequestID: "corrupt2", RequestDigest: digest2, Status: entity.AnalysisPending, Attempt: 1,
-		RequestJSON: "{bad", ExecutionClaimedAt: &now, LeaseExpiresAt: &exp,
-		CreatedBy: testActor, CreatedAt: now, UpdatedAt: now,
-	}
-	_, _, err = okUoW.Root().CreateOrClaimAnalysisRun(context.Background(), seed2)
-	require.NoError(t, err)
-	require.NoError(t, okUoW.Root().CreateAnalysisAttempt(context.Background(), &entity.CapabilityAnalysisAttempt{
-		AttemptID: "att2", AnalysisRunID: "run-corrupt2", TenantID: "t1", Attempt: 1,
-		ActorPrincipalID: testActor, TriggerKind: entity.AttemptTriggerFirst,
-		ResultStatus: entity.AttemptResultPending, CreatedAt: now,
-	}))
-	_, err = okSvc.StartAnalysis(context.Background(), &StartAnalysisInput{
-		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "corrupt2", ActorID: testActor,
-		Analysis: caller2,
-	})
 	require.ErrorIs(t, err, entity.ErrConsistency)
-	failed, err := okUoW.Root().GetAnalysisRun(context.Background(), "t1", "run-corrupt2")
+	failed, err := uow.Root().GetAnalysisRun(context.Background(), "t1", "run-corrupt")
 	require.NoError(t, err)
 	require.Equal(t, entity.AnalysisFailed, failed.Status)
-}
-
-type markFailRepo struct {
-	repository.CapabilityRepository
-	failMark bool
-}
-
-func (r *markFailRepo) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorCode string, expectedAttempt int32) error {
-	if r.failMark {
-		return errors.New("db driver: connection reset by peer")
-	}
-	return r.CapabilityRepository.MarkAnalysisFailed(ctx, tenantID, analysisRunID, errorCode, expectedAttempt)
 }
 
 func TestAnalysisAttemptAuditOnRetry(t *testing.T) {
@@ -1225,8 +1275,130 @@ func TestEditConfirmedReplayCapabilityMismatch(t *testing.T) {
 func TestMapRepoErrorNeverLeaksDriver(t *testing.T) {
 	err := MapRepoError(errors.New("Error 1062: Duplicate entry 'x' for key 'PRIMARY'"))
 	require.ErrorIs(t, err, entity.ErrConflict)
+	require.Equal(t, entity.ErrConflict.Error(), err.Error())
+	require.NotContains(t, strings.ToLower(err.Error()), "sql")
+	require.NotContains(t, strings.ToLower(err.Error()), "mysql")
+	require.NotContains(t, strings.ToLower(err.Error()), "duplicate")
 	require.NotContains(t, err.Error(), "1062")
+
+	wrapped := fmt.Errorf("driver: %w", entity.ErrConflict)
+	err = MapRepoError(wrapped)
+	require.Equal(t, entity.ErrConflict, err)
+	require.Equal(t, entity.ErrConflict.Error(), err.Error())
+
 	err = MapRepoError(errors.New("pq: connection refused"))
 	require.ErrorIs(t, err, entity.ErrConsistency)
+	require.Equal(t, entity.ErrConsistency.Error(), err.Error())
 	require.NotContains(t, err.Error(), "pq:")
+}
+
+func TestAnalysisActorIDRequired(t *testing.T) {
+	svc, _, _ := newTestService(&DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}})
+	_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "no-actor",
+		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+}
+
+func TestAnalysisCredentialShapeRejection(t *testing.T) {
+	svc, _, _ := newTestService(&DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}})
+	_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "cred", ActorID: testActor,
+		Analysis: entity.AnalysisRequest{
+			BusinessModelRevision: 1,
+			RequirementRefs:       []string{"client_secret=abc123"},
+		},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+
+	// Bare word "secret" alone in an opaque ID path is not rejected by credential shape
+	// (but ValidateOpaqueID may still accept opaque-safe strings without '=').
+	err = ValidateAnalysisRequest(entity.AnalysisRequest{
+		BusinessModelRevision: 1,
+		RequirementRefs:       []string{"req_secret_ref"},
+	})
+	require.NoError(t, err)
+}
+
+func TestPredicateKindNoTrimSpace(t *testing.T) {
+	err := ValidateMaterializationPayload(entity.SemanticPayload{
+		Name: "X", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
+		QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
+		Preconditions: []entity.Precondition{{ID: "p1", Predicate: entity.PredicateKind(" EQ "), LogicalKey: "k", Comparand: "v"}},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+}
+
+func TestComparandRulesByPredicate(t *testing.T) {
+	base := entity.SemanticPayload{
+		Name: "X", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
+		QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
+	}
+	p := base
+	p.Preconditions = []entity.Precondition{{ID: "p1", Predicate: entity.PredicateIN, LogicalKey: "k", Comparand: []string{}}}
+	require.ErrorIs(t, ValidateMaterializationPayload(p), entity.ErrInvalidPayload)
+
+	p = base
+	p.Preconditions = []entity.Precondition{{ID: "p1", Predicate: entity.PredicateEQ, LogicalKey: "k"}}
+	require.ErrorIs(t, ValidateMaterializationPayload(p), entity.ErrInvalidPayload)
+
+	p = base
+	p.Preconditions = []entity.Precondition{{ID: "p1", Predicate: entity.PredicateExists, LogicalKey: "k", Comparand: "x"}}
+	require.ErrorIs(t, ValidateMaterializationPayload(p), entity.ErrInvalidPayload)
+
+	p = base
+	p.Preconditions = []entity.Precondition{{ID: "p1", Predicate: entity.PredicateEQ, LogicalKey: "k", Comparand: "ok"}}
+	require.NoError(t, ValidateMaterializationPayload(p))
+}
+
+func TestConcurrentLeaseClaimExactlyOne(t *testing.T) {
+	fixed := &fixedClock{t: time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)}
+	uow := NewMemoryUnitOfWork()
+	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen, Clock: fixed})
+
+	req := entity.AnalysisRequest{BusinessModelRevision: 1}
+	digest, err := AnalysisRequestDigest(req)
+	require.NoError(t, err)
+	raw, err := json.Marshal(req)
+	require.NoError(t, err)
+	exp := fixed.Now().Add(-time.Minute)
+	claimedAt := fixed.Now().Add(-10 * time.Minute)
+	seed := &entity.CapabilityAnalysisRun{
+		AnalysisRunID: "run-race", TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
+		ClientRequestID: "lease-race", RequestDigest: digest, Status: entity.AnalysisPending, Attempt: 1,
+		RequestJSON: string(raw), ExecutionClaimedAt: &claimedAt, LeaseExpiresAt: &exp,
+		CreatedBy: testActor, CreatedAt: fixed.Now(), UpdatedAt: fixed.Now(),
+	}
+	_, created, err := uow.Root().CreateOrClaimAnalysisRun(context.Background(), seed)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NoError(t, uow.Root().CreateAnalysisAttempt(context.Background(), &entity.CapabilityAnalysisAttempt{
+		AttemptID: "att-race", AnalysisRunID: "run-race", TenantID: "t1", Attempt: 1,
+		ActorPrincipalID: testActor, TriggerKind: entity.AttemptTriggerFirst,
+		ResultStatus: entity.AttemptResultPending, CreatedAt: fixed.Now(),
+	}))
+
+	var wg sync.WaitGroup
+	results := make([]*AnalysisResult, 2)
+	errs := make([]error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+				TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "lease-race", ActorID: testActor,
+				Analysis: req,
+			})
+		}(i)
+	}
+	wg.Wait()
+	owners := 0
+	for i := 0; i < 2; i++ {
+		if errs[i] == nil && results[i] != nil && results[i].OwnedExecute {
+			owners++
+		}
+	}
+	require.Equal(t, 1, owners)
 }

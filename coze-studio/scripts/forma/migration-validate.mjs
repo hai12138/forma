@@ -213,6 +213,7 @@ test('atlas sum references migrations', () => {
   assert.ok(sum.includes('20250903010000_s5_g2_business_capability.sql'));
   assert.ok(sum.includes('20250903020000_s5_g2_f1_capability_consistency.sql'));
   assert.ok(sum.includes('20250903030000_s5_g2_f2_capability_consistency.sql'));
+  assert.ok(sum.includes('20250903040000_s5_g2_f3_capability_safety.sql'));
 });
 
 test('S5-G2-F1 capability consistency migration present', () => {
@@ -236,5 +237,16 @@ test('S5-G2-F2 capability analysis attempt migration present', () => {
   assert.ok(sql.includes('trigger_kind'));
   assert.ok(sql.includes('result_status'));
   assert.ok(sql.includes('uk_forma_capability_analysis_attempt'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
+});
+
+test('S5-G2-F3 capability safety migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250903040000_s5_g2_f3_capability_safety.sql'),
+    'utf8',
+  );
+  assert.ok(sql.includes('forma_capability_analysis_attempt'));
+  assert.ok(sql.includes('completed_at'));
+  assert.ok(sql.includes('uk_forma_capability_analysis_attempt_run_attempt'));
   assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
 });

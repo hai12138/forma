@@ -109,16 +109,17 @@ type decisionRow struct {
 func (decisionRow) TableName() string { return "forma_capability_decision" }
 
 type analysisAttemptRow struct {
-	ID               int64     `gorm:"column:id;primaryKey"`
-	AttemptID        string    `gorm:"column:attempt_id"`
-	AnalysisRunID    string    `gorm:"column:analysis_run_id"`
-	TenantID         string    `gorm:"column:tenant_id"`
-	Attempt          int32     `gorm:"column:attempt"`
-	ActorPrincipalID string    `gorm:"column:actor_principal_id"`
-	TriggerKind      string    `gorm:"column:trigger_kind"`
-	ResultStatus     string    `gorm:"column:result_status"`
-	ErrorCode        string    `gorm:"column:error_code"`
-	CreatedAt        time.Time `gorm:"column:created_at"`
+	ID               int64      `gorm:"column:id;primaryKey"`
+	AttemptID        string     `gorm:"column:attempt_id"`
+	AnalysisRunID    string     `gorm:"column:analysis_run_id"`
+	TenantID         string     `gorm:"column:tenant_id"`
+	Attempt          int32      `gorm:"column:attempt"`
+	ActorPrincipalID string     `gorm:"column:actor_principal_id"`
+	TriggerKind      string     `gorm:"column:trigger_kind"`
+	ResultStatus     string     `gorm:"column:result_status"`
+	ErrorCode        string     `gorm:"column:error_code"`
+	CreatedAt        time.Time  `gorm:"column:created_at"`
+	CompletedAt      *time.Time `gorm:"column:completed_at"`
 }
 
 func (analysisAttemptRow) TableName() string { return "forma_capability_analysis_attempt" }

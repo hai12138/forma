@@ -560,12 +560,32 @@ func (d *CapabilityDAO) CreateAnalysisAttempt(ctx context.Context, attempt *enti
 }
 
 func (d *CapabilityDAO) CompleteAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32, result entity.AnalysisAttemptResult, errorCode string) error {
+	now := time.Now().UTC()
 	res := d.db.WithContext(ctx).Model(&analysisAttemptRow{}).
 		Where("tenant_id = ? AND analysis_run_id = ? AND attempt = ? AND result_status = ?",
 			tenantID, analysisRunID, attempt, string(entity.AttemptResultPending)).
 		Updates(map[string]any{
 			"result_status": string(result),
 			"error_code":    errorCode,
+			"completed_at":  now,
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return entity.ErrConsistency
+	}
+	return nil
+}
+
+func (d *CapabilityDAO) SupersedeAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32) error {
+	now := time.Now().UTC()
+	res := d.db.WithContext(ctx).Model(&analysisAttemptRow{}).
+		Where("tenant_id = ? AND analysis_run_id = ? AND attempt = ? AND result_status = ?",
+			tenantID, analysisRunID, attempt, string(entity.AttemptResultPending)).
+		Updates(map[string]any{
+			"result_status": string(entity.AttemptResultSuperseded),
+			"completed_at":  now,
 		})
 	if res.Error != nil {
 		return res.Error
@@ -593,6 +613,7 @@ func (d *CapabilityDAO) ListAnalysisAttempts(ctx context.Context, tenantID, anal
 			TriggerKind: entity.AnalysisAttemptTrigger(rows[i].TriggerKind),
 			ResultStatus: entity.AnalysisAttemptResult(rows[i].ResultStatus),
 			ErrorCode: rows[i].ErrorCode, CreatedAt: rows[i].CreatedAt,
+			CompletedAt: rows[i].CompletedAt,
 		})
 	}
 	return out, nil

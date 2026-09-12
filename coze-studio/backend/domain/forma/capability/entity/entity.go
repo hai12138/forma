@@ -314,9 +314,10 @@ const (
 type AnalysisAttemptResult string
 
 const (
-	AttemptResultPending   AnalysisAttemptResult = "PENDING"
-	AttemptResultSucceeded AnalysisAttemptResult = "SUCCEEDED"
-	AttemptResultFailed    AnalysisAttemptResult = "FAILED"
+	AttemptResultPending    AnalysisAttemptResult = "PENDING"
+	AttemptResultSucceeded  AnalysisAttemptResult = "SUCCEEDED"
+	AttemptResultFailed     AnalysisAttemptResult = "FAILED"
+	AttemptResultSuperseded AnalysisAttemptResult = "SUPERSEDED"
 )
 
 // CapabilityAnalysisAttempt is an audit row for each claim / retry / lease takeover.
@@ -330,6 +331,7 @@ type CapabilityAnalysisAttempt struct {
 	ResultStatus     AnalysisAttemptResult
 	ErrorCode        string
 	CreatedAt        time.Time
+	CompletedAt      *time.Time
 }
 
 func cloneLogicalSchema(in LogicalSchema) LogicalSchema {

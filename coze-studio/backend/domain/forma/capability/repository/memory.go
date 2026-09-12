@@ -625,6 +625,12 @@ func (r *memRepo) createAnalysisAttempt(_ context.Context, attempt *entity.Capab
 	if _, ok := r.attempts[id]; ok {
 		return entity.ErrConflict
 	}
+	// UNIQUE (tenant_id, analysis_run_id, attempt)
+	for _, a := range r.attempts {
+		if a.TenantID == attempt.TenantID && a.AnalysisRunID == attempt.AnalysisRunID && a.Attempt == attempt.Attempt {
+			return entity.ErrConflict
+		}
+	}
 	cp := *attempt
 	r.attempts[id] = &cp
 	return nil
@@ -639,10 +645,32 @@ func (t *memTx) CompleteAnalysisAttempt(ctx context.Context, tenantID, analysisR
 	return t.r.completeAnalysisAttempt(ctx, tenantID, analysisRunID, attempt, result, errorCode)
 }
 func (r *memRepo) completeAnalysisAttempt(_ context.Context, tenantID, analysisRunID string, attempt int32, result entity.AnalysisAttemptResult, errorCode string) error {
+	now := time.Now().UTC()
 	for _, a := range r.attempts {
 		if a.TenantID == tenantID && a.AnalysisRunID == analysisRunID && a.Attempt == attempt && a.ResultStatus == entity.AttemptResultPending {
 			a.ResultStatus = result
 			a.ErrorCode = errorCode
+			a.CompletedAt = &now
+			return nil
+		}
+	}
+	return entity.ErrConsistency
+}
+
+func (r *memRepo) SupersedeAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.supersedeAnalysisAttempt(ctx, tenantID, analysisRunID, attempt)
+}
+func (t *memTx) SupersedeAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32) error {
+	return t.r.supersedeAnalysisAttempt(ctx, tenantID, analysisRunID, attempt)
+}
+func (r *memRepo) supersedeAnalysisAttempt(_ context.Context, tenantID, analysisRunID string, attempt int32) error {
+	now := time.Now().UTC()
+	for _, a := range r.attempts {
+		if a.TenantID == tenantID && a.AnalysisRunID == analysisRunID && a.Attempt == attempt && a.ResultStatus == entity.AttemptResultPending {
+			a.ResultStatus = entity.AttemptResultSuperseded
+			a.CompletedAt = &now
 			return nil
 		}
 	}
@@ -731,6 +759,10 @@ func cloneAttemptMap(in map[string]*entity.CapabilityAnalysisAttempt) map[string
 	out := make(map[string]*entity.CapabilityAnalysisAttempt, len(in))
 	for key, v := range in {
 		cp := *v
+		if v.CompletedAt != nil {
+			t := *v.CompletedAt
+			cp.CompletedAt = &t
+		}
 		out[key] = &cp
 	}
 	return out

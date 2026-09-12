@@ -29,6 +29,7 @@ var (
 	ErrConfirmRequired            = errors.New("forma capability confirm required")
 	ErrInvalidState               = errors.New("forma capability invalid state")
 	ErrUoWNotConfigured           = errors.New("forma capability unit of work not configured")
+	ErrUoWCommitFailed            = errors.New("forma capability unit of work commit failed")
 	ErrMissingValidationEvidence  = errors.New("forma capability missing validation evidence")
 	ErrMissingImpactEvidence      = errors.New("forma capability missing impact evidence")
 	ErrAnalysisFailed             = errors.New("forma capability analysis failed")
