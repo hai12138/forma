@@ -3,7 +3,7 @@
 
 **Gate:** S5-G1-F7
 **Date:** 2026-09-12
-**Status:** PENDING_CI (docs committed; awaiting Forma CI ALL GREEN + human architecture review)
+**Status:** **PASS** (docs-only; Forma CI ALL GREEN; await human architecture review before S5-G2)
 
 ---
 
@@ -26,7 +26,7 @@
 |----------|--------|
 | `forma/docs/stages/FORMA-S5-BUSINESS-CAPABILITY-STAGE-CONTRACT.md` | AMENDED (G1-F7) |
 | `docs/agents/issue-tracker.md` | CREATED (repo-root GitHub Issue Tracker config) |
-| `forma/cursor-results/FORMA-S5-G1-F7-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED |
+| `forma/cursor-results/FORMA-S5-G1-F7-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED / FINALIZED |
 
 No GitHub Issues were created, closed, labeled, or commented.
 
@@ -42,6 +42,8 @@ No GitHub Issues were created, closed, labeled, or commented.
 | First-create concurrency seam | PASS — INSERT unique BusinessCapability owns aggregate; then AssetRef/Revision/Decision/project; conflict⇒no orphans; removed vague “new aggregate lock path” |
 | Issue tracker config | PASS — `docs/agents/issue-tracker.md` at repo root |
 
+`git diff --check`: PASS (clean)
+
 ---
 
 ## 4. Commit & CI
@@ -49,19 +51,19 @@ No GitHub Issues were created, closed, labeled, or commented.
 | Field | Value |
 |-------|-------|
 | COMMIT_SHA | `45fdf9142529f84105464ebdfe2a564452c57b36` |
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
-| git diff --check | PASS |
+| CI_RUN | `34695789031` (tip `70b26078…` that recorded architecture SHA) |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| CI | **ALL GREEN** |
+| CI URL | https://github.com/hai12138/forma/actions/runs/34695789031 |
 
 ---
 
-## 5. Gate Summary (pre-CI)
+## 5. Gate Summary
 
 ```text
-S5_G1_F7_STATUS = PENDING_CI
+S5_G1_F7_STATUS = PASS
 ACTIVE_INVARIANT = PASS
 CONTENT_DIGEST = PASS
 FIRST_CREATE_SEAM = PASS
@@ -69,8 +71,8 @@ ISSUE_TRACKER_CONFIG = PASS
 PRODUCT_CODE_CHANGE = NONE
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
-CI = pending
+CI = ALL GREEN
 S5_G2_READY = NO
 ```
 
-**Stop:** After CI ALL GREEN, finalize §4/§5, then **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`.
+**Stop:** **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`. Await human architecture review.
