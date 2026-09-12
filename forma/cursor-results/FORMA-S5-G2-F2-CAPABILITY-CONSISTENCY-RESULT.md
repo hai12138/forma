@@ -3,7 +3,7 @@
 
 **Gate:** S5-G2-F2
 **Date:** 2026-09-13
-**Status:** PENDING_CI (implementation ready; awaiting Forma CI ALL GREEN)
+**Status:** **PASS** (Capability consistency fixes; Forma CI ALL GREEN; await human review before S5-G3)
 
 ---
 
@@ -34,37 +34,28 @@
 | Proposal terminal binding | PASS — bind check before status switch; CONFIRMED/EDIT_CONFIRMED mismatch tests |
 | QUERY pairing | PASS — READ↔ONE, LIST/FILTER↔MANY, COMMAND empty |
 
----
-
-## 3. Local verification
-
-| Check | Result |
-|-------|--------|
-| `go test ./domain/forma/capability/... -count=1` | PASS |
-| `go test ./domain/forma/... -count=1` | PASS |
-| `node scripts/forma/migration-validate.mjs` | PASS (17/17) |
-| migration CASE A/B/C | Deferred to Forma CI |
-| `git diff --check` | _pending commit_ |
+`git diff --check`: PASS
 
 ---
 
-## 4. Commit & CI
+## 3. Commit & CI
 
 | Field | Value |
 |-------|-------|
 | COMMIT_SHA | `080d4fcd6f46fa2cdefb232a7a9d1aa32850e0c6` |
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| CI_RUN | `34707633959` (tip `5765571c…`) |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| CI | **ALL GREEN** |
+| CI URL | https://github.com/hai12138/forma/actions/runs/34707633959 |
 
 ---
 
-## 5. Gate Summary (pre-CI)
+## 4. Gate Summary
 
 ```text
-S5_G2_F2_STATUS = PENDING_CI
+S5_G2_F2_STATUS = PASS
 UOW_INTERFACE = PASS
 UOW_COMMIT_ROLLBACK = PASS
 MATERIALIZATION_SAFETY = PASS
@@ -77,8 +68,10 @@ QUERY_PAIRING = PASS
 PRODUCT_CODE_CHANGE = CAPABILITY_DOMAIN_ONLY
 MIGRATION_CHANGE = S5_G2_F2_ONLY
 REAL_MODEL_CALLS = 0
-CI = pending
+COMMIT_SHA = 080d4fcd6f46fa2cdefb232a7a9d1aa32850e0c6
+CI_RUN = 34707633959
+CI = ALL GREEN
 S5_G3_READY = NO
 ```
 
-**Stop:** After CI ALL GREEN, finalize, then **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`.
+**Stop:** **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`. Await human review.
