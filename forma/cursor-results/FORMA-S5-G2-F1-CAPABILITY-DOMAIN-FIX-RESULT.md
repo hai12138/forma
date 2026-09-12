@@ -56,7 +56,7 @@
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA | _pending_ |
+| COMMIT_SHA | `e8f6f38846f33f81dd3f4816508689f49ec8ff17` |
 | CI_RUN | _pending_ |
 | forma-backend | _pending_ |
 | forma-migration-apply | _pending_ |
