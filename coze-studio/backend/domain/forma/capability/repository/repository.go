@@ -20,6 +20,7 @@ type CapabilityRepository interface {
 	GetCapability(ctx context.Context, tenantID, capabilityID string) (*entity.BusinessCapability, error)
 	GetCapabilityForUpdate(ctx context.Context, tenantID, capabilityID string) (*entity.BusinessCapability, error)
 	UpdateActiveRevisionID(ctx context.Context, tenantID, capabilityID, activeRevisionID string) error
+	CASBumpAggregateGeneration(ctx context.Context, tenantID, capabilityID string, expectedGen int64) (bool, error)
 
 	CreateRevision(ctx context.Context, rev *entity.BusinessCapabilityRevision) error
 	GetRevision(ctx context.Context, tenantID, revisionID string) (*entity.BusinessCapabilityRevision, error)
@@ -70,6 +71,9 @@ func (r *gormCapabilityRepo) GetCapabilityForUpdate(ctx context.Context, tenantI
 }
 func (r *gormCapabilityRepo) UpdateActiveRevisionID(ctx context.Context, tenantID, capabilityID, activeRevisionID string) error {
 	return r.dao.UpdateActiveRevisionID(ctx, tenantID, capabilityID, activeRevisionID)
+}
+func (r *gormCapabilityRepo) CASBumpAggregateGeneration(ctx context.Context, tenantID, capabilityID string, expectedGen int64) (bool, error) {
+	return r.dao.CASBumpAggregateGeneration(ctx, tenantID, capabilityID, expectedGen)
 }
 func (r *gormCapabilityRepo) CreateRevision(ctx context.Context, rev *entity.BusinessCapabilityRevision) error {
 	return r.dao.CreateRevision(ctx, rev)

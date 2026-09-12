@@ -171,7 +171,6 @@ func TestAnalysisRequestDigestStable(t *testing.T) {
 			{DataContractID: "a", DataContractVersion: 1},
 		},
 		RequirementRefs: []string{"r2", "r1"},
-		Options:         map[string]any{"z": 1, "a": "x"},
 	}
 	d1, err := AnalysisRequestDigest(req)
 	require.NoError(t, err)
@@ -182,7 +181,6 @@ func TestAnalysisRequestDigestStable(t *testing.T) {
 			{DataContractID: "b", DataContractVersion: 2},
 		},
 		RequirementRefs: []string{"r1", "r2"},
-		Options:         map[string]any{"a": "x", "z": 1},
 	}
 	d2, err := AnalysisRequestDigest(req2)
 	require.NoError(t, err)

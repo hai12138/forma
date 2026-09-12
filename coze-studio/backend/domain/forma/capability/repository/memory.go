@@ -106,6 +106,7 @@ func (r *memRepo) createCapability(_ context.Context, cap *entity.BusinessCapabi
 		return entity.ErrConflict
 	}
 	cp := *cap
+	// AggregateGeneration starts at 0 on create unless explicitly set.
 	r.caps[id] = &cp
 	return nil
 }
@@ -152,6 +153,27 @@ func (r *memRepo) updateActiveRevisionID(_ context.Context, tenantID, capability
 	c.ActiveRevisionID = activeRevisionID
 	c.UpdatedAt = time.Now().UTC()
 	return nil
+}
+
+func (r *memRepo) CASBumpAggregateGeneration(ctx context.Context, tenantID, capabilityID string, expectedGen int64) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.casBumpAggregateGeneration(ctx, tenantID, capabilityID, expectedGen)
+}
+func (t *memTx) CASBumpAggregateGeneration(ctx context.Context, tenantID, capabilityID string, expectedGen int64) (bool, error) {
+	return t.r.casBumpAggregateGeneration(ctx, tenantID, capabilityID, expectedGen)
+}
+func (r *memRepo) casBumpAggregateGeneration(_ context.Context, tenantID, capabilityID string, expectedGen int64) (bool, error) {
+	c, ok := r.caps[k(tenantID, capabilityID)]
+	if !ok {
+		return false, entity.ErrNotFound
+	}
+	if c.AggregateGeneration != expectedGen {
+		return false, nil
+	}
+	c.AggregateGeneration = expectedGen + 1
+	c.UpdatedAt = time.Now().UTC()
+	return true, nil
 }
 
 func (r *memRepo) CreateRevision(ctx context.Context, rev *entity.BusinessCapabilityRevision) error {
@@ -454,8 +476,7 @@ func (r *memRepo) createOrClaimAnalysisRun(_ context.Context, run *entity.Capabi
 		if existing.RequestDigest != run.RequestDigest {
 			return nil, false, entity.ErrIdempotencyConflict
 		}
-		cp := *existing
-		return &cp, false, nil
+		return cloneAnalysisRun(existing), false, nil
 	}
 	cp := *run
 	if cp.Attempt == 0 {
@@ -464,16 +485,21 @@ func (r *memRepo) createOrClaimAnalysisRun(_ context.Context, run *entity.Capabi
 	now := time.Now().UTC()
 	if cp.ExecutionClaimedAt == nil {
 		cp.ExecutionClaimedAt = &now
+	} else {
+		t := *cp.ExecutionClaimedAt
+		cp.ExecutionClaimedAt = &t
 	}
 	if cp.LeaseExpiresAt == nil {
 		exp := now.Add(5 * time.Minute)
 		cp.LeaseExpiresAt = &exp
+	} else {
+		t := *cp.LeaseExpiresAt
+		cp.LeaseExpiresAt = &t
 	}
 	stored := cp
 	r.runs[k(run.TenantID, run.AnalysisRunID)] = &stored
 	r.runKeys[ik] = run.AnalysisRunID
-	out := stored
-	return &out, true, nil
+	return cloneAnalysisRun(&stored), true, nil
 }
 
 func (r *memRepo) GetAnalysisRun(ctx context.Context, tenantID, analysisRunID string) (*entity.CapabilityAnalysisRun, error) {
@@ -489,8 +515,7 @@ func (r *memRepo) getAnalysisRun(_ context.Context, tenantID, analysisRunID stri
 	if !ok {
 		return nil, entity.ErrAnalysisNotFound
 	}
-	cp := *run
-	return &cp, nil
+	return cloneAnalysisRun(run), nil
 }
 
 func (r *memRepo) MarkAnalysisSucceeded(ctx context.Context, tenantID, analysisRunID, modelRef string, expectedAttempt int32) error {
@@ -570,16 +595,15 @@ func (r *memRepo) claimExpiredPendingExecution(_ context.Context, tenantID, anal
 		return nil, false, entity.ErrAnalysisNotFound
 	}
 	if run.Status != entity.AnalysisPending || run.Attempt != expectedAttempt || run.LeaseExpiresAt == nil || now.Before(*run.LeaseExpiresAt) {
-		cp := *run
-		return &cp, false, nil
+		return cloneAnalysisRun(run), false, nil
 	}
 	exp := now.Add(5 * time.Minute)
 	run.Attempt++
-	run.ExecutionClaimedAt = &now
+	claimed := now
+	run.ExecutionClaimedAt = &claimed
 	run.LeaseExpiresAt = &exp
 	run.UpdatedAt = now
-	cp := *run
-	return &cp, true, nil
+	return cloneAnalysisRun(run), true, nil
 }
 
 func cloneRevision(in *entity.BusinessCapabilityRevision) *entity.BusinessCapabilityRevision {
@@ -635,10 +659,25 @@ func cloneDecMap(in map[string]*entity.CapabilityDecision) map[string]*entity.Ca
 func cloneRunMap(in map[string]*entity.CapabilityAnalysisRun) map[string]*entity.CapabilityAnalysisRun {
 	out := make(map[string]*entity.CapabilityAnalysisRun, len(in))
 	for key, v := range in {
-		cp := *v
-		out[key] = &cp
+		out[key] = cloneAnalysisRun(v)
 	}
 	return out
+}
+
+func cloneAnalysisRun(in *entity.CapabilityAnalysisRun) *entity.CapabilityAnalysisRun {
+	if in == nil {
+		return nil
+	}
+	cp := *in
+	if in.ExecutionClaimedAt != nil {
+		t := *in.ExecutionClaimedAt
+		cp.ExecutionClaimedAt = &t
+	}
+	if in.LeaseExpiresAt != nil {
+		t := *in.LeaseExpiresAt
+		cp.LeaseExpiresAt = &t
+	}
+	return &cp
 }
 func cloneStrMap(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))

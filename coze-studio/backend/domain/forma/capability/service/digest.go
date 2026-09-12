@@ -65,11 +65,6 @@ func canonicalAnalysisRequestJSON(req entity.AnalysisRequest) ([]byte, error) {
 		"data_contract_pins":      pins,
 		"requirement_refs":        refs,
 	}
-	if len(req.Options) > 0 {
-		doc["options"] = sortedAnyMap(req.Options)
-	} else {
-		doc["options"] = map[string]any{}
-	}
 	return json.Marshal(doc)
 }
 
@@ -149,28 +144,6 @@ func normalizePreconditions(in []entity.Precondition) []map[string]any {
 			m["comparand"] = p.Comparand
 		}
 		out = append(out, m)
-	}
-	return out
-}
-
-func sortedAnyMap(in map[string]any) map[string]any {
-	if in == nil {
-		return map[string]any{}
-	}
-	keys := make([]string, 0, len(in))
-	for k := range in {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	out := make(map[string]any, len(in))
-	for _, k := range keys {
-		v := in[k]
-		switch t := v.(type) {
-		case map[string]any:
-			out[k] = sortedAnyMap(t)
-		default:
-			out[k] = v
-		}
 	}
 	return out
 }

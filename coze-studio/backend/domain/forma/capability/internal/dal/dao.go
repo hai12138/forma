@@ -56,12 +56,13 @@ func deref(p *string) string {
 
 func (d *CapabilityDAO) CreateCapability(ctx context.Context, cap *entity.BusinessCapability) error {
 	row := &capabilityRow{
-		CapabilityID: cap.CapabilityID,
-		TenantID:     cap.TenantID,
-		BusinessID:   cap.BusinessID,
-		CreatedBy:    cap.CreatedBy,
-		CreatedAt:    cap.CreatedAt,
-		UpdatedAt:    cap.UpdatedAt,
+		CapabilityID:        cap.CapabilityID,
+		TenantID:            cap.TenantID,
+		BusinessID:          cap.BusinessID,
+		AggregateGeneration: cap.AggregateGeneration,
+		CreatedBy:           cap.CreatedBy,
+		CreatedAt:           cap.CreatedAt,
+		UpdatedAt:           cap.UpdatedAt,
 	}
 	if cap.ActiveRevisionID != "" {
 		row.ActiveRevisionID = strPtr(cap.ActiveRevisionID)
@@ -116,6 +117,20 @@ func (d *CapabilityDAO) UpdateActiveRevisionID(ctx context.Context, tenantID, ca
 		return entity.ErrNotFound
 	}
 	return nil
+}
+
+func (d *CapabilityDAO) CASBumpAggregateGeneration(ctx context.Context, tenantID, capabilityID string, expectedGen int64) (bool, error) {
+	now := time.Now().UTC()
+	res := d.db.WithContext(ctx).Model(&capabilityRow{}).
+		Where("tenant_id = ? AND capability_id = ? AND aggregate_generation = ?", tenantID, capabilityID, expectedGen).
+		Updates(map[string]any{
+			"aggregate_generation": expectedGen + 1,
+			"updated_at":           now,
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
 }
 
 func (d *CapabilityDAO) CreateRevision(ctx context.Context, rev *entity.BusinessCapabilityRevision) error {
@@ -527,13 +542,14 @@ func (d *CapabilityDAO) ClaimExpiredPendingExecution(ctx context.Context, tenant
 
 func toCapability(row *capabilityRow) *entity.BusinessCapability {
 	return &entity.BusinessCapability{
-		CapabilityID:     row.CapabilityID,
-		TenantID:         row.TenantID,
-		BusinessID:       row.BusinessID,
-		ActiveRevisionID: deref(row.ActiveRevisionID),
-		CreatedBy:        row.CreatedBy,
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
+		CapabilityID:        row.CapabilityID,
+		TenantID:            row.TenantID,
+		BusinessID:          row.BusinessID,
+		ActiveRevisionID:    deref(row.ActiveRevisionID),
+		AggregateGeneration: row.AggregateGeneration,
+		CreatedBy:           row.CreatedBy,
+		CreatedAt:           row.CreatedAt,
+		UpdatedAt:           row.UpdatedAt,
 	}
 }
 
@@ -615,11 +631,21 @@ func toRevision(row *revisionRow) (*entity.BusinessCapabilityRevision, error) {
 		CreatedBy:             row.CreatedBy,
 		CreatedAt:             row.CreatedAt,
 	}
-	_ = json.Unmarshal([]byte(row.InputSchemaJSON), &rev.InputSchema)
-	_ = json.Unmarshal([]byte(row.OutputSchemaJSON), &rev.OutputSchema)
-	_ = json.Unmarshal([]byte(row.PreconditionsJSON), &rev.Preconditions)
-	_ = json.Unmarshal([]byte(row.EffectsJSON), &rev.Effects)
-	_ = json.Unmarshal([]byte(row.DataContractBindingsJSON), &rev.DataContractBindings)
+	if err := json.Unmarshal([]byte(row.InputSchemaJSON), &rev.InputSchema); err != nil {
+		return nil, entity.ErrConsistency
+	}
+	if err := json.Unmarshal([]byte(row.OutputSchemaJSON), &rev.OutputSchema); err != nil {
+		return nil, entity.ErrConsistency
+	}
+	if err := json.Unmarshal([]byte(row.PreconditionsJSON), &rev.Preconditions); err != nil {
+		return nil, entity.ErrConsistency
+	}
+	if err := json.Unmarshal([]byte(row.EffectsJSON), &rev.Effects); err != nil {
+		return nil, entity.ErrConsistency
+	}
+	if err := json.Unmarshal([]byte(row.DataContractBindingsJSON), &rev.DataContractBindings); err != nil {
+		return nil, entity.ErrConsistency
+	}
 	return rev, nil
 }
 
@@ -635,7 +661,7 @@ func toProposal(row *proposalRow) (*entity.CapabilityProposal, error) {
 		CreatedAt:              row.CreatedAt,
 	}
 	if err := json.Unmarshal([]byte(row.PayloadJSON), &p.Payload); err != nil {
-		return nil, err
+		return nil, entity.ErrConsistency
 	}
 	return p, nil
 }

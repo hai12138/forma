@@ -10,14 +10,15 @@ import (
 )
 
 type capabilityRow struct {
-	ID               int64      `gorm:"column:id;primaryKey"`
-	CapabilityID     string     `gorm:"column:capability_id"`
-	TenantID         string     `gorm:"column:tenant_id"`
-	BusinessID       string     `gorm:"column:business_id"`
-	ActiveRevisionID *string    `gorm:"column:active_revision_id"`
-	CreatedBy        string     `gorm:"column:created_by"`
-	CreatedAt        time.Time  `gorm:"column:created_at"`
-	UpdatedAt        time.Time  `gorm:"column:updated_at"`
+	ID                  int64     `gorm:"column:id;primaryKey"`
+	CapabilityID        string    `gorm:"column:capability_id"`
+	TenantID            string    `gorm:"column:tenant_id"`
+	BusinessID          string    `gorm:"column:business_id"`
+	ActiveRevisionID    *string   `gorm:"column:active_revision_id"`
+	AggregateGeneration int64     `gorm:"column:aggregate_generation"`
+	CreatedBy           string    `gorm:"column:created_by"`
+	CreatedAt           time.Time `gorm:"column:created_at"`
+	UpdatedAt           time.Time `gorm:"column:updated_at"`
 }
 
 func (capabilityRow) TableName() string { return "forma_business_capability" }

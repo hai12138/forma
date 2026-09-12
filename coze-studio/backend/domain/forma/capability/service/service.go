@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -89,33 +88,40 @@ func NewCapabilityService(c *Components) CapabilityService {
 		gen = c.Generator
 		db = c.DB
 	}
-	return &capabilityService{repo: repo, assets: assets, generator: gen, clock: clk, db: db}
+	svc := &capabilityService{repo: repo, assets: assets, generator: gen, clock: clk, db: db}
+	return svc
 }
 
 func (s *capabilityService) configured() bool {
-	return s.repo != nil && s.assets != nil
+	if s.repo == nil || s.assets == nil {
+		return false
+	}
+	// Non-memory asset projections require a shared GORM DB for atomic UoW.
+	if _, ok := unwrapMemory(s.assets); !ok && s.db == nil {
+		return false
+	}
+	return true
 }
 
 // withinTx runs fn with Capability + AssetProjection sharing one logical transaction.
+// Fail-closed: only GORM shared txn or MemoryAssetProjection snap/restore are allowed.
 func (s *capabilityService) withinTx(ctx context.Context, fn func(tx repository.CapabilityRepository, assets AssetProjection) error) error {
 	if s.db != nil {
 		return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			return fn(repository.NewCapabilityRepository(tx), NewGormAssetProjection(tx))
 		})
 	}
-	if mem, ok := s.assets.(*MemoryAssetProjection); ok {
+	if mem, ok := unwrapMemory(s.assets); ok {
 		return s.repo.Transaction(ctx, func(txRepo repository.CapabilityRepository) error {
 			snap := mem.snapshot()
-			err := fn(txRepo, mem)
+			err := fn(txRepo, s.assets)
 			if err != nil {
 				mem.restore(snap)
 			}
 			return err
 		})
 	}
-	return s.repo.Transaction(ctx, func(txRepo repository.CapabilityRepository) error {
-		return fn(txRepo, s.assets)
-	})
+	return entity.ErrUoWNotConfigured
 }
 
 func newID(prefix string) string {
@@ -198,8 +204,16 @@ func (s *capabilityService) ManualCreate(ctx context.Context, in *ManualCreateIn
 	if in == nil || strings.TrimSpace(in.TenantID) == "" || strings.TrimSpace(in.BusinessID) == "" || strings.TrimSpace(in.ActorID) == "" {
 		return nil, nil, entity.ErrInvalidPayload
 	}
-	if err := validateSemanticBasics(in.Payload); err != nil {
+	if err := ValidateMaterializationPayload(in.Payload); err != nil {
 		return nil, nil, err
+	}
+	parsedOwner, err := parseOwnerID(in.ActorID)
+	if err != nil {
+		return nil, nil, err
+	}
+	ownerID := in.OwnerID
+	if ownerID == 0 {
+		ownerID = parsedOwner
 	}
 	capID := strings.TrimSpace(in.CapabilityID)
 	if capID == "" {
@@ -208,10 +222,10 @@ func (s *capabilityService) ManualCreate(ctx context.Context, in *ManualCreateIn
 	now := s.now()
 	var outCap *entity.BusinessCapability
 	var outRev *entity.BusinessCapabilityRevision
-	err := s.withinTx(ctx, func(tx repository.CapabilityRepository, assets AssetProjection) error {
+	err = s.withinTx(ctx, func(tx repository.CapabilityRepository, assets AssetProjection) error {
 		cap := &entity.BusinessCapability{
 			CapabilityID: capID, TenantID: in.TenantID, BusinessID: in.BusinessID,
-			CreatedBy: in.ActorID, CreatedAt: now, UpdatedAt: now,
+			AggregateGeneration: 0, CreatedBy: in.ActorID, CreatedAt: now, UpdatedAt: now,
 		}
 		if err := tx.CreateCapability(ctx, cap); err != nil {
 			return err
@@ -229,7 +243,7 @@ func (s *capabilityService) ManualCreate(ctx context.Context, in *ManualCreateIn
 		asset := &assetentity.AssetRef{
 			TenantID: in.TenantID, AssetID: capID, Kind: assetentity.AssetKindCapability,
 			Name: proj.Name, SemanticVersion: proj.SemanticVersion, Revision: 1, SchemaVersion: "1.0",
-			Status: proj.Status, OwnerID: in.OwnerID, CreatedBy: parseActorInt(in.ActorID),
+			Status: proj.Status, OwnerID: ownerID, CreatedBy: ownerID,
 			ContentDigest: proj.ContentDigest, CreatedAt: now, UpdatedAt: now,
 		}
 		if err := assets.CreateCapabilityAsset(ctx, asset); err != nil {
@@ -269,6 +283,9 @@ func (s *capabilityService) DeriveRevision(ctx context.Context, in *DeriveInput)
 	}
 	if action != entity.DecisionEdit && action != entity.DecisionDerive {
 		return nil, nil, entity.ErrInvalidPayload
+	}
+	if err := ValidateMaterializationPayload(in.Payload); err != nil {
+		return nil, nil, err
 	}
 	digest, err := DecisionPayloadDigest(in.Payload)
 	if err != nil {
@@ -357,7 +374,10 @@ func (s *capabilityService) StartAnalysis(ctx context.Context, in *StartAnalysis
 	if err != nil {
 		return nil, err
 	}
-	reqJSON, _ := json.Marshal(analysis)
+	reqJSON, err := json.Marshal(analysis)
+	if err != nil {
+		return nil, entity.ErrInvalidPayload
+	}
 	now := s.now()
 	run := &entity.CapabilityAnalysisRun{
 		AnalysisRunID: newID("carun"), TenantID: in.TenantID, BusinessID: in.BusinessID,
@@ -377,7 +397,6 @@ func (s *capabilityService) StartAnalysis(ctx context.Context, in *StartAnalysis
 }
 
 func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing *entity.CapabilityAnalysisRun, analysis entity.AnalysisRequest) (*AnalysisResult, error) {
-	props, _ := s.repo.ListProposalsByAnalysisRun(ctx, existing.TenantID, existing.AnalysisRunID)
 	now := s.now()
 	if existing.Status == entity.AnalysisPending && analysisLeaseExpired(existing, now) {
 		claimed, owned, err := s.repo.ClaimExpiredPendingExecution(ctx, existing.TenantID, existing.AnalysisRunID, existing.Attempt, now)
@@ -387,25 +406,46 @@ func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing
 		if owned {
 			return s.executeAnalysis(ctx, claimed, analysis)
 		}
+		existing = claimed
+	}
+	props, err := s.repo.ListProposalsByAnalysisRun(ctx, existing.TenantID, existing.AnalysisRunID)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, entity.ErrConsistency
 	}
 	return &AnalysisResult{Run: existing, Proposals: props, OwnedExecute: false}, nil
 }
 
 func (s *capabilityService) executeAnalysis(ctx context.Context, run *entity.CapabilityAnalysisRun, analysis entity.AnalysisRequest) (*AnalysisResult, error) {
+	if run == nil {
+		return nil, entity.ErrConsistency
+	}
 	attempt := run.Attempt
 	res, err := s.generator.Generate(ctx, GenerateRequest{
 		TenantID: run.TenantID, BusinessID: run.BusinessID, BusinessModelRevision: run.BusinessModelRevision,
 		AnalysisRunID: run.AnalysisRunID, Analysis: analysis,
 	})
 	if err != nil {
-		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, "FORMA_CAPABILITY_MODEL_FAILED", attempt)
-		failed, _ := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
-		return &AnalysisResult{Run: failed, OwnedExecute: true}, err
+		code := SanitizedAnalysisErrorCode(err)
+		if markErr := s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, code, attempt); markErr != nil {
+			return nil, SanitizeAnalysisError(markErr)
+		}
+		failed, getErr := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
+		if getErr != nil {
+			return nil, SanitizeAnalysisError(getErr)
+		}
+		return &AnalysisResult{Run: failed, OwnedExecute: true}, entity.ErrAnalysisFailed
 	}
 	now := s.now()
 	var created []*entity.CapabilityProposal
 	err = s.withinTx(ctx, func(tx repository.CapabilityRepository, assets AssetProjection) error {
+		_ = assets
 		for _, payload := range res.Proposals {
+			if err := ValidateMaterializationPayload(payload); err != nil {
+				return err
+			}
 			p := &entity.CapabilityProposal{
 				ProposalID: newID("cprop"), TenantID: run.TenantID, BusinessID: run.BusinessID,
 				AnalysisRunID: run.AnalysisRunID, Status: entity.ProposalProposed,
@@ -420,15 +460,30 @@ func (s *capabilityService) executeAnalysis(ctx context.Context, run *entity.Cap
 	})
 	if err != nil {
 		if errors.Is(err, entity.ErrStaleGeneration) {
-			final, _ := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
-			props, _ := s.repo.ListProposalsByAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
+			final, getErr := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
+			if getErr != nil {
+				return nil, getErr
+			}
+			props, listErr := s.repo.ListProposalsByAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
+			if listErr != nil {
+				return nil, listErr
+			}
 			return &AnalysisResult{Run: final, Proposals: props, OwnedExecute: true}, entity.ErrStaleGeneration
 		}
-		_ = s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, "FORMA_CAPABILITY_PERSIST_FAILED", attempt)
-		failed, _ := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
-		return &AnalysisResult{Run: failed, OwnedExecute: true}, err
+		code := SanitizedAnalysisErrorCode(err)
+		if markErr := s.repo.MarkAnalysisFailed(ctx, run.TenantID, run.AnalysisRunID, code, attempt); markErr != nil {
+			return nil, SanitizeAnalysisError(markErr)
+		}
+		failed, getErr := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
+		if getErr != nil {
+			return nil, SanitizeAnalysisError(getErr)
+		}
+		return &AnalysisResult{Run: failed, OwnedExecute: true}, SanitizeAnalysisError(err)
 	}
-	final, _ := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
+	final, getErr := s.repo.GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
+	if getErr != nil {
+		return nil, getErr
+	}
 	return &AnalysisResult{Run: final, Proposals: created, OwnedExecute: true}, nil
 }
 
@@ -457,12 +512,18 @@ func (s *capabilityService) RetryFailedAnalysis(ctx context.Context, tenantID, a
 	if !ok {
 		return nil, entity.ErrAnalysisNotFailed
 	}
-	run, _ = s.repo.GetAnalysisRun(ctx, tenantID, analysisRunID)
+	run, err = s.repo.GetAnalysisRun(ctx, tenantID, analysisRunID)
+	if err != nil {
+		return nil, err
+	}
+	if run == nil {
+		return nil, entity.ErrConsistency
+	}
 	run.Attempt = attempt
 	var analysis entity.AnalysisRequest
-	if json.Unmarshal([]byte(run.RequestJSON), &analysis) != nil {
+	if err := json.Unmarshal([]byte(run.RequestJSON), &analysis); err != nil {
 		_ = s.repo.MarkAnalysisFailed(ctx, tenantID, analysisRunID, "FORMA_CAPABILITY_INVALID_REQUEST", attempt)
-		return nil, entity.ErrInvalidPayload
+		return nil, entity.ErrConsistency
 	}
 	return s.executeAnalysis(ctx, run, analysis)
 }
@@ -484,7 +545,7 @@ func (s *capabilityService) EditConfirmProposal(ctx context.Context, in *EditCon
 	if in == nil || in.TenantID == "" || in.ProposalID == "" || in.ActorID == "" {
 		return nil, entity.ErrInvalidPayload
 	}
-	if err := validateSemanticBasics(in.EffectivePayload); err != nil {
+	if err := ValidateMaterializationPayload(in.EffectivePayload); err != nil {
 		return nil, err
 	}
 	return s.materializeProposal(ctx, in.TenantID, in.ProposalID, in.ActorID, in.Reason, in.ClientRequestID, in.CapabilityID, entity.DecisionEditConfirm, &in.EffectivePayload)
@@ -529,6 +590,14 @@ func (s *capabilityService) materializeProposal(ctx context.Context, tenantID, p
 			return entity.ErrConflict
 		}
 
+		if prop.CapabilityID != "" {
+			caller := strings.TrimSpace(capabilityID)
+			if caller != "" && caller != prop.CapabilityID {
+				return entity.ErrConflict
+			}
+			capabilityID = prop.CapabilityID
+		}
+
 		capID := strings.TrimSpace(capabilityID)
 		if capID == "" {
 			capID = strings.TrimSpace(prop.CapabilityID)
@@ -537,6 +606,10 @@ func (s *capabilityService) materializeProposal(ctx context.Context, tenantID, p
 		terminalStatus := entity.ProposalConfirmed
 		if action == entity.DecisionEditConfirm {
 			terminalStatus = entity.ProposalEditConfirmed
+		}
+
+		if err := ValidateMaterializationPayload(effective); err != nil {
+			return err
 		}
 
 		if capID != "" {
@@ -616,9 +689,13 @@ func (s *capabilityService) materializeExisting(ctx context.Context, tx reposito
 }
 
 func (s *capabilityService) materializeFirstCreate(ctx context.Context, tx repository.CapabilityRepository, assets AssetProjection, prop *entity.CapabilityProposal, capID string, effective entity.SemanticPayload, digest string, action entity.DecisionAction, terminal entity.ProposalStatus, actorID, reason, clientRequestID string, now time.Time, out **entity.BusinessCapabilityRevision) error {
+	ownerID, err := parseOwnerID(actorID)
+	if err != nil {
+		return err
+	}
 	cap := &entity.BusinessCapability{
 		CapabilityID: capID, TenantID: prop.TenantID, BusinessID: prop.BusinessID,
-		CreatedBy: actorID, CreatedAt: now, UpdatedAt: now,
+		AggregateGeneration: 0, CreatedBy: actorID, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := tx.CreateCapability(ctx, cap); err != nil {
 		return err
@@ -634,7 +711,7 @@ func (s *capabilityService) materializeFirstCreate(ctx context.Context, tx repos
 	asset := &assetentity.AssetRef{
 		TenantID: prop.TenantID, AssetID: capID, Kind: assetentity.AssetKindCapability,
 		Name: proj.Name, SemanticVersion: proj.SemanticVersion, Revision: 1, SchemaVersion: "1.0",
-		Status: proj.Status, ContentDigest: proj.ContentDigest, CreatedAt: now, UpdatedAt: now,
+		Status: proj.Status, OwnerID: ownerID, CreatedBy: ownerID, ContentDigest: proj.ContentDigest, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := assets.CreateCapabilityAsset(ctx, asset); err != nil {
 		return err
@@ -732,49 +809,37 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
 	}
-	var out *entity.BusinessCapabilityRevision
-	err := s.withinTx(ctx, func(tx repository.CapabilityRepository, assets AssetProjection) error {
-		cap, rev, err := s.lockCapAndRev(ctx, tx, tenantID, revisionID)
-		if err != nil {
-			return err
-		}
-		if rev.Status != entity.RevisionDraft {
-			return entity.ErrIllegalTransition
-		}
-		if !AllowTransition(rev.Status, entity.RevisionValidated) {
-			return entity.ErrIllegalTransition
-		}
-		if err := s.requireValidateProvenance(ctx, tx, rev); err != nil {
-			return err
-		}
-		ok, err := tx.UpdateRevisionStatus(ctx, tenantID, revisionID, entity.RevisionDraft, entity.RevisionValidated)
-		if err != nil || !ok {
-			return entity.ErrIllegalTransition
-		}
-		rev.Status = entity.RevisionValidated
-		revs, err := tx.ListRevisions(ctx, tenantID, cap.CapabilityID)
-		if err != nil {
-			return err
-		}
-		if err := projectAndUpdateAssets(ctx, assets, cap, revs); err != nil {
-			return err
-		}
-		out = rev
-		_ = actorID
-		return nil
-	})
-	return out, err
+	_ = tenantID
+	_ = revisionID
+	_ = actorID
+	// Fail-closed until S5-G3 validation evidence exists.
+	return nil, entity.ErrMissingValidationEvidence
 }
 
 func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, actorID, reason string) (*entity.BusinessCapabilityRevision, error) {
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
 	}
+	// Optimistic read outside the lock for CAS expected values.
+	revPeek, err := s.repo.GetRevision(ctx, tenantID, revisionID)
+	if err != nil {
+		return nil, err
+	}
+	capPeek, err := s.repo.GetCapability(ctx, tenantID, revPeek.CapabilityID)
+	if err != nil {
+		return nil, err
+	}
+	expectedActive := capPeek.ActiveRevisionID
+	expectedGen := capPeek.AggregateGeneration
+
 	var out *entity.BusinessCapabilityRevision
-	err := s.withinTx(ctx, func(tx repository.CapabilityRepository, assets AssetProjection) error {
+	err = s.withinTx(ctx, func(tx repository.CapabilityRepository, assets AssetProjection) error {
 		cap, rev, err := s.lockCapAndRev(ctx, tx, tenantID, revisionID)
 		if err != nil {
 			return err
+		}
+		if cap.ActiveRevisionID != expectedActive || cap.AggregateGeneration != expectedGen {
+			return entity.ErrActiveConflict
 		}
 		if rev.Status != entity.RevisionValidated {
 			return entity.ErrIllegalTransition
@@ -801,7 +866,23 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 		if err := tx.UpdateActiveRevisionID(ctx, tenantID, cap.CapabilityID, revisionID); err != nil {
 			return err
 		}
+		bumped, err := tx.CASBumpAggregateGeneration(ctx, tenantID, cap.CapabilityID, expectedGen)
+		if err != nil {
+			return err
+		}
+		if !bumped {
+			return entity.ErrActiveConflict
+		}
+		dec := &entity.CapabilityDecision{
+			DecisionID: newID("cdec"), TenantID: tenantID, BusinessID: cap.BusinessID,
+			CapabilityID: cap.CapabilityID, TargetRevisionID: revisionID,
+			Action: entity.DecisionActivate, ActorPrincipalID: actorID, Reason: reason, CreatedAt: s.now(),
+		}
+		if err := tx.CreateDecision(ctx, dec); err != nil {
+			return err
+		}
 		cap.ActiveRevisionID = revisionID
+		cap.AggregateGeneration = expectedGen + 1
 		revs, err = tx.ListRevisions(ctx, tenantID, cap.CapabilityID)
 		if err != nil {
 			return err
@@ -811,8 +892,6 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 		}
 		rev.Status = entity.RevisionActive
 		out = rev
-		_ = actorID
-		_ = reason
 		return nil
 	})
 	return out, err
@@ -822,39 +901,12 @@ func (s *capabilityService) MarkStale(ctx context.Context, tenantID, revisionID,
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
 	}
-	var out *entity.BusinessCapabilityRevision
-	err := s.withinTx(ctx, func(tx repository.CapabilityRepository, assets AssetProjection) error {
-		cap, rev, err := s.lockCapAndRev(ctx, tx, tenantID, revisionID)
-		if err != nil {
-			return err
-		}
-		if rev.Status != entity.RevisionActive || !AllowTransition(rev.Status, entity.RevisionStale) {
-			return entity.ErrIllegalTransition
-		}
-		ok, err := tx.UpdateRevisionStatus(ctx, tenantID, revisionID, entity.RevisionActive, entity.RevisionStale)
-		if err != nil || !ok {
-			return entity.ErrIllegalTransition
-		}
-		if cap.ActiveRevisionID == revisionID {
-			if err := tx.UpdateActiveRevisionID(ctx, tenantID, cap.CapabilityID, ""); err != nil {
-				return err
-			}
-			cap.ActiveRevisionID = ""
-		}
-		rev.Status = entity.RevisionStale
-		revs, err := tx.ListRevisions(ctx, tenantID, cap.CapabilityID)
-		if err != nil {
-			return err
-		}
-		if err := projectAndUpdateAssets(ctx, assets, cap, revs); err != nil {
-			return err
-		}
-		out = rev
-		_ = actorID
-		_ = reason
-		return nil
-	})
-	return out, err
+	_ = tenantID
+	_ = revisionID
+	_ = actorID
+	_ = reason
+	// Fail-closed until impact evidence exists (G3+).
+	return nil, entity.ErrMissingImpactEvidence
 }
 
 func (s *capabilityService) Deprecate(ctx context.Context, tenantID, revisionID, actorID, reason string) (*entity.BusinessCapabilityRevision, error) {
@@ -881,6 +933,14 @@ func (s *capabilityService) Deprecate(ctx context.Context, tenantID, revisionID,
 			}
 			cap.ActiveRevisionID = ""
 		}
+		dec := &entity.CapabilityDecision{
+			DecisionID: newID("cdec"), TenantID: tenantID, BusinessID: cap.BusinessID,
+			CapabilityID: cap.CapabilityID, TargetRevisionID: revisionID,
+			Action: entity.DecisionDeprecate, ActorPrincipalID: actorID, Reason: reason, CreatedAt: s.now(),
+		}
+		if err := tx.CreateDecision(ctx, dec); err != nil {
+			return err
+		}
 		rev.Status = entity.RevisionDeprecated
 		revs, err := tx.ListRevisions(ctx, tenantID, cap.CapabilityID)
 		if err != nil {
@@ -890,8 +950,6 @@ func (s *capabilityService) Deprecate(ctx context.Context, tenantID, revisionID,
 			return err
 		}
 		out = rev
-		_ = actorID
-		_ = reason
 		return nil
 	})
 	return out, err
@@ -975,22 +1033,4 @@ func revisionFromPayload(tenantID, businessID, capID, revID string, version int3
 		QueryOperation: p.QueryOperation, OutputCardinality: p.OutputCardinality,
 		Source: source, CreatedBy: actor, CreatedAt: now,
 	}
-}
-
-func validateSemanticBasics(p entity.SemanticPayload) error {
-	if strings.TrimSpace(p.Name) == "" || p.CapabilityKind == "" || p.BusinessModelRevision <= 0 {
-		return entity.ErrInvalidPayload
-	}
-	switch p.CapabilityKind {
-	case entity.KindQuery, entity.KindCommand:
-	default:
-		return entity.ErrInvalidPayload
-	}
-	return nil
-}
-
-func parseActorInt(actor string) int64 {
-	var n int64
-	_, _ = fmt.Sscanf(actor, "%d", &n)
-	return n
 }

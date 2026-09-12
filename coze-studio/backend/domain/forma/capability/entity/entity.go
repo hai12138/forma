@@ -55,6 +55,8 @@ const (
 	DecisionReject      DecisionAction = "REJECT"
 	DecisionEdit        DecisionAction = "EDIT"
 	DecisionDerive      DecisionAction = "DERIVE"
+	DecisionActivate    DecisionAction = "ACTIVATE"
+	DecisionDeprecate   DecisionAction = "DEPRECATE"
 )
 
 // AnalysisStatus — CapabilityAnalysisRun (§9.5).
@@ -148,13 +150,14 @@ type SemanticPayload struct {
 // BusinessCapability is the CAPABILITY aggregate (non-semantic SoT) (§6.4).
 // capability_id == asset_id.
 type BusinessCapability struct {
-	CapabilityID     string
-	TenantID         string
-	BusinessID       string
-	ActiveRevisionID string // empty when no ACTIVE
-	CreatedBy        string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	CapabilityID         string
+	TenantID             string
+	BusinessID           string
+	ActiveRevisionID     string // empty when no ACTIVE
+	AggregateGeneration  int64  // bumped on successful Activate (CAS fence)
+	CreatedBy            string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 // BusinessCapabilityRevision is the versioned semantic SoT (§6.4). Immutable after create.
@@ -255,11 +258,11 @@ type CapabilityAnalysisRun struct {
 }
 
 // AnalysisRequest covers fields hashed into AnalysisRequestDigest.
+// No free-form Options map — secrets must not ride along on analysis requests.
 type AnalysisRequest struct {
-	BusinessModelRevision int32                  `json:"business_model_revision"`
-	DataContractPins      []DataContractPin      `json:"data_contract_pins"`
-	RequirementRefs       []string               `json:"requirement_refs"`
-	Options               map[string]any         `json:"options,omitempty"`
+	BusinessModelRevision int32             `json:"business_model_revision"`
+	DataContractPins      []DataContractPin `json:"data_contract_pins"`
+	RequirementRefs       []string          `json:"requirement_refs"`
 }
 
 // DataContractPin is a sorted pin used in analysis request digests.
