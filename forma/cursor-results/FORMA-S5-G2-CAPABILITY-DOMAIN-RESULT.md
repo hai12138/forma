@@ -3,7 +3,7 @@
 
 **Gate:** S5-G2
 **Date:** 2026-09-12
-**Status:** PENDING_CI (implementation committed; awaiting Forma CI ALL GREEN + human review)
+**Status:** **PASS** (Capability domain + S5-G2 migration; Forma CI ALL GREEN; await human review before S5-G3)
 
 ---
 
@@ -28,7 +28,7 @@
 | Asset Registry `UpdateCapabilityProjection` | EXTENDED |
 | `20250903010000_s5_g2_business_capability.sql` | CREATED |
 | `atlas.sum` / forma-ci migration-present / migration-validate | UPDATED |
-| `forma/cursor-results/FORMA-S5-G2-CAPABILITY-DOMAIN-RESULT.md` | CREATED |
+| `forma/cursor-results/FORMA-S5-G2-CAPABILITY-DOMAIN-RESULT.md` | CREATED / FINALIZED |
 
 No HTTP/router/frontend. No provider SDK. No `forma-s5-frozen`.
 
@@ -52,7 +52,7 @@ Rules: JSON object keys rebuilt with sorted maps; set-like collections sorted by
 | `go test ./domain/forma/... -count=1` | PASS |
 | `node scripts/forma/migration-validate.mjs` | PASS (15/15) |
 | `git diff --check` | PASS |
-| `migration-apply-test.mjs` CASE A/B/C | Deferred to Forma CI (`forma-migration-apply`) — local Docker daemon unavailable |
+| `migration-apply-test.mjs` CASE A/B/C | PASS via Forma CI job `forma-migration-apply` |
 | REAL_MODEL_CALLS | 0 (DeterministicFakeGenerator only) |
 
 ---
@@ -62,18 +62,19 @@ Rules: JSON object keys rebuilt with sorted maps; set-like collections sorted by
 | Field | Value |
 |-------|-------|
 | COMMIT_SHA | `8ace5d9d77fac59acb964189bcb5bdffe64e9709` |
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| CI_RUN | `34700868746` (tip `73a5a7b3…`) |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| CI | **ALL GREEN** |
+| CI URL | https://github.com/hai12138/forma/actions/runs/34700868746 |
 
 ---
 
-## 6. Gate Summary (pre-CI)
+## 6. Gate Summary
 
 ```text
-S5_G2_STATUS = PENDING_CI
+S5_G2_STATUS = PASS
 DOMAIN_MODEL = PASS
 IMMUTABLE_REVISION = PASS
 STATE_MACHINE = PASS
@@ -88,12 +89,12 @@ EXECUTION_FENCING = PASS
 TENANT_ISOLATION = PASS
 DOMAIN_AGNOSTIC = PASS
 SECRET_ISOLATION = PASS
-MIGRATION_CASE_A_B_C = PENDING_CI
+MIGRATION_CASE_A_B_C = PASS
 PRODUCT_CODE_CHANGE = CAPABILITY_DOMAIN_ONLY
 MIGRATION_CHANGE = S5_G2_ONLY
 REAL_MODEL_CALLS = 0
-CI = pending
+CI = ALL GREEN
 S5_G3_READY = NO
 ```
 
-**Stop:** After CI ALL GREEN, finalize §5/§6, then **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`.
+**Stop:** **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`. Await human architecture review.
