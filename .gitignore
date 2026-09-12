@@ -51,3 +51,6 @@ backend/conf/model/*.yaml
 values-dev.yaml
 
 _ci-frontend.log
+
+# Local toolchain downloads
+.tools/

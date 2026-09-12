@@ -76,6 +76,31 @@ func (d *AssetRefDAO) UpdateName(ctx context.Context, tenantID, assetID string, 
 	return d.GetByTenantAssetRevision(ctx, tenantID, assetID, revision)
 }
 
+func (d *AssetRefDAO) UpdateCapabilityProjection(ctx context.Context, tenantID, assetID, name, semanticVersion, contentDigest string, status entity.AssetStatus) (*entity.AssetRef, error) {
+	now := time.Now().UTC()
+	updates := map[string]any{
+		"name":             name,
+		"semantic_version": semanticVersion,
+		"status":           string(status),
+		"updated_at":       now,
+	}
+	if contentDigest != "" {
+		updates["content_digest"] = contentDigest
+	}
+	res := d.db.WithContext(ctx).
+		Model(&AssetRefModel{}).
+		Where("tenant_id = ? AND asset_id = ? AND revision = ? AND kind = ? AND deleted_at IS NULL",
+			tenantID, assetID, int32(1), string(entity.AssetKindCapability)).
+		Updates(updates)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, nil
+	}
+	return d.GetByTenantAssetRevision(ctx, tenantID, assetID, 1)
+}
+
 func (d *AssetRefDAO) Archive(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error) {
 	now := time.Now().UTC()
 	res := d.db.WithContext(ctx).

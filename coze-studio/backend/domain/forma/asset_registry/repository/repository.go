@@ -19,6 +19,9 @@ type AssetRefRepository interface {
 	GetByTenantAssetRevision(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error)
 	ListByTenant(ctx context.Context, tenantID string) ([]*entity.AssetRef, error)
 	UpdateName(ctx context.Context, tenantID, assetID string, revision int32, name string) (*entity.AssetRef, error)
+	// UpdateCapabilityProjection updates Name/SemanticVersion/ContentDigest/Status only
+	// for CAPABILITY assets at Revision=1. Does not mutate Revision or SchemaVersion.
+	UpdateCapabilityProjection(ctx context.Context, tenantID, assetID, name, semanticVersion, contentDigest string, status entity.AssetStatus) (*entity.AssetRef, error)
 	Archive(ctx context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error)
 }
 

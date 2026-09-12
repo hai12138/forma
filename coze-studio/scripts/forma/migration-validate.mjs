@@ -162,6 +162,39 @@ test('S4-G4 data contract migration present', () => {
   assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
 });
 
+test('S5-G0 platform admin migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250903000000_s5_g0_platform_admin.sql'),
+    'utf8',
+  );
+  assert.ok(sql.includes('forma_platform_role'));
+  assert.ok(sql.includes('uk_forma_platform_role_principal'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
+});
+
+test('S5-G2 business capability migration present', () => {
+  const sql = readFileSync(
+    join(root, 'migrations', '20250903010000_s5_g2_business_capability.sql'),
+    'utf8',
+  );
+  for (const table of [
+    'forma_business_capability',
+    'forma_business_capability_revision',
+    'forma_capability_analysis_run',
+    'forma_capability_proposal',
+    'forma_capability_decision',
+  ]) {
+    assert.ok(sql.includes(table));
+  }
+  assert.ok(sql.includes('uk_forma_business_capability'));
+  assert.ok(sql.includes('uk_forma_capability_revision_version'));
+  assert.ok(sql.includes('uk_forma_capability_analysis_idempotency'));
+  assert.ok(sql.includes('uk_forma_capability_proposal'));
+  assert.ok(sql.includes('uk_forma_capability_decision_proposal'));
+  assert.ok(sql.includes('uk_forma_capability_decision_derive'));
+  assert.ok(!/FOREIGN\s+KEY\s*\(/i.test(sql));
+});
+
 test('atlas sum references migrations', () => {
   const sum = readFileSync(join(root, 'migrations', 'atlas.sum'), 'utf8');
   assert.ok(sum.includes('20250831100000_initial.sql'));
@@ -176,4 +209,6 @@ test('atlas sum references migrations', () => {
   assert.ok(sum.includes('20250902113000_s4_g2_contract_alignment.sql'));
   assert.ok(sum.includes('20250902120000_s4_g3_semantic_mapping.sql'));
   assert.ok(sum.includes('20250902130000_s4_g4_data_contract.sql'));
+  assert.ok(sum.includes('20250903000000_s5_g0_platform_admin.sql'));
+  assert.ok(sum.includes('20250903010000_s5_g2_business_capability.sql'));
 });

@@ -130,6 +130,44 @@ func TestDataDomainDoesNotImportCozeRepositoriesOrProviderSDKs(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCapabilityDomainDoesNotImportProviderSDKsOrIndustrySwitches(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	root := filepath.Join(filepath.Dir(filename), "capability")
+	forbidden := []string{
+		"deepseek", "openai", "qwen", "volcengine/ark", "volcengine-go-sdk",
+		"github.com/coze-dev/coze-studio/backend/domain/agent",
+		"github.com/coze-dev/coze-studio/backend/domain/user/internal",
+	}
+	industry := []string{"laboratory", "procurement", "工单", "审批"}
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		// Fixtures may contain industry vocabulary; production packages must not.
+		if strings.Contains(filepath.ToSlash(path), "/fixture/") {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		src := string(content)
+		lower := strings.ToLower(src)
+		for _, imp := range forbidden {
+			require.NotContains(t, lower, strings.ToLower(imp), "capability production contains forbidden dep in %s", path)
+		}
+		for _, word := range industry {
+			require.NotContains(t, lower, strings.ToLower(word), "capability production contains industry term in %s", path)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+}
+
 func TestDatasourceProductionPackageDoesNotExist(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)

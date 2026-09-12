@@ -74,6 +74,23 @@ func (r *memAssetRepo) UpdateName(_ context.Context, tenantID, assetID string, r
 	return nil, nil
 }
 
+func (r *memAssetRepo) UpdateCapabilityProjection(_ context.Context, tenantID, assetID, name, semanticVersion, contentDigest string, status entity.AssetStatus) (*entity.AssetRef, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, a := range r.rows {
+		if a.TenantID == tenantID && a.AssetID == assetID && a.Revision == 1 && a.Kind == entity.AssetKindCapability && a.DeletedAt == nil {
+			a.Name = name
+			a.SemanticVersion = semanticVersion
+			a.ContentDigest = contentDigest
+			a.Status = status
+			a.UpdatedAt = time.Now().UTC()
+			cp := *a
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
+
 func (r *memAssetRepo) Archive(_ context.Context, tenantID, assetID string, revision int32) (*entity.AssetRef, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

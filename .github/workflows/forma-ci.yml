@@ -68,6 +68,7 @@ jobs:
           test -f ../docker/atlas/forma/migrations/20250902120000_s4_g3_semantic_mapping.sql
           test -f ../docker/atlas/forma/migrations/20250902130000_s4_g4_data_contract.sql
           test -f ../docker/atlas/forma/migrations/20250903000000_s5_g0_platform_admin.sql
+          test -f ../docker/atlas/forma/migrations/20250903010000_s5_g2_business_capability.sql
       - name: Forma analyst domain tests
         run: go test ./domain/forma/analyst/... -count=1
       - name: Forma business domain tests
