@@ -99,22 +99,52 @@ type LogicalSchema struct {
 	Fields []LogicalField `json:"fields"`
 }
 
+// PredicateKind — frozen V1 precondition predicates (§10.3). Sole enum; no free-form Operator.
+type PredicateKind string
+
+const (
+	PredicateExists   PredicateKind = "EXISTS"
+	PredicateEQ       PredicateKind = "EQ"
+	PredicateNEQ      PredicateKind = "NEQ"
+	PredicateIN       PredicateKind = "IN"
+	PredicateNotIn    PredicateKind = "NOT_IN"
+	PredicateGT       PredicateKind = "GT"
+	PredicateGTE      PredicateKind = "GTE"
+	PredicateLT       PredicateKind = "LT"
+	PredicateLTE      PredicateKind = "LTE"
+	PredicateEmpty    PredicateKind = "EMPTY"
+	PredicateNotEmpty PredicateKind = "NOT_EMPTY"
+)
+
+// EffectKind — frozen V1 effect kinds (§10.3).
+type EffectKind string
+
+const (
+	EffectReadOnly    EffectKind = "READ_ONLY"
+	EffectIntent      EffectKind = "INTENT"
+	EffectStateChange EffectKind = "STATE_CHANGE"
+	EffectNotify      EffectKind = "NOTIFY"
+)
+
+// OpaqueID is a constrained identifier (no spaces / SQL / path injection).
+type OpaqueID string
+
 // Precondition is a structured typed record (not free-form code) (§10.3).
+// Predicate is the sole comparison enum — Operator field removed (S5-G2-F2).
 type Precondition struct {
-	ID          string `json:"id"`
-	Predicate   string `json:"predicate"`
-	LogicalKey  string `json:"logical_key,omitempty"`
-	Operator    string `json:"operator,omitempty"`
-	Comparand   any    `json:"comparand,omitempty"`
-	Description string `json:"description,omitempty"`
+	ID          string        `json:"id"`
+	Predicate   PredicateKind `json:"predicate"`
+	LogicalKey  string        `json:"logical_key,omitempty"`
+	Comparand   any           `json:"comparand,omitempty"`
+	Description string        `json:"description,omitempty"`
 }
 
 // Effect declares business postcondition intent (not executable).
 type Effect struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	LogicalKey  string `json:"logical_key,omitempty"`
-	Description string `json:"description,omitempty"`
+	ID          string     `json:"id"`
+	Kind        EffectKind `json:"kind"`
+	LogicalKey  string     `json:"logical_key,omitempty"`
+	Description string     `json:"description,omitempty"`
 }
 
 // LogicalFieldMapping maps capability logical keys to contract logical keys only.
@@ -269,6 +299,37 @@ type AnalysisRequest struct {
 type DataContractPin struct {
 	DataContractID      string `json:"data_contract_id"`
 	DataContractVersion int32  `json:"data_contract_version"`
+}
+
+// AnalysisAttemptTrigger — why an analysis attempt row was created.
+type AnalysisAttemptTrigger string
+
+const (
+	AttemptTriggerFirst         AnalysisAttemptTrigger = "FIRST"
+	AttemptTriggerRetry         AnalysisAttemptTrigger = "RETRY"
+	AttemptTriggerLeaseTakeover AnalysisAttemptTrigger = "LEASE_TAKEOVER"
+)
+
+// AnalysisAttemptResult — attempt lifecycle result.
+type AnalysisAttemptResult string
+
+const (
+	AttemptResultPending   AnalysisAttemptResult = "PENDING"
+	AttemptResultSucceeded AnalysisAttemptResult = "SUCCEEDED"
+	AttemptResultFailed    AnalysisAttemptResult = "FAILED"
+)
+
+// CapabilityAnalysisAttempt is an audit row for each claim / retry / lease takeover.
+type CapabilityAnalysisAttempt struct {
+	AttemptID        string
+	AnalysisRunID    string
+	TenantID         string
+	Attempt          int32
+	ActorPrincipalID string
+	TriggerKind      AnalysisAttemptTrigger
+	ResultStatus     AnalysisAttemptResult
+	ErrorCode        string
+	CreatedAt        time.Time
 }
 
 func cloneLogicalSchema(in LogicalSchema) LogicalSchema {

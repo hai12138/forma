@@ -1,0 +1,84 @@
+# FORMA-S5-G2-F2 — Capability Consistency Fix
+# RESULT
+
+**Gate:** S5-G2-F2
+**Date:** 2026-09-13
+**Status:** PENDING_CI (implementation ready; awaiting Forma CI ALL GREEN)
+
+---
+
+## 1. Baseline
+
+| Item | Value |
+|------|-------|
+| main tip at start | `d0edd7d2344c75d9e884a9033c8910828ffcfbf9` |
+| Scope | Capability consistency / safety only |
+| PRODUCT_CODE_CHANGE | CAPABILITY_DOMAIN_ONLY |
+| MIGRATION_CHANGE | S5_G2_F2_ONLY |
+| REAL_MODEL_CALLS | 0 |
+| HTTP / freeze / S5-G3 | NONE |
+
+---
+
+## 2. Fixes
+
+| Area | Result |
+|------|--------|
+| CapabilityUnitOfWork interface | PASS — GORM + Memory adapters; no type sniffing |
+| UoW commit/rollback | PASS — Cap+Asset atomic; FailingAssetProjection in `_test.go` |
+| Materialization safety | PASS — PredicateKind/EffectKind enums; Operator removed; full string/comparand checks |
+| Secret isolation | PASS — credential shapes / `\bsecret\b`; `GetPasswordReset` allowed |
+| Analysis persisted replay | PASS — lease takeover uses RequestJSON |
+| AnalysisAttempt audit | PASS — table + atomic claim/complete |
+| Analysis error handling | PASS — MapRepoError; no ignored Mark/Complete errors |
+| Proposal terminal binding | PASS — bind check before status switch; CONFIRMED/EDIT_CONFIRMED mismatch tests |
+| QUERY pairing | PASS — READ↔ONE, LIST/FILTER↔MANY, COMMAND empty |
+
+---
+
+## 3. Local verification
+
+| Check | Result |
+|-------|--------|
+| `go test ./domain/forma/capability/... -count=1` | PASS |
+| `go test ./domain/forma/... -count=1` | PASS |
+| `node scripts/forma/migration-validate.mjs` | PASS (17/17) |
+| migration CASE A/B/C | Deferred to Forma CI |
+| `git diff --check` | _pending commit_ |
+
+---
+
+## 4. Commit & CI
+
+| Field | Value |
+|-------|-------|
+| COMMIT_SHA | _pending_ |
+| CI_RUN | _pending_ |
+| forma-backend | _pending_ |
+| forma-migration-apply | _pending_ |
+| forma-frontend | _pending_ |
+| CI | _pending_ |
+
+---
+
+## 5. Gate Summary (pre-CI)
+
+```text
+S5_G2_F2_STATUS = PENDING_CI
+UOW_INTERFACE = PASS
+UOW_COMMIT_ROLLBACK = PASS
+MATERIALIZATION_SAFETY = PASS
+SECRET_ISOLATION = PASS
+ANALYSIS_PERSISTED_REPLAY = PASS
+ANALYSIS_ATTEMPT_AUDIT = PASS
+ANALYSIS_ERROR_HANDLING = PASS
+PROPOSAL_TERMINAL_TARGET_BINDING = PASS
+QUERY_PAIRING = PASS
+PRODUCT_CODE_CHANGE = CAPABILITY_DOMAIN_ONLY
+MIGRATION_CHANGE = S5_G2_F2_ONLY
+REAL_MODEL_CALLS = 0
+CI = pending
+S5_G3_READY = NO
+```
+
+**Stop:** After CI ALL GREEN, finalize, then **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`.

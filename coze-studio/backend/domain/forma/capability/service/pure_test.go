@@ -122,8 +122,8 @@ func TestContentDigestProvenanceNeutral(t *testing.T) {
 		Name: "X", Description: "Y", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
 		InputSchema: entity.LogicalSchema{Fields: []entity.LogicalField{{LogicalKey: "a", LogicalType: "STRING"}}},
 		OutputSchema: entity.LogicalSchema{Fields: []entity.LogicalField{{LogicalKey: "b", LogicalType: "STRING"}}},
-		Preconditions: []entity.Precondition{{ID: "p2", Predicate: "EQ"}, {ID: "p1", Predicate: "EXISTS"}},
-		Effects: []entity.Effect{{ID: "e1", Kind: "READ"}},
+		Preconditions: []entity.Precondition{{ID: "p2", Predicate: entity.PredicateEQ}, {ID: "p1", Predicate: entity.PredicateExists}},
+		Effects:       []entity.Effect{{ID: "e1", Kind: entity.EffectReadOnly}},
 		DataContractBindings: []entity.DataContractBinding{
 			{DataContractID: "dc2", DataContractRevisionID: "r2"},
 			{DataContractID: "dc1", DataContractRevisionID: "r1"},
@@ -157,7 +157,7 @@ func TestContentDigestProvenanceNeutral(t *testing.T) {
 
 	// set-like ordering of preconditions must not affect digest
 	payload2 := payload
-	payload2.Preconditions = []entity.Precondition{{ID: "p1", Predicate: "EXISTS"}, {ID: "p2", Predicate: "EQ"}}
+	payload2.Preconditions = []entity.Precondition{{ID: "p1", Predicate: entity.PredicateExists}, {ID: "p2", Predicate: entity.PredicateEQ}}
 	d4, err := CapabilityContentDigest(payload2)
 	require.NoError(t, err)
 	require.Equal(t, d1, d4)

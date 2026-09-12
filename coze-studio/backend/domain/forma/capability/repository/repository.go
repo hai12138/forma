@@ -48,6 +48,10 @@ type CapabilityRepository interface {
 	ClaimAnalysisRetry(ctx context.Context, tenantID, analysisRunID, actorID string) (claimed bool, newAttempt int32, err error)
 	ClaimExpiredPendingExecution(ctx context.Context, tenantID, analysisRunID string, expectedAttempt int32, now time.Time) (*entity.CapabilityAnalysisRun, bool, error)
 
+	CreateAnalysisAttempt(ctx context.Context, attempt *entity.CapabilityAnalysisAttempt) error
+	CompleteAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32, result entity.AnalysisAttemptResult, errorCode string) error
+	ListAnalysisAttempts(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityAnalysisAttempt, error)
+
 	Transaction(ctx context.Context, fn func(txRepo CapabilityRepository) error) error
 }
 
@@ -140,6 +144,15 @@ func (r *gormCapabilityRepo) ClaimAnalysisRetry(ctx context.Context, tenantID, a
 }
 func (r *gormCapabilityRepo) ClaimExpiredPendingExecution(ctx context.Context, tenantID, analysisRunID string, expectedAttempt int32, now time.Time) (*entity.CapabilityAnalysisRun, bool, error) {
 	return r.dao.ClaimExpiredPendingExecution(ctx, tenantID, analysisRunID, expectedAttempt, now)
+}
+func (r *gormCapabilityRepo) CreateAnalysisAttempt(ctx context.Context, attempt *entity.CapabilityAnalysisAttempt) error {
+	return r.dao.CreateAnalysisAttempt(ctx, attempt)
+}
+func (r *gormCapabilityRepo) CompleteAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32, result entity.AnalysisAttemptResult, errorCode string) error {
+	return r.dao.CompleteAnalysisAttempt(ctx, tenantID, analysisRunID, attempt, result, errorCode)
+}
+func (r *gormCapabilityRepo) ListAnalysisAttempts(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityAnalysisAttempt, error) {
+	return r.dao.ListAnalysisAttempts(ctx, tenantID, analysisRunID)
 }
 func (r *gormCapabilityRepo) Transaction(ctx context.Context, fn func(txRepo CapabilityRepository) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

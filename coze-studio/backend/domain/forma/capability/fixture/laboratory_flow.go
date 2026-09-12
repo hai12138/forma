@@ -23,10 +23,10 @@ func LaboratoryFlowCapability() entity.SemanticPayload {
 			{LogicalKey: "device_status", LogicalType: "STRING"},
 		}},
 		Preconditions: []entity.Precondition{
-			{ID: "pc_cell", Predicate: "EXISTS", LogicalKey: "work_cell_id"},
+			{ID: "pc_cell", Predicate: entity.PredicateExists, LogicalKey: "work_cell_id"},
 		},
 		Effects: []entity.Effect{
-			{ID: "ef_read", Kind: "READ_ONLY", Description: "No laboratory mutation"},
+			{ID: "ef_read", Kind: entity.EffectReadOnly, Description: "No laboratory mutation"},
 		},
 		DataContractBindings: []entity.DataContractBinding{
 			{DataContractID: "dc_lab", DataContractRevisionID: "dcr_lab_1", DataContractVersion: 1},
@@ -50,7 +50,7 @@ func LaboratoryCommandCapability() entity.SemanticPayload {
 			{LogicalKey: "approval_status", LogicalType: "STRING"},
 		}},
 		Effects: []entity.Effect{
-			{ID: "ef_approve", Kind: "INTENT", Description: "Calibration approved"},
+			{ID: "ef_approve", Kind: entity.EffectIntent, Description: "Calibration approved"},
 		},
 		DataContractBindings: []entity.DataContractBinding{},
 	}

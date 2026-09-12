@@ -14,11 +14,11 @@ import (
 
 // FailingAssetProjection wraps an AssetProjection and can fail Create/Update for rollback tests.
 type FailingAssetProjection struct {
-	Inner       AssetProjection
-	FailCreate  bool
-	FailUpdate  bool
-	CreateErr   error
-	UpdateErr   error
+	Inner      AssetProjection
+	FailCreate bool
+	FailUpdate bool
+	CreateErr  error
+	UpdateErr  error
 }
 
 func (f *FailingAssetProjection) CreateCapabilityAsset(ctx context.Context, asset *assetentity.AssetRef) error {
@@ -43,17 +43,6 @@ func (f *FailingAssetProjection) UpdateCapabilityProjection(ctx context.Context,
 
 func (f *FailingAssetProjection) GetCapabilityAsset(ctx context.Context, tenantID, assetID string) (*assetentity.AssetRef, error) {
 	return f.Inner.GetCapabilityAsset(ctx, tenantID, assetID)
-}
-
-// unwrapMemory returns the underlying MemoryAssetProjection when wrapped for UoW snap/restore.
-func unwrapMemory(a AssetProjection) (*MemoryAssetProjection, bool) {
-	if m, ok := a.(*MemoryAssetProjection); ok {
-		return m, true
-	}
-	if f, ok := a.(*FailingAssetProjection); ok {
-		return unwrapMemory(f.Inner)
-	}
-	return nil, false
 }
 
 var _ AssetProjection = (*FailingAssetProjection)(nil)

@@ -540,6 +540,64 @@ func (d *CapabilityDAO) ClaimExpiredPendingExecution(ctx context.Context, tenant
 	return run, true, nil
 }
 
+func (d *CapabilityDAO) CreateAnalysisAttempt(ctx context.Context, attempt *entity.CapabilityAnalysisAttempt) error {
+	if attempt == nil {
+		return entity.ErrInvalidPayload
+	}
+	row := analysisAttemptRow{
+		AttemptID: attempt.AttemptID, AnalysisRunID: attempt.AnalysisRunID, TenantID: attempt.TenantID,
+		Attempt: attempt.Attempt, ActorPrincipalID: attempt.ActorPrincipalID,
+		TriggerKind: string(attempt.TriggerKind), ResultStatus: string(attempt.ResultStatus),
+		ErrorCode: attempt.ErrorCode, CreatedAt: attempt.CreatedAt,
+	}
+	if err := d.db.WithContext(ctx).Create(&row).Error; err != nil {
+		if isDup(err) {
+			return entity.ErrConflict
+		}
+		return err
+	}
+	return nil
+}
+
+func (d *CapabilityDAO) CompleteAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32, result entity.AnalysisAttemptResult, errorCode string) error {
+	res := d.db.WithContext(ctx).Model(&analysisAttemptRow{}).
+		Where("tenant_id = ? AND analysis_run_id = ? AND attempt = ? AND result_status = ?",
+			tenantID, analysisRunID, attempt, string(entity.AttemptResultPending)).
+		Updates(map[string]any{
+			"result_status": string(result),
+			"error_code":    errorCode,
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return entity.ErrConsistency
+	}
+	return nil
+}
+
+func (d *CapabilityDAO) ListAnalysisAttempts(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityAnalysisAttempt, error) {
+	var rows []analysisAttemptRow
+	err := d.db.WithContext(ctx).
+		Where("tenant_id = ? AND analysis_run_id = ?", tenantID, analysisRunID).
+		Order("attempt ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*entity.CapabilityAnalysisAttempt, 0, len(rows))
+	for i := range rows {
+		out = append(out, &entity.CapabilityAnalysisAttempt{
+			AttemptID: rows[i].AttemptID, AnalysisRunID: rows[i].AnalysisRunID, TenantID: rows[i].TenantID,
+			Attempt: rows[i].Attempt, ActorPrincipalID: rows[i].ActorPrincipalID,
+			TriggerKind: entity.AnalysisAttemptTrigger(rows[i].TriggerKind),
+			ResultStatus: entity.AnalysisAttemptResult(rows[i].ResultStatus),
+			ErrorCode: rows[i].ErrorCode, CreatedAt: rows[i].CreatedAt,
+		})
+	}
+	return out, nil
+}
+
 func toCapability(row *capabilityRow) *entity.BusinessCapability {
 	return &entity.BusinessCapability{
 		CapabilityID:        row.CapabilityID,

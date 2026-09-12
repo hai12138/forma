@@ -137,7 +137,6 @@ func normalizePreconditions(in []entity.Precondition) []map[string]any {
 			"id":          p.ID,
 			"predicate":   p.Predicate,
 			"logical_key": p.LogicalKey,
-			"operator":    p.Operator,
 			"description": p.Description,
 		}
 		if p.Comparand != nil {

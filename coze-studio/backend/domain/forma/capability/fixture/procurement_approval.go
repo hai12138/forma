@@ -23,10 +23,10 @@ func ProcurementApprovalCapability() entity.SemanticPayload {
 			{LogicalKey: "approval_request_id", LogicalType: "STRING"},
 		}},
 		Preconditions: []entity.Precondition{
-			{ID: "pc_amount", Predicate: "GT", LogicalKey: "amount", Operator: "GT", Comparand: 0},
+			{ID: "pc_amount", Predicate: entity.PredicateGT, LogicalKey: "amount", Comparand: 0},
 		},
 		Effects: []entity.Effect{
-			{ID: "ef_submit", Kind: "INTENT", Description: "Procurement approval submitted"},
+			{ID: "ef_submit", Kind: entity.EffectIntent, Description: "Procurement approval submitted"},
 		},
 		DataContractBindings: []entity.DataContractBinding{},
 	}

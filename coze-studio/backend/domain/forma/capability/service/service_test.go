@@ -26,10 +26,9 @@ import (
 const testActor = "1001"
 
 func newTestService(gen ProposalGenerator) (CapabilityService, repository.CapabilityRepository, *MemoryAssetProjection) {
-	repo := repository.NewMemoryCapabilityRepository()
-	assets := NewMemoryAssetProjection()
-	svc := NewCapabilityService(&Components{Repo: repo, Assets: assets, Generator: gen})
-	return svc, repo, assets
+	uow, assets := NewMemoryUnitOfWork()
+	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen})
+	return svc, uow.Root(), assets
 }
 
 // forceStatusForTest seeds a revision status via repository (Validate is fail-closed until G3).
@@ -493,14 +492,16 @@ func TestNoSecretFieldsInDomainPayload(t *testing.T) {
 	}
 }
 
-func TestUoWFailClosedWithoutDB(t *testing.T) {
-	repo := repository.NewMemoryCapabilityRepository()
-	// GormAssetProjection without DB — configured() must fail closed.
-	svc := NewCapabilityService(&Components{
-		Repo:   repo,
-		Assets: NewGormAssetProjection(nil),
-	})
+func TestUoWFailClosedWithoutUoW(t *testing.T) {
+	svc := NewCapabilityService(&Components{})
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor,
+		Payload: fixture.LaboratoryFlowCapability(),
+	})
+	require.ErrorIs(t, err, entity.ErrNotConfigured)
+
+	svc2 := NewCapabilityService(nil)
+	_, _, err = svc2.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor,
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
@@ -511,7 +512,8 @@ func TestAssetProjectionFailureFullRollback(t *testing.T) {
 	repo := repository.NewMemoryCapabilityRepository()
 	inner := NewMemoryAssetProjection()
 	failing := &FailingAssetProjection{Inner: inner, FailUpdate: true}
-	svc := NewCapabilityService(&Components{Repo: repo, Assets: failing})
+	uow := NewMemoryUnitOfWorkWith(repo, inner, failing)
+	svc := NewCapabilityService(&Components{UoW: uow})
 
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-rb",
@@ -524,13 +526,54 @@ func TestAssetProjectionFailureFullRollback(t *testing.T) {
 	require.ErrorIs(t, err, entity.ErrNotFound)
 }
 
+func TestAssetCreateFailureFullRollback(t *testing.T) {
+	repo := repository.NewMemoryCapabilityRepository()
+	inner := NewMemoryAssetProjection()
+	failing := &FailingAssetProjection{Inner: inner, FailCreate: true}
+	uow := NewMemoryUnitOfWorkWith(repo, inner, failing)
+	svc := NewCapabilityService(&Components{UoW: uow})
+
+	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-cr",
+		Payload: fixture.LaboratoryFlowCapability(),
+	})
+	require.Error(t, err)
+	_, err = repo.GetCapability(context.Background(), "t1", "cap-cr")
+	require.ErrorIs(t, err, entity.ErrNotFound)
+	_, err = inner.GetCapabilityAsset(context.Background(), "t1", "cap-cr")
+	require.ErrorIs(t, err, entity.ErrNotFound)
+}
+
+func TestMemoryUoWCallbackFailureRollsBackCapAndAsset(t *testing.T) {
+	uow, assets := NewMemoryUnitOfWork()
+	repo := uow.Root()
+	err := uow.WithinTransaction(context.Background(), func(tx CapabilityTx) error {
+		cap := &entity.BusinessCapability{
+			CapabilityID: "cap-uow", TenantID: "t1", BusinessID: "biz",
+			CreatedBy: testActor, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		}
+		require.NoError(t, tx.Repo().CreateCapability(context.Background(), cap))
+		require.NoError(t, tx.Assets().CreateCapabilityAsset(context.Background(), &assetentity.AssetRef{
+			TenantID: "t1", AssetID: "cap-uow", Kind: assetentity.AssetKindCapability, Name: "x",
+			SemanticVersion: "0.0.0", Revision: 1, SchemaVersion: "1.0", Status: assetentity.AssetStatusDraft,
+		}))
+		return errors.New("force rollback")
+	})
+	require.Error(t, err)
+	_, err = repo.GetCapability(context.Background(), "t1", "cap-uow")
+	require.ErrorIs(t, err, entity.ErrNotFound)
+	_, err = assets.GetCapabilityAsset(context.Background(), "t1", "cap-uow")
+	require.ErrorIs(t, err, entity.ErrNotFound)
+}
+
 func TestConcurrentActivateExactlyOneSuccess(t *testing.T) {
 	base := repository.NewMemoryCapabilityRepository()
 	assets := NewMemoryAssetProjection()
 	gate := make(chan struct{})
 	var peeks atomic.Int32
 	repo := &activatePeekBarrierRepo{CapabilityRepository: base, peeks: &peeks, gate: gate}
-	svc := NewCapabilityService(&Components{Repo: repo, Assets: assets})
+	uow := NewMemoryUnitOfWorkWith(repo, assets, assets)
+	svc := NewCapabilityService(&Components{UoW: uow})
 
 	cap, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-act",
@@ -625,6 +668,76 @@ func TestProposalTargetMismatchNoWrites(t *testing.T) {
 	require.Equal(t, entity.ProposalProposed, got.Status)
 }
 
+func TestConfirmedReplayCapabilityIDMismatch(t *testing.T) {
+	svc, repo, assets := newTestService(&DeterministicFakeGenerator{
+		Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()},
+	})
+	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "term-c", ActorID: testActor,
+		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err)
+	propID := res.Proposals[0].ProposalID
+	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-term-a",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, rev.RevisionID)
+
+	beforeDecs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-term-a")
+	require.NoError(t, err)
+	_, err = svc.ConfirmProposal(context.Background(), &ConfirmInput{
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-term-b",
+	})
+	require.ErrorIs(t, err, entity.ErrConflict)
+	afterDecs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-term-a")
+	require.NoError(t, err)
+	require.Equal(t, len(beforeDecs), len(afterDecs))
+	_, err = assets.GetCapabilityAsset(context.Background(), "t1", "cap-term-b")
+	require.ErrorIs(t, err, entity.ErrNotFound)
+	prop, err := repo.GetProposal(context.Background(), "t1", propID)
+	require.NoError(t, err)
+	require.Equal(t, entity.ProposalConfirmed, prop.Status)
+	require.Equal(t, "cap-term-a", prop.CapabilityID)
+}
+
+func TestEditConfirmedReplayCapabilityIDMismatch(t *testing.T) {
+	svc, repo, assets := newTestService(&DeterministicFakeGenerator{
+		Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()},
+	})
+	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "term-e", ActorID: testActor,
+		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err)
+	propID := res.Proposals[0].ProposalID
+	payload := fixture.LaboratoryFlowCapability()
+	payload.Name = "EditedTermFlow"
+	rev, err := svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-edit-a",
+		EffectivePayload: payload,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "EditedTermFlow", rev.Name)
+
+	beforeDecs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-edit-a")
+	require.NoError(t, err)
+	_, err = svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-edit-b",
+		EffectivePayload: payload,
+	})
+	require.ErrorIs(t, err, entity.ErrConflict)
+	afterDecs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-edit-a")
+	require.NoError(t, err)
+	require.Equal(t, len(beforeDecs), len(afterDecs))
+	_, err = assets.GetCapabilityAsset(context.Background(), "t1", "cap-edit-b")
+	require.ErrorIs(t, err, entity.ErrNotFound)
+	prop, err := repo.GetProposal(context.Background(), "t1", propID)
+	require.NoError(t, err)
+	require.Equal(t, entity.ProposalEditConfirmed, prop.Status)
+	require.Equal(t, "cap-edit-a", prop.CapabilityID)
+}
+
 func TestIllegalMaterializationPayload(t *testing.T) {
 	svc, _, _ := newTestService(nil)
 	bad := fixture.LaboratoryFlowCapability()
@@ -649,14 +762,14 @@ func TestIllegalMaterializationPayload(t *testing.T) {
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
-	bad.Preconditions = []entity.Precondition{{ID: "x", Predicate: "DROP_TABLE", LogicalKey: "a"}}
+	bad.Preconditions = []entity.Precondition{{ID: "x", Predicate: entity.PredicateKind("DROP_TABLE"), LogicalKey: "a"}}
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
-	bad.Effects = []entity.Effect{{ID: "e", Kind: "EXEC", Description: "x"}}
+	bad.Effects = []entity.Effect{{ID: "e", Kind: entity.EffectKind("EXEC"), Description: "x"}}
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
 	})
@@ -672,15 +785,23 @@ func TestIllegalMaterializationPayload(t *testing.T) {
 
 func TestSecretRejectionInPayloadAndAnalysis(t *testing.T) {
 	svc, _, _ := newTestService(nil)
-	bad := fixture.LaboratoryFlowCapability()
-	bad.Name = "GetPasswordReset"
+	ok := fixture.LaboratoryFlowCapability()
+	ok.Name = "GetPasswordReset"
+	ok.Description = "password reset flow"
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: ok,
+	})
+	require.NoError(t, err)
+
+	bad := fixture.LaboratoryFlowCapability()
+	bad.Description = "password=hunter2"
+	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
-	bad.Description = "uses api_key for upstream"
+	bad.InputSchema.Fields = []entity.LogicalField{{LogicalKey: "api_key", LogicalType: "STRING"}}
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
 	})
@@ -727,7 +848,8 @@ func TestAnalysisRepoErrorPropagation(t *testing.T) {
 	assets := NewMemoryAssetProjection()
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
 	wrapped := &listFailRepo{CapabilityRepository: base}
-	svc := NewCapabilityService(&Components{Repo: wrapped, Assets: assets, Generator: gen})
+	uow := NewMemoryUnitOfWorkWith(wrapped, assets, assets)
+	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen})
 
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "prop", ActorID: testActor,
@@ -768,7 +890,7 @@ func TestCorruptJSONFailClosed(t *testing.T) {
 	err := ValidateMaterializationPayload(entity.SemanticPayload{
 		Name: "x", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
 		QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
-		Preconditions: []entity.Precondition{{ID: "1", Predicate: "EQ", LogicalKey: "k", Comparand: map[string]any{"sql": "SELECT 1"}}},
+		Preconditions: []entity.Precondition{{ID: "1", Predicate: entity.PredicateEQ, LogicalKey: "k", Comparand: map[string]any{"sql": "SELECT 1"}}},
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 }
@@ -796,4 +918,315 @@ func TestDeprecateCreatesDecision(t *testing.T) {
 		}
 	}
 	require.True(t, found)
+}
+
+func TestQueryPairingTable(t *testing.T) {
+	cases := []struct {
+		name string
+		p    entity.SemanticPayload
+		ok   bool
+	}{
+		{"READ_ONE", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1, QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne}, true},
+		{"READ_MANY", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1, QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityMany}, false},
+		{"LIST_MANY", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1, QueryOperation: entity.QueryOpList, OutputCardinality: entity.CardinalityMany}, true},
+		{"LIST_ONE", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1, QueryOperation: entity.QueryOpList, OutputCardinality: entity.CardinalityOne}, false},
+		{"FILTER_MANY", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1, QueryOperation: entity.QueryOpFilter, OutputCardinality: entity.CardinalityMany}, true},
+		{"FILTER_ONE", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1, QueryOperation: entity.QueryOpFilter, OutputCardinality: entity.CardinalityOne}, false},
+		{"COMMAND_empty", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindCommand, BusinessModelRevision: 1}, true},
+		{"COMMAND_with_op", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindCommand, BusinessModelRevision: 1, QueryOperation: entity.QueryOpRead}, false},
+		{"COMMAND_with_card", entity.SemanticPayload{Name: "a", CapabilityKind: entity.KindCommand, BusinessModelRevision: 1, OutputCardinality: entity.CardinalityOne}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateMaterializationPayload(tc.p)
+			if tc.ok {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, entity.ErrInvalidPayload)
+			}
+		})
+	}
+}
+
+func TestMaterializationBypassAttempts(t *testing.T) {
+	// Operator SQL via Predicate
+	err := ValidateMaterializationPayload(entity.SemanticPayload{
+		Name: "x", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
+		QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
+		Preconditions: []entity.Precondition{{ID: "1", Predicate: entity.PredicateKind("SELECT *"), LogicalKey: "k"}},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+
+	// list comparand shell
+	err = ValidateMaterializationPayload(entity.SemanticPayload{
+		Name: "x", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
+		QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
+		Preconditions: []entity.Precondition{{ID: "1", Predicate: entity.PredicateIN, LogicalKey: "k", Comparand: []string{"ok", "rm -rf /"}}},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+
+	// binding token id
+	err = ValidateMaterializationPayload(entity.SemanticPayload{
+		Name: "x", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
+		QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
+		DataContractBindings: []entity.DataContractBinding{{DataContractID: "token", DataContractRevisionID: "r1"}},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+
+	// effect logical key bypass
+	err = ValidateMaterializationPayload(entity.SemanticPayload{
+		Name: "x", CapabilityKind: entity.KindCommand, BusinessModelRevision: 1,
+		Effects: []entity.Effect{{ID: "e1", Kind: entity.EffectIntent, LogicalKey: "password"}},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+}
+
+func TestAnalysisOpaqueIDRejection(t *testing.T) {
+	svc, _, _ := newTestService(&DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}})
+	_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "oid", ActorID: testActor,
+		Analysis: entity.AnalysisRequest{
+			BusinessModelRevision: 1,
+			DataContractPins:      []entity.DataContractPin{{DataContractID: "dc drop table", DataContractVersion: 1}},
+		},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+
+	_, err = svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "oid2", ActorID: testActor,
+		Analysis: entity.AnalysisRequest{
+			BusinessModelRevision: 1,
+			RequirementRefs:       []string{"req; SELECT 1"},
+		},
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+}
+
+func TestLeaseTakeoverUsesPersistedRequestJSON(t *testing.T) {
+	fixed := &fixedClock{t: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)}
+	uow, _ := NewMemoryUnitOfWork()
+	gen := &recordingGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen, Clock: fixed})
+
+	caller := entity.AnalysisRequest{
+		BusinessModelRevision: 1,
+		DataContractPins:      []entity.DataContractPin{{DataContractID: "dc_caller", DataContractVersion: 1}},
+	}
+	digest, err := AnalysisRequestDigest(caller)
+	require.NoError(t, err)
+
+	// Persisted JSON differs from caller body but RequestDigest matches caller's digest (forged for takeover test).
+	persistedJSON := `{"business_model_revision":1,"data_contract_pins":[{"data_contract_id":"dc_persisted","data_contract_version":1}],"requirement_refs":null}`
+	exp := fixed.Now().Add(-time.Minute)
+	claimedAt := fixed.Now().Add(-10 * time.Minute)
+	seed := &entity.CapabilityAnalysisRun{
+		AnalysisRunID: "run-expired", TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
+		ClientRequestID: "lease-exp", RequestDigest: digest, Status: entity.AnalysisPending, Attempt: 1,
+		RequestJSON: persistedJSON, ExecutionClaimedAt: &claimedAt, LeaseExpiresAt: &exp,
+		CreatedBy: testActor, CreatedAt: fixed.Now(), UpdatedAt: fixed.Now(),
+	}
+	_, created, err := uow.Root().CreateOrClaimAnalysisRun(context.Background(), seed)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NoError(t, uow.Root().CreateAnalysisAttempt(context.Background(), &entity.CapabilityAnalysisAttempt{
+		AttemptID: "att-lease", AnalysisRunID: "run-expired", TenantID: "t1", Attempt: 1,
+		ActorPrincipalID: testActor, TriggerKind: entity.AttemptTriggerFirst,
+		ResultStatus: entity.AttemptResultPending, CreatedAt: fixed.Now(),
+	}))
+
+	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "lease-exp", ActorID: testActor,
+		Analysis: caller,
+	})
+	require.NoError(t, err)
+	require.True(t, res.OwnedExecute)
+	require.Equal(t, "dc_persisted", gen.lastAnalysis.DataContractPins[0].DataContractID)
+	require.NotEqual(t, "dc_caller", gen.lastAnalysis.DataContractPins[0].DataContractID)
+}
+
+type fixedClock struct{ t time.Time }
+
+func (c *fixedClock) Now() time.Time { return c.t }
+
+type recordingGenerator struct {
+	Proposals    []entity.SemanticPayload
+	lastAnalysis entity.AnalysisRequest
+	Err          error
+}
+
+func (g *recordingGenerator) Generate(_ context.Context, req GenerateRequest) (*GenerateResult, error) {
+	g.lastAnalysis = req.Analysis
+	if g.Err != nil {
+		return nil, g.Err
+	}
+	return &GenerateResult{ModelRef: "fake", Proposals: g.Proposals}, nil
+}
+
+func TestCorruptRequestJSONMarkFailedPropagates(t *testing.T) {
+	uow, _ := NewMemoryUnitOfWork()
+	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	now := time.Now().UTC()
+	exp := now.Add(-time.Minute)
+	caller := entity.AnalysisRequest{BusinessModelRevision: 1}
+	digest, err := AnalysisRequestDigest(caller)
+	require.NoError(t, err)
+	seed := &entity.CapabilityAnalysisRun{
+		AnalysisRunID: "run-corrupt", TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
+		ClientRequestID: "corrupt", RequestDigest: digest, Status: entity.AnalysisPending, Attempt: 1,
+		RequestJSON: "{not-json", ExecutionClaimedAt: &now, LeaseExpiresAt: &exp,
+		CreatedBy: testActor, CreatedAt: now, UpdatedAt: now,
+	}
+	_, created, err := uow.Root().CreateOrClaimAnalysisRun(context.Background(), seed)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NoError(t, uow.Root().CreateAnalysisAttempt(context.Background(), &entity.CapabilityAnalysisAttempt{
+		AttemptID: "att1", AnalysisRunID: "run-corrupt", TenantID: "t1", Attempt: 1,
+		ActorPrincipalID: testActor, TriggerKind: entity.AttemptTriggerFirst,
+		ResultStatus: entity.AttemptResultPending, CreatedAt: now,
+	}))
+
+	failingMark := &markFailRepo{CapabilityRepository: uow.Root(), failMark: true}
+	assets := NewMemoryAssetProjection()
+	badUoW := NewMemoryUnitOfWorkWith(failingMark, assets, assets)
+	badSvc := NewCapabilityService(&Components{UoW: badUoW, Generator: gen})
+	_, err = badSvc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "corrupt", ActorID: testActor,
+		Analysis: caller,
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, MapRepoError(err), entity.ErrConsistency)
+
+	// When MarkAnalysisFailed succeeds, ErrConsistency is returned.
+	okUoW, _ := NewMemoryUnitOfWork()
+	okSvc := NewCapabilityService(&Components{UoW: okUoW, Generator: gen})
+	caller2 := entity.AnalysisRequest{BusinessModelRevision: 1}
+	digest2, derr := AnalysisRequestDigest(caller2)
+	require.NoError(t, derr)
+	seed2 := &entity.CapabilityAnalysisRun{
+		AnalysisRunID: "run-corrupt2", TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
+		ClientRequestID: "corrupt2", RequestDigest: digest2, Status: entity.AnalysisPending, Attempt: 1,
+		RequestJSON: "{bad", ExecutionClaimedAt: &now, LeaseExpiresAt: &exp,
+		CreatedBy: testActor, CreatedAt: now, UpdatedAt: now,
+	}
+	_, _, err = okUoW.Root().CreateOrClaimAnalysisRun(context.Background(), seed2)
+	require.NoError(t, err)
+	require.NoError(t, okUoW.Root().CreateAnalysisAttempt(context.Background(), &entity.CapabilityAnalysisAttempt{
+		AttemptID: "att2", AnalysisRunID: "run-corrupt2", TenantID: "t1", Attempt: 1,
+		ActorPrincipalID: testActor, TriggerKind: entity.AttemptTriggerFirst,
+		ResultStatus: entity.AttemptResultPending, CreatedAt: now,
+	}))
+	_, err = okSvc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "corrupt2", ActorID: testActor,
+		Analysis: caller2,
+	})
+	require.ErrorIs(t, err, entity.ErrConsistency)
+	failed, err := okUoW.Root().GetAnalysisRun(context.Background(), "t1", "run-corrupt2")
+	require.NoError(t, err)
+	require.Equal(t, entity.AnalysisFailed, failed.Status)
+}
+
+type markFailRepo struct {
+	repository.CapabilityRepository
+	failMark bool
+}
+
+func (r *markFailRepo) MarkAnalysisFailed(ctx context.Context, tenantID, analysisRunID, errorCode string, expectedAttempt int32) error {
+	if r.failMark {
+		return errors.New("db driver: connection reset by peer")
+	}
+	return r.CapabilityRepository.MarkAnalysisFailed(ctx, tenantID, analysisRunID, errorCode, expectedAttempt)
+}
+
+func TestAnalysisAttemptAuditOnRetry(t *testing.T) {
+	gen := &DeterministicFakeGenerator{Err: errors.New("boom")}
+	svc, repo, _ := newTestService(gen)
+	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "retry-aud", ActorID: testActor,
+		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.ErrorIs(t, err, entity.ErrAnalysisFailed)
+	require.Equal(t, entity.AnalysisFailed, res.Run.Status)
+
+	atts, err := repo.ListAnalysisAttempts(context.Background(), "t1", res.Run.AnalysisRunID)
+	require.NoError(t, err)
+	require.Len(t, atts, 1)
+	require.Equal(t, entity.AttemptTriggerFirst, atts[0].TriggerKind)
+	require.Equal(t, entity.AttemptResultFailed, atts[0].ResultStatus)
+
+	gen.Err = nil
+	gen.Proposals = []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}
+	res2, err := svc.RetryFailedAnalysis(context.Background(), "t1", res.Run.AnalysisRunID, testActor)
+	require.NoError(t, err)
+	require.Equal(t, entity.AnalysisSucceeded, res2.Run.Status)
+
+	atts, err = repo.ListAnalysisAttempts(context.Background(), "t1", res.Run.AnalysisRunID)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(atts), 2)
+	var foundRetry bool
+	for _, a := range atts {
+		if a.TriggerKind == entity.AttemptTriggerRetry {
+			foundRetry = true
+			require.Equal(t, entity.AttemptResultSucceeded, a.ResultStatus)
+		}
+	}
+	require.True(t, foundRetry)
+}
+
+func TestConfirmedReplayCapabilityMismatch(t *testing.T) {
+	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc, repo, _ := newTestService(gen)
+	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "bind-term", ActorID: testActor,
+		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err)
+	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-term",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "cap-term", rev.CapabilityID)
+
+	_, err = svc.ConfirmProposal(context.Background(), &ConfirmInput{
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-other",
+	})
+	require.ErrorIs(t, err, entity.ErrConflict)
+	got, err := repo.GetProposal(context.Background(), "t1", res.Proposals[0].ProposalID)
+	require.NoError(t, err)
+	require.Equal(t, entity.ProposalConfirmed, got.Status)
+}
+
+func TestEditConfirmedReplayCapabilityMismatch(t *testing.T) {
+	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc, repo, _ := newTestService(gen)
+	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "bind-edit", ActorID: testActor,
+		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err)
+	eff := fixture.LaboratoryFlowCapability()
+	eff.Name = "ListLaboratoryDevices-edited"
+	rev, err := svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-edit2",
+		EffectivePayload: eff,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "cap-edit2", rev.CapabilityID)
+
+	_, err = svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-wrong",
+		EffectivePayload: eff,
+	})
+	require.ErrorIs(t, err, entity.ErrConflict)
+	got, err := repo.GetProposal(context.Background(), "t1", res.Proposals[0].ProposalID)
+	require.NoError(t, err)
+	require.Equal(t, entity.ProposalEditConfirmed, got.Status)
+}
+
+func TestMapRepoErrorNeverLeaksDriver(t *testing.T) {
+	err := MapRepoError(errors.New("Error 1062: Duplicate entry 'x' for key 'PRIMARY'"))
+	require.ErrorIs(t, err, entity.ErrConflict)
+	require.NotContains(t, err.Error(), "1062")
+	err = MapRepoError(errors.New("pq: connection refused"))
+	require.ErrorIs(t, err, entity.ErrConsistency)
+	require.NotContains(t, err.Error(), "pq:")
 }

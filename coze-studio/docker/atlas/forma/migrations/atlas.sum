@@ -1,4 +1,4 @@
-h1:MDQbgZ7OHrCt0+ebqyO9rT5XWMehbCkPSMLXsUMA/QY=
+h1:cG0u1fRPGMfAJneqTtyIqMdDqgr/qZSnDmP/zCZnYp4=
 20250831100000_initial.sql h1:9b0az5JjQaJjx2kfkA41c/ly4lywgsNtTzyTcATpj8o=
 20250831120000_s1_tenancy.sql h1:dT43HbCJd5Rx7D2y9u9mX6d/2PLut6nhckAlWfcipDM=
 20250831140000_s1_g1_space_mapping.sql h1:UfzhBL0yV0KPhy2b46c7d6L1sPaByq5yqiv8loyk/Bg=
@@ -15,3 +15,4 @@ h1:MDQbgZ7OHrCt0+ebqyO9rT5XWMehbCkPSMLXsUMA/QY=
 20250903000000_s5_g0_platform_admin.sql h1:RVbvRooFk9mS3BQWrtxjuGQtOQq63gInb0XS01ekQEE=
 20250903010000_s5_g2_business_capability.sql h1:WlMXpdQI/qRHfzgV6lPrYvvSY+q0IYSMEp8/eIFa590=
 20250903020000_s5_g2_f1_capability_consistency.sql h1:m4BG4Q5jS0Ac2YZt7qf1+pkMtA7t+yD6mlfLGVZlmOE=
+20250903030000_s5_g2_f2_capability_consistency.sql h1:tUH985S7078ipu+XFkPbttFqIPhwiObejOqu0TE/biA=

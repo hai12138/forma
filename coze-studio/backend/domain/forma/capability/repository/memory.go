@@ -25,6 +25,7 @@ func NewMemoryCapabilityRepository() CapabilityRepository {
 		proposals:         make(map[string]*entity.CapabilityProposal),
 		decisions:         make(map[string]*entity.CapabilityDecision),
 		runs:              make(map[string]*entity.CapabilityAnalysisRun),
+		attempts:          make(map[string]*entity.CapabilityAnalysisAttempt),
 		runKeys:           make(map[string]string),
 		deriveKeys:        make(map[string]string),
 		proposalDecisions: make(map[string]string),
@@ -38,6 +39,7 @@ type memRepo struct {
 	proposals         map[string]*entity.CapabilityProposal
 	decisions         map[string]*entity.CapabilityDecision
 	runs              map[string]*entity.CapabilityAnalysisRun
+	attempts          map[string]*entity.CapabilityAnalysisAttempt
 	runKeys           map[string]string
 	deriveKeys        map[string]string
 	proposalDecisions map[string]string
@@ -51,6 +53,7 @@ type memSnap struct {
 	proposals         map[string]*entity.CapabilityProposal
 	decisions         map[string]*entity.CapabilityDecision
 	runs              map[string]*entity.CapabilityAnalysisRun
+	attempts          map[string]*entity.CapabilityAnalysisAttempt
 	runKeys           map[string]string
 	deriveKeys        map[string]string
 	proposalDecisions map[string]string
@@ -67,14 +70,14 @@ func k(parts ...string) string {
 func (r *memRepo) snapshot() memSnap {
 	return memSnap{
 		caps: cloneCapMap(r.caps), revs: cloneRevMap(r.revs), proposals: clonePropMap(r.proposals),
-		decisions: cloneDecMap(r.decisions), runs: cloneRunMap(r.runs),
+		decisions: cloneDecMap(r.decisions), runs: cloneRunMap(r.runs), attempts: cloneAttemptMap(r.attempts),
 		runKeys: cloneStrMap(r.runKeys), deriveKeys: cloneStrMap(r.deriveKeys),
 		proposalDecisions: cloneStrMap(r.proposalDecisions),
 	}
 }
 
 func (r *memRepo) restore(s memSnap) {
-	r.caps, r.revs, r.proposals, r.decisions, r.runs = s.caps, s.revs, s.proposals, s.decisions, s.runs
+	r.caps, r.revs, r.proposals, r.decisions, r.runs, r.attempts = s.caps, s.revs, s.proposals, s.decisions, s.runs, s.attempts
 	r.runKeys, r.deriveKeys, r.proposalDecisions = s.runKeys, s.deriveKeys, s.proposalDecisions
 }
 
@@ -606,6 +609,66 @@ func (r *memRepo) claimExpiredPendingExecution(_ context.Context, tenantID, anal
 	return cloneAnalysisRun(run), true, nil
 }
 
+func (r *memRepo) CreateAnalysisAttempt(ctx context.Context, attempt *entity.CapabilityAnalysisAttempt) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.createAnalysisAttempt(ctx, attempt)
+}
+func (t *memTx) CreateAnalysisAttempt(ctx context.Context, attempt *entity.CapabilityAnalysisAttempt) error {
+	return t.r.createAnalysisAttempt(ctx, attempt)
+}
+func (r *memRepo) createAnalysisAttempt(_ context.Context, attempt *entity.CapabilityAnalysisAttempt) error {
+	if attempt == nil {
+		return entity.ErrInvalidPayload
+	}
+	id := k(attempt.TenantID, attempt.AttemptID)
+	if _, ok := r.attempts[id]; ok {
+		return entity.ErrConflict
+	}
+	cp := *attempt
+	r.attempts[id] = &cp
+	return nil
+}
+
+func (r *memRepo) CompleteAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32, result entity.AnalysisAttemptResult, errorCode string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.completeAnalysisAttempt(ctx, tenantID, analysisRunID, attempt, result, errorCode)
+}
+func (t *memTx) CompleteAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32, result entity.AnalysisAttemptResult, errorCode string) error {
+	return t.r.completeAnalysisAttempt(ctx, tenantID, analysisRunID, attempt, result, errorCode)
+}
+func (r *memRepo) completeAnalysisAttempt(_ context.Context, tenantID, analysisRunID string, attempt int32, result entity.AnalysisAttemptResult, errorCode string) error {
+	for _, a := range r.attempts {
+		if a.TenantID == tenantID && a.AnalysisRunID == analysisRunID && a.Attempt == attempt && a.ResultStatus == entity.AttemptResultPending {
+			a.ResultStatus = result
+			a.ErrorCode = errorCode
+			return nil
+		}
+	}
+	return entity.ErrConsistency
+}
+
+func (r *memRepo) ListAnalysisAttempts(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityAnalysisAttempt, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.listAnalysisAttempts(ctx, tenantID, analysisRunID)
+}
+func (t *memTx) ListAnalysisAttempts(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityAnalysisAttempt, error) {
+	return t.r.listAnalysisAttempts(ctx, tenantID, analysisRunID)
+}
+func (r *memRepo) listAnalysisAttempts(_ context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityAnalysisAttempt, error) {
+	out := make([]*entity.CapabilityAnalysisAttempt, 0)
+	for _, a := range r.attempts {
+		if a.TenantID == tenantID && a.AnalysisRunID == analysisRunID {
+			cp := *a
+			out = append(out, &cp)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Attempt < out[j].Attempt })
+	return out, nil
+}
+
 func cloneRevision(in *entity.BusinessCapabilityRevision) *entity.BusinessCapabilityRevision {
 	if in == nil {
 		return nil
@@ -660,6 +723,15 @@ func cloneRunMap(in map[string]*entity.CapabilityAnalysisRun) map[string]*entity
 	out := make(map[string]*entity.CapabilityAnalysisRun, len(in))
 	for key, v := range in {
 		out[key] = cloneAnalysisRun(v)
+	}
+	return out
+}
+
+func cloneAttemptMap(in map[string]*entity.CapabilityAnalysisAttempt) map[string]*entity.CapabilityAnalysisAttempt {
+	out := make(map[string]*entity.CapabilityAnalysisAttempt, len(in))
+	for key, v := range in {
+		cp := *v
+		out[key] = &cp
 	}
 	return out
 }
