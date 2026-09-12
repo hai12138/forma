@@ -61,7 +61,7 @@ Rules: JSON object keys rebuilt with sorted maps; set-like collections sorted by
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA | _pending push_ |
+| COMMIT_SHA | `8ace5d9d77fac59acb964189bcb5bdffe64e9709` |
 | CI_RUN | _pending_ |
 | forma-backend | _pending_ |
 | forma-migration-apply | _pending_ |
