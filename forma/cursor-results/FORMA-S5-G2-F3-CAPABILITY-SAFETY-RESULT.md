@@ -3,7 +3,7 @@
 
 **Gate:** S5-G2-F3
 **Date:** 2026-09-13
-**Status:** **PENDING_CI** (local tests green; await Forma CI)
+**Status:** **PASS** (Forma CI ALL GREEN)
 
 ---
 
@@ -46,18 +46,18 @@ Local verification:
 | Field | Value |
 |-------|-------|
 | COMMIT_SHA | `c2caf92e51ad3fb87ae23012eae1a992fbcea8f3` |
-| CI_RUN | PENDING |
-| forma-backend | PENDING |
-| forma-migration-apply | PENDING |
-| forma-frontend | PENDING |
-| CI | **PENDING_CI** |
+| CI_RUN | [34709533051](https://github.com/hai12138/forma/actions/runs/34709533051) |
+| forma-backend | **PASS** |
+| forma-migration-apply | **PASS** |
+| forma-frontend | **PASS** |
+| CI | **ALL GREEN** |
 
 ---
 
 ## 4. Gate Summary
 
 ```text
-S5_G2_F3_STATUS = PENDING_CI
+S5_G2_F3_STATUS = PASS
 UOW_OWNERSHIP = PASS
 UOW_COMMIT_ROLLBACK = PASS
 ANALYSIS_SECRET_ISOLATION = PASS
@@ -68,8 +68,8 @@ MAP_REPO_ERROR_BARE = PASS
 PRODUCT_CODE_CHANGE = CAPABILITY_DOMAIN_ONLY
 MIGRATION_CHANGE = S5_G2_F3_ONLY
 REAL_MODEL_CALLS = 0
-CI = PENDING_CI
+CI = ALL_GREEN
 S5_G3_READY = NO
 ```
 
-**Stop:** **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`. Await CI + human review.
+**Stop:** **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`. Await human review.
