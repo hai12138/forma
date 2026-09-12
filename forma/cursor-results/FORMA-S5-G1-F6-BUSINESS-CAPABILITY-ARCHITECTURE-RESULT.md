@@ -3,7 +3,7 @@
 
 **Gate:** S5-G1-F6
 **Date:** 2026-09-12
-**Status:** PENDING_CI (docs committed; awaiting Forma CI ALL GREEN + human architecture review)
+**Status:** **PASS** (docs-only; Forma CI ALL GREEN; await human architecture review before S5-G2)
 
 ---
 
@@ -25,7 +25,7 @@
 | Artifact | Action |
 |----------|--------|
 | `forma/docs/stages/FORMA-S5-BUSINESS-CAPABILITY-STAGE-CONTRACT.md` | AMENDED (G1-F6) |
-| `forma/cursor-results/FORMA-S5-G1-F6-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED |
+| `forma/cursor-results/FORMA-S5-G1-F6-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md` | CREATED / FINALIZED |
 
 ---
 
@@ -38,25 +38,28 @@
 | ContentDigest definition | PASS — explicit include/exclude semantic fields; G2 canonicalization; identical payload → identical digest |
 | Static verification matrix | PASS — six required cases documented in §3.4.5 |
 
+`git diff --check`: PASS (clean)
+
 ---
 
 ## 4. Commit & CI
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA | _pending push_ |
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| COMMIT_SHA | `d23406906393a93afe1588758a5dbbf37a824315` |
+| CI_RUN | `34682899491` |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| CI | **ALL GREEN** |
+| CI URL | https://github.com/hai12138/forma/actions/runs/34682899491 |
 
 ---
 
-## 5. Gate Summary (pre-CI)
+## 5. Gate Summary
 
 ```text
-S5_G1_F6_STATUS = PENDING_CI
+S5_G1_F6_STATUS = PASS
 PROJECTION_TOTALITY = PASS
 AGGREGATE_LOCK = PASS
 CONTENT_DIGEST = PASS
@@ -64,8 +67,8 @@ STATIC_MATRIX = PASS
 PRODUCT_CODE_CHANGE = NONE
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
-CI = pending
+CI = ALL GREEN
 S5_G2_READY = NO
 ```
 
-**Stop:** After CI ALL GREEN, finalize §4/§5, then **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`.
+**Stop:** **STOP**. Do not start S5-G2. Do not create `forma-s5-frozen`. Await human architecture review.
