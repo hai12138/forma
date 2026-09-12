@@ -2,13 +2,13 @@
 # STAGE CONTRACT (Architecture Freeze)
 
 **Gate:** S5-G1 — Business Capability Architecture & Stage Contract Freeze
-**Amendment:** S5-G1-F6 — Architecture Consistency Fix (2026-09-12) — supersedes F1–F5 wording where amended
-**Prior amendments:** S5-G1-F1 … F5 (2026-09-10 / 2026-09-11)
+**Amendment:** S5-G1-F7 — Architecture Consistency Fix (2026-09-12) — supersedes F1–F6 wording where amended
+**Prior amendments:** S5-G1-F1 … F6 (2026-09-10 / 2026-09-11 / 2026-09-12)
 **Status:** CONTRACT_READY (awaiting human architecture review)
 **S4 Baseline:** `forma-s4-frozen-r2` → `7c05fc5da16e0f3c256ad06aaa5d2c76b9ebc7ae`
 **S5-G0 Baseline:** Platform Admin / User Management Foundation — PASS (`S5_G1_READY = YES`)
 **Scope of this document:** Architecture invariants, domain model, boundaries, hard gates, and G2–G6 roadmap for Business Capability.
-**Code change rule for G1 / G1-F1 … G1-F6:** Documentation and static verification only. No domain code, migrations, adapters, APIs, UI modules, or model calls.
+**Code change rule for G1 / G1-F1 … G1-F7:** Documentation and static verification only. No domain code, migrations, adapters, APIs, UI modules, or model calls.
 
 ---
 
@@ -147,13 +147,25 @@ ProjectCapabilityAssetRef(capability, revisions)
 
 Inputs: the Capability aggregate (`capability_id`, `tenant_id`, `active_revision_id`, …) and the **full** set of `BusinessCapabilityRevision` rows belonging to that aggregate.
 
-**Preconditions / consistency errors (evaluate before selection; on error do NOT write AssetRef):**
+**Preconditions / consistency errors (evaluate before selection; on error do NOT write AssetRef; abort the enclosing lifecycle transaction with full rollback):**
 
 | Condition | Result |
 |-----------|--------|
 | `revisions` is empty | Stable **consistency error** |
 | Any duplicate `version` within the Capability | Stable **consistency error** |
-| `active_revision_id` is non-null **and** the pointed revision is missing, belongs to another aggregate / tenant / capability, or does **not** have status `ACTIVE` | Stable **consistency error** |
+| **ACTIVE pointer / ACTIVE rows invariant broken** (see below) | Stable **consistency error** |
+| `active_revision_id` is non-null **and** the pointed revision is missing, belongs to another aggregate / tenant / capability, or does **not** have status `ACTIVE` | Stable **consistency error** (covered by ACTIVE invariant) |
+
+**ACTIVE pointer ↔ ACTIVE rows invariant (LOCKED — indivisible aggregate consistency):**
+
+Let `ActiveSet` = `{ r ∈ revisions | r.status == ACTIVE }`.
+
+1. If `active_revision_id == null`: `ActiveSet` **MUST be empty**.
+2. If `active_revision_id != null`:
+   - `ActiveSet` **MUST contain exactly one** revision;
+   - that revision **MUST** belong to the same `tenant_id` / `capability_id` aggregate;
+   - that revision’s `revision_id` **MUST equal** `active_revision_id`.
+3. Violations (orphan ACTIVE with null pointer; multiple ACTIVE; pointer points to A while the sole/other ACTIVE is B; pointer non-null but ActiveSet empty; etc.) → stable **consistency error**, **no AssetRef write**, **entire lifecycle transaction rollback**.
 
 **Database uniqueness (LOCKED for G2 schema):**
 
@@ -167,7 +179,7 @@ Selection of “maximum version” MUST use the numeric `version` field only —
 
 | Priority | Aggregate condition | Projected revision `R` | AssetRef.Status |
 |----------|---------------------|------------------------|-----------------|
-| 1 | Legal ACTIVE pointer (`active_revision_id` non-null and points to an `ACTIVE` revision in this aggregate) | that ACTIVE revision | `RELEASED` |
+| 1 | Legal ACTIVE pointer (`active_revision_id` non-null and ActiveSet is exactly that ACTIVE revision) | that ACTIVE revision | `RELEASED` |
 | 2 | No legal ACTIVE; at least one `VALIDATED` exists | `VALIDATED` with **maximum** `version` | `VERIFIED` |
 | 3 | No ACTIVE / VALIDATED; at least one `DRAFT` exists | `DRAFT` with **maximum** `version` | `DRAFT` |
 | 4 | No ACTIVE / VALIDATED / DRAFT; at least one `STALE` exists | `STALE` with **maximum** `version` | `IN_REVIEW` |
@@ -186,7 +198,7 @@ Selection of “maximum version” MUST use the numeric `version` field only —
 | `SemanticVersion` | SemVer string `0.{N}.0` where `N = R.version` (example: version `3` → `"0.3.0"`). Display projection only — **not** revision identity |
 | `Revision` | Always `1` after Asset create; **never** modified by lifecycle updates |
 | `SchemaVersion` | Fixed `"1.0"` at Asset create; **unchanged** for all V1 lifecycle projection updates |
-| `ContentDigest` | Hex-encoded SHA-256 of the **canonical serialization** of `R`’s **semantic** payload (§3.4.3) |
+| `ContentDigest` | Hex-encoded SHA-256 of the **canonical serialization** of `R`’s **behavioral semantic** payload (§3.4.2) |
 | `Kind` | always `CAPABILITY` |
 | `Status` | from the selection table above |
 
@@ -195,7 +207,7 @@ Selection of “maximum version” MUST use the numeric `version` field only —
 
 #### 3.4.2 ContentDigest semantic coverage (LOCKED)
 
-`ContentDigest` digests **only** the projected Revision’s semantic payload.
+`ContentDigest` digests **only** the projected Revision’s **Capability behavioral semantics**.
 
 **Included (must all be covered):**
 
@@ -205,28 +217,30 @@ Selection of “maximum version” MUST use the numeric `version` field only —
 - `preconditions[]`, `effects[]`
 - `data_contract_bindings[]`
 - `query_operation`, `output_cardinality` (QUERY)
-- `source` (`AI_PROPOSAL` / `MANUAL_CREATED` / `DERIVED_EDIT`)
-- `derived_from_revision_id`, `analysis_run_id`, `proposal_id` when present as semantic lineage refs on the revision payload
 
-**Excluded (must NOT affect digest):**
+**Excluded (must NOT affect digest) — provenance / identity / audit:**
 
+- `source` (`MANUAL_CREATED` / `AI_PROPOSAL` / `DERIVED_EDIT`)
+- `derived_from_revision_id`, `analysis_run_id`, `proposal_id`
 - `revision_id`, `version`, `status`
-- `capability_id`, `tenant_id`, `business_id` (aggregate identity — not revision semantic body for projection digest)
+- `capability_id`, `tenant_id`, `business_id` (aggregate identity)
 - `created_by`, `created_at`, and any other audit / clock fields
 - AssetRef fields themselves
 
+**Provenance neutrality (LOCKED):** identical Capability behavioral semantics MUST produce the **same** `ContentDigest`, whether the Revision originated as `MANUAL_CREATED`, `AI_PROPOSAL`, or `DERIVED_EDIT`.
+
 **Canonicalization:** exact byte serialization / field ordering / digest versioning is **fixed in G2** and MUST align with existing Forma digest conventions if already present in the platform.
-**Determinism:** identical semantic payloads MUST produce identical `ContentDigest` values.
+**Determinism:** identical Included semantic payloads MUST produce identical `ContentDigest` values.
 
 #### 3.4.3 Capability aggregate lock & projection transaction (LOCKED)
 
 All operations that allocate a Capability-unique `version` and/or execute `ProjectCapabilityAssetRef` MUST:
 
-1. Hold the **Capability aggregate lock**
+1. Hold the **Capability aggregate lock** (see first-create vs existing below)
 2. Read the current revision set **under that lock**
 3. Allocate next unique `version` (enforced also by `UNIQUE (tenant_id, capability_id, version)`)
 4. Persist Revision / pointer mutations
-5. Run `ProjectCapabilityAssetRef`; on consistency error → abort the transaction (**no** AssetRef write)
+5. Run `ProjectCapabilityAssetRef`; on consistency error → abort the transaction (**no** AssetRef write; full rollback)
 6. Commit in the **same** transaction
 
 Applies to: Confirm / EDIT_CONFIRM (after target Capability is known), DeriveRevision, Validate, Activate, STALE, Deprecate, MANUAL_CREATE.
@@ -235,8 +249,23 @@ Applies to: Confirm / EDIT_CONFIRM (after target Capability is known), DeriveRev
 
 1. Lock **Proposal** first (unchanged)
 2. Resolve target Capability (first-create vs existing)
-3. If existing Capability: **lock Capability aggregate**, then under that lock read revisions, allocate version, create Revision, Decision, terminalize Proposal fields as applicable, run `ProjectCapabilityAssetRef`
-4. If first-create: create Capability + AssetRef (`Revision=1`, `SchemaVersion="1.0"`) under the new aggregate lock path, then project
+3. **Existing Capability:** `Proposal lock → Capability aggregate FOR UPDATE →` read revisions → allocate version → create Revision / Decision → terminalize Proposal → `ProjectCapabilityAssetRef` → commit
+4. **First-create (LOCKED — single implementable seam; no vague “new aggregate lock path”):**
+
+```
+BEGIN
+  1. INSERT BusinessCapability with unique PK (capability_id == asset_id)
+     — success means THIS transaction owns the new aggregate
+  2. INSERT the single AssetRef (Revision=1, SchemaVersion="1.0")
+  3. INSERT the initial DRAFT BusinessCapabilityRevision
+  4. INSERT CapabilityDecision; terminalize Proposal
+  5. ProjectCapabilityAssetRef(capability, revisions)
+  6. COMMIT
+```
+
+- Any step failure → **full rollback** (no orphan Capability, AssetRef, Revision, Decision, or terminal Proposal)
+- Identity / AssetRef unique-key conflict → stable **conflict**; **no** orphan leftovers
+- Concurrent first-creates racing the same intended `capability_id` / `asset_id`: at most one INSERT wins; losers receive stable conflict
 
 **Concurrent Confirms** from two different Proposals targeting the **same** existing Capability: both may succeed only as distinct DRAFT versions under the aggregate lock; each recomputes projection; if an ACTIVE already exists, RELEASED Name / SemVer / ContentDigest remain those of the ACTIVE.
 
@@ -246,18 +275,22 @@ After **every** successful Confirm / Derive / Validate / Activate / STALE / Depr
 
 **Existing Capability + new DRAFT:** do not create a second AssetRef; recompute projection; ACTIVE RELEASED projection must not change.
 
-**First-time create only:** allocate one AssetRef (`Revision=1`, `SchemaVersion="1.0"`), then project.
+**First-time create only:** follow the first-create INSERT seam in §3.4.3, then project.
 
 #### 3.4.5 Static verification matrix (architecture acceptance — G2 tests MUST cover)
 
 | Case | Expected |
 |------|----------|
 | STALE + DEPRECATED mixed (no ACTIVE/VALIDATED/DRAFT) | Project max-version STALE; Status=`IN_REVIEW` |
-| Invalid / dangling / cross-aggregate / non-ACTIVE `active_revision_id` | Consistency error; AssetRef unchanged |
-| Empty `revisions` | Consistency error; AssetRef unchanged |
-| Duplicate `version` values | Consistency error; AssetRef unchanged |
+| Invalid / dangling / cross-aggregate / non-ACTIVE `active_revision_id` | Consistency error; AssetRef unchanged; txn rollback |
+| Empty `revisions` | Consistency error; AssetRef unchanged; txn rollback |
+| Duplicate `version` values | Consistency error; AssetRef unchanged; txn rollback |
+| `active_revision_id == null` + orphan ACTIVE row | Consistency error; AssetRef unchanged; txn rollback |
+| Legal pointer to A + second ACTIVE row | Consistency error; AssetRef unchanged; txn rollback |
+| Pointer points to A while ActiveSet is B (or includes B ≠ A) | Consistency error; AssetRef unchanged; txn rollback |
 | Two Proposals concurrently Confirm to one existing Capability | Both create distinct DRAFTs under aggregate lock + UNIQUE version; no duplicate AssetRef |
 | ACTIVE present while concurrent DRAFTs are created | Projection remains ACTIVE / `RELEASED` Name·SemVer·ContentDigest unchanged |
+| Concurrent first-create race on same capability_id/asset_id | One wins; loser stable conflict; no orphans |
 
 ---
 
@@ -736,7 +769,7 @@ Forma Capability Domain
 
 **Forbidden in Capability Domain:** provider-specific SDKs (OpenAI / DeepSeek / Qwen / …).
 
-**S5-G1 / S5-G1-F1 … G1-F6: REAL_MODEL_CALLS = 0**
+**S5-G1 / S5-G1-F1 … G1-F7: REAL_MODEL_CALLS = 0**
 
 ### 9.8 ConfirmProposal atomic boundary & replay (LOCKED)
 
@@ -781,14 +814,9 @@ CONFIRM / EDIT_CONFIRM **MUST** execute as **one Unit of Work**.
 
 1. Resolve effective payload (CONFIRM → Proposal.payload; EDIT_CONFIRM → request `effective_payload`) and compute `payload_digest`
 2. Resolve target Capability (first-create vs existing bind declared by payload)
-3. **Lock Capability aggregate** (§3.4.3). Under that lock:
-   - Read revisions; allocate Capability-unique next `version` (`UNIQUE (tenant_id, capability_id, version)`)
-   - **First create:** allocate `capability_id == asset_id`, create **one** AssetRef (`Revision=1`, `SchemaVersion="1.0"`) + BusinessCapability + DRAFT Revision
-   - **Existing Capability:** create new DRAFT Revision only; **do not** create another AssetRef
-   - Create immutable `CapabilityDecision` with `capability_id`, `proposal_id`, `target_revision_id`, `payload_digest`
-   - Update Proposal terminal status + `materialized_revision_id` (**do not** mutate `Proposal.payload`)
-   - Run `ProjectCapabilityAssetRef`; on consistency error → abort entire UoW (no AssetRef write). If ACTIVE already exists, RELEASED Name/SemVer/ContentDigest **must not** change
-4. Commit
+3. **Existing Capability:** `Capability aggregate FOR UPDATE` (§3.4.3). Under that lock: read revisions; allocate next `version`; create DRAFT Revision only (**no** second AssetRef); create Decision; terminalize Proposal; `ProjectCapabilityAssetRef` (ACTIVE RELEASED projection must not change); consistency error → full rollback
+4. **First-create:** follow the INSERT seam in §3.4.3 (unique BusinessCapability PK insert owns the aggregate → AssetRef → initial Revision → Decision → terminalize Proposal → project). Conflict / any failure → full rollback; no orphans
+5. Commit
 
 **Failure:** any step fails → **no** partial Asset, Capability, Revision, Decision, or Proposal terminal update remains (rollback / idempotent compensation).
 
@@ -985,7 +1013,7 @@ AI suggestions must never look like confirmed configuration.
 - Real model only when a later gate must prove AI proposal quality
 - Confirm / Validate / Activate / Auth / Tenant / UI / Impact **must not** depend on real model for correctness
 
-**S5-G1 / S5-G1-F1 … G1-F6: REAL_MODEL_CALLS = 0**
+**S5-G1 / S5-G1-F1 … G1-F7: REAL_MODEL_CALLS = 0**
 
 ### Generality acceptance (later E2E gates)
 
@@ -1034,8 +1062,8 @@ At least two dissimilar businesses. Domain implementation must not change per bu
 |------|-------|
 | **S5-G0** | Platform Admin / User Management Foundation — **PASS** (prerequisite; not redefined here) |
 | **S5-G1** | Architecture & Stage Contract Freeze |
-| **S5-G1-F1** … **S5-G1-F5** | Architecture Consistency Fixes |
-| **S5-G1-F6** | Architecture Consistency Fix (**this amendment**) |
+| **S5-G1-F1** … **S5-G1-F6** | Architecture Consistency Fixes |
+| **S5-G1-F7** | Architecture Consistency Fix (**this amendment**) |
 | **S5-G2** | Capability Domain, Revision, state machine, human decisions, idempotent analysis runs |
 | **S5-G3** | Business Model / Data Contract binding & validation |
 | **S5-G4** | Capability API, authorization, audit, concurrency consistency |
@@ -1049,11 +1077,12 @@ Each gate: Implement → Test → Review → PASS.
 
 ---
 
-## 18. G1 / G1-F1 … G1-F6 Exit Criteria
+## 18. G1 / G1-F1 … G1-F7 Exit Criteria
 
 - Stage Contract published at `forma/docs/stages/FORMA-S5-BUSINESS-CAPABILITY-STAGE-CONTRACT.md`
-- G1 … G1-F5 Results under `forma/cursor-results/`
-- G1-F6 Result at `forma/cursor-results/FORMA-S5-G1-F6-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md`
+- G1 … G1-F6 Results under `forma/cursor-results/`
+- G1-F7 Result at `forma/cursor-results/FORMA-S5-G1-F7-BUSINESS-CAPABILITY-ARCHITECTURE-RESULT.md`
+- Repo issue tracker config at `docs/agents/issue-tracker.md`
 - Docs-only commit; Forma CI ALL GREEN
 - No Capability domain / migration / adapter / UI implementation
 - `REAL_MODEL_CALLS = 0`
@@ -1063,7 +1092,7 @@ Each gate: Implement → Test → Review → PASS.
 - Human architecture review required before S5-G2
 - **DO NOT START S5-G2** until review PASS
 - **DO NOT** create `forma-s5-frozen`
-- **S5_G2_READY = NO** until human review after G1-F6
+- **S5_G2_READY = NO** until human review after G1-F7
 
 ---
 
@@ -1088,8 +1117,8 @@ Each gate: Implement → Test → Review → PASS.
 | Field | Value |
 |-------|-------|
 | Document | FORMA-S5 Business Capability Stage Contract |
-| Gate | S5-G1 / S5-G1-F1 … S5-G1-F6 |
+| Gate | S5-G1 / S5-G1-F1 … S5-G1-F7 |
 | Baseline tags | `forma-s4-frozen-r2` |
 | Related ADRs | ADR-002, ADR-006, ADR-013 |
 | Related contracts | FORMA-S4 Data Plane / Data Contract Stage Contract |
-| Related results | FORMA-S4-FINAL-FREEZE-R2, FORMA-S5-G0, FORMA-S5-G1 … F6 |
+| Related results | FORMA-S4-FINAL-FREEZE-R2, FORMA-S5-G0, FORMA-S5-G1 … F7 |
