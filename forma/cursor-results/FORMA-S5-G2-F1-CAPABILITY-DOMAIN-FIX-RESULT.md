@@ -3,7 +3,7 @@
 
 **Gate:** S5-G2-F1
 **Date:** 2026-09-13
-**Status:** PENDING_CI (implementation ready; awaiting Forma CI ALL GREEN + human review)
+**Status:** **PASS** (Capability consistency fixes; Forma CI ALL GREEN; await human review before S5-G3)
 
 ---
 
@@ -38,37 +38,28 @@
 | JSON fail-closed | PASS — corrupt payload JSON → `ErrConsistency` |
 | Memory lease isolation | PASS — deep-copy `ExecutionClaimedAt` / `LeaseExpiresAt` |
 
----
-
-## 3. Local verification
-
-| Check | Result |
-|-------|--------|
-| `go test ./domain/forma/capability/... -count=1` | PASS |
-| `go test ./domain/forma/... -count=1` | PASS |
-| `node scripts/forma/migration-validate.mjs` | PASS (16/16) |
-| `git diff --check` | _pending commit_ |
-| migration CASE A/B/C | Deferred to Forma CI `forma-migration-apply` |
+`git diff --check`: PASS
 
 ---
 
-## 4. Commit & CI
+## 3. Commit & CI
 
 | Field | Value |
 |-------|-------|
 | COMMIT_SHA | `e8f6f38846f33f81dd3f4816508689f49ec8ff17` |
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| CI_RUN | `34705402311` (tip `077c3f30…`) |
+| forma-backend | PASS |
+| forma-migration-apply | PASS |
+| forma-frontend | PASS |
+| CI | **ALL GREEN** |
+| CI URL | https://github.com/hai12138/forma/actions/runs/34705402311 |
 
 ---
 
-## 5. Gate Summary (pre-CI)
+## 4. Gate Summary
 
 ```text
-S5_G2_F1_STATUS = PENDING_CI
+S5_G2_F1_STATUS = PASS
 UOW_ATOMICITY = PASS
 ACTIVATE_CONCURRENCY = PASS
 LIFECYCLE_EVIDENCE = PASS
@@ -82,8 +73,10 @@ MEMORY_LEASE_ISOLATION = PASS
 PRODUCT_CODE_CHANGE = CAPABILITY_DOMAIN_ONLY
 MIGRATION_CHANGE = S5_G2_F1_ONLY
 REAL_MODEL_CALLS = 0
-CI = pending
+COMMIT_SHA = e8f6f38846f33f81dd3f4816508689f49ec8ff17
+CI_RUN = 34705402311
+CI = ALL GREEN
 S5_G3_READY = NO
 ```
 
-**Stop:** After CI ALL GREEN, finalize §4/§5, then **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`.
+**Stop:** **STOP**. Do not start S5-G3. Do not create `forma-s5-frozen`. Await human review.
