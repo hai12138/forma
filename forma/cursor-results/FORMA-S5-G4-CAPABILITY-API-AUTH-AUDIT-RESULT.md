@@ -3,7 +3,7 @@
 
 **Gate:** S5-G4  
 **Date:** 2026-09-14  
-**Status:** **PASS (local)** — Forma CI pending / updating after green
+**Status:** **PASS** (Forma CI ALL GREEN)
 
 ---
 
@@ -128,18 +128,19 @@ Enforcement: `loadCapabilityTenant` re-reads **ACTIVE** membership from Tenancy 
 
 | Field | Value |
 |-------|-------|
-| CI_RUN | _pending after push_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| CI_RUN (tip incl. RESULT) | [34773122233](https://github.com/hai12138/forma/actions/runs/34773122233) |
+| head_sha | `0f202d05580c1c4d5a1e3ddbedd217855397dd41` |
+| forma-backend | **PASS** |
+| forma-migration-apply | **PASS** |
+| forma-frontend | **PASS** |
+| CI | **ALL GREEN** |
 
 ---
 
 ## 10. Gate summary
 
 ```text
-S5_G4_STATUS = PASS_LOCAL
+S5_G4_STATUS = PASS
 PRODUCT_CODE_CHANGE = YES
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
@@ -148,7 +149,8 @@ TENANT_ISOLATION = PASS
 AUDIT_SECRET_ISOLATION = PASS
 CONCURRENCY_IDEMPOTENCY = PASS
 RUNTIME_INVOKE = NONE
+CI = ALL_GREEN
 S5_G5_READY = NO
 ```
 
-**Stop:** Do **not** create `forma-s5-frozen`. Do **not** announce G5. Await human review after CI ALL GREEN.
+**Stop:** Do **not** create `forma-s5-frozen`. Do **not** announce or start G5. Await human review.
