@@ -77,9 +77,26 @@ func validateCompatibility(
 	if typeConflict {
 		issues = append(issues, entity.IssueMappingTypeConflict)
 	}
+	// Aggregate-wide: union of mapped Capability keys; do not require every binding to cover all fields.
+	// COMMAND with zero bindings has no mapping obligation (bindings loop is a no-op).
+	unionMapped := map[string]struct{}{}
 	for _, b := range bindings {
 		desc := descriptors[b.DataContractID]
-		issues = append(issues, validateBindingAgainstDescriptor(rev, b, desc, capFields)...)
+		bindingIssues, mappedKeys := validateBindingAgainstDescriptor(rev, b, desc, capFields)
+		issues = append(issues, bindingIssues...)
+		for key := range mappedKeys {
+			if _, ok := unionMapped[key]; ok {
+				issues = append(issues, entity.IssueMappingDuplicateCapKey)
+			}
+			unionMapped[key] = struct{}{}
+		}
+	}
+	if len(bindings) > 0 {
+		for key := range capFields {
+			if _, ok := unionMapped[key]; !ok {
+				issues = append(issues, entity.IssueMappingMissing)
+			}
+		}
 	}
 	return uniqueSorted(issues)
 }
@@ -89,10 +106,11 @@ func validateBindingAgainstDescriptor(
 	b entity.DataContractBinding,
 	desc *ContractLogicalDescriptor,
 	capFields map[string]capFieldInfo,
-) []string {
+) ([]string, map[string]struct{}) {
+	mappedCap := map[string]struct{}{}
 	var issues []string
 	if desc == nil {
-		return []string{entity.IssueContractNotFound}
+		return []string{entity.IssueContractNotFound}, mappedCap
 	}
 	if !strings.EqualFold(desc.Status, "ACTIVE") {
 		issues = append(issues, entity.IssueContractNotActive)
@@ -114,16 +132,17 @@ func validateBindingAgainstDescriptor(
 		contractFields[f.LogicalKey] = f
 	}
 
-	mappedCap := map[string]string{}
+	seenInBinding := map[string]struct{}{}
 	for _, m := range b.LogicalFieldMappings {
 		if _, ok := capFields[m.CapabilityLogicalKey]; !ok {
 			issues = append(issues, entity.IssueMappingUnknownCapKey)
 			continue
 		}
-		if _, ok := mappedCap[m.CapabilityLogicalKey]; ok {
+		if _, ok := seenInBinding[m.CapabilityLogicalKey]; ok {
 			issues = append(issues, entity.IssueMappingDuplicateCapKey)
 		}
-		mappedCap[m.CapabilityLogicalKey] = m.ContractLogicalKey
+		seenInBinding[m.CapabilityLogicalKey] = struct{}{}
+		mappedCap[m.CapabilityLogicalKey] = struct{}{}
 		cf, ok := contractFields[m.ContractLogicalKey]
 		if !ok {
 			issues = append(issues, entity.IssueMappingUnknownContractKey)
@@ -139,12 +158,7 @@ func validateBindingAgainstDescriptor(
 			issues = append(issues, entity.IssueNullability)
 		}
 	}
-	for key := range capFields {
-		if _, ok := mappedCap[key]; !ok {
-			issues = append(issues, entity.IssueMappingMissing)
-		}
-	}
-	return issues
+	return issues, mappedCap
 }
 
 func collectCapabilityFields(rev *entity.BusinessCapabilityRevision) (map[string]capFieldInfo, bool) {
@@ -228,11 +242,14 @@ func validateQueryRules(rev *entity.BusinessCapabilityRevision, descriptors map[
 			if !isComparisonPredicate(pc.Predicate) {
 				continue
 			}
-			if !inputRequired[pc.LogicalKey] {
-				continue
+			if _, ok := inputKeys[pc.LogicalKey]; !ok {
+				issues = append(issues, entity.IssueQueryPreconditionKey)
 			}
-			hasCmp = true
+			// OPTIONAL inputs cannot skip operator / type checks.
 			issues = append(issues, validateFilterPredicate(pc, rev.DataContractBindings, descriptors)...)
+			if inputRequired[pc.LogicalKey] {
+				hasCmp = true
+			}
 		}
 		if !hasCmp {
 			issues = append(issues, entity.IssueQueryFilterPredicate)
@@ -240,6 +257,9 @@ func validateQueryRules(rev *entity.BusinessCapabilityRevision, descriptors map[
 	case entity.QueryOpRead, entity.QueryOpList:
 		for _, pc := range rev.Preconditions {
 			if isComparisonPredicate(pc.Predicate) {
+				if _, ok := inputKeys[pc.LogicalKey]; !ok {
+					issues = append(issues, entity.IssueQueryPreconditionKey)
+				}
 				issues = append(issues, validateFilterPredicate(pc, rev.DataContractBindings, descriptors)...)
 			}
 		}
@@ -269,6 +289,16 @@ func validateFilterPredicate(pc entity.Precondition, bindings []entity.DataContr
 	if desc == nil || contractKey == "" {
 		return []string{entity.IssueQueryFilterOperator}
 	}
+	contractType := ""
+	for _, f := range desc.LogicalSchema {
+		if f.LogicalKey == contractKey {
+			contractType = f.LogicalType
+			break
+		}
+	}
+	if contractType == "" || !filterOpCompatibleWithType(op, contractType) {
+		return []string{entity.IssueQueryFilterOperator}
+	}
 	for _, fs := range desc.FilterSchema {
 		if fs.LogicalKey != contractKey {
 			continue
@@ -281,6 +311,23 @@ func validateFilterPredicate(pc entity.Precondition, bindings []entity.DataContr
 		return []string{entity.IssueQueryFilterOperator}
 	}
 	return []string{entity.IssueQueryFilterOperator}
+}
+
+// filterOpCompatibleWithType mirrors S4 FilterOperator × logical-type allowlist (no NOT_IN).
+func filterOpCompatibleWithType(op, logicalType string) bool {
+	switch logicalType {
+	case "STRING":
+		return op == "EQ" || op == "NE" || op == "IN" || op == "CONTAINS"
+	case "INTEGER", "DECIMAL", "DATE", "DATETIME", "TIME":
+		return op == "EQ" || op == "NE" || op == "GT" || op == "GTE" ||
+			op == "LT" || op == "LTE" || op == "IN" || op == "BETWEEN"
+	case "BOOLEAN":
+		return op == "EQ" || op == "NE"
+	case "JSON":
+		return op == "EQ" || op == "NE" || op == "CONTAINS"
+	default:
+		return false
+	}
 }
 
 func isComparisonPredicate(p entity.PredicateKind) bool {
@@ -309,6 +356,7 @@ func mapPredicateToFilterOp(p entity.PredicateKind) (string, bool) {
 		return "LTE", true
 	case entity.PredicateIN:
 		return "IN", true
+	// NOT_IN: S4 FilterOperator has no NOT_IN — keep unsupported.
 	default:
 		return "", false
 	}

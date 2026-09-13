@@ -805,12 +805,15 @@ func toAnalysis(row *analysisRunRow) *entity.CapabilityAnalysisRun {
 	}
 }
 
-func validationFrom(v *entity.CapabilityValidationResult) *validationResultRow {
+func validationFrom(v *entity.CapabilityValidationResult) (*validationResultRow, error) {
 	codes := v.IssueCodes
 	if codes == nil {
 		codes = []string{}
 	}
-	raw, _ := json.Marshal(codes)
+	raw, err := json.Marshal(codes)
+	if err != nil {
+		return nil, entity.ErrConsistency
+	}
 	return &validationResultRow{
 		ValidationID:               v.ValidationID,
 		TenantID:                   v.TenantID,
@@ -827,12 +830,14 @@ func validationFrom(v *entity.CapabilityValidationResult) *validationResultRow {
 		ValidatedBy:                v.ValidatedBy,
 		ValidatedAt:                v.ValidatedAt,
 		CreatedAt:                  v.CreatedAt,
-	}
+	}, nil
 }
 
-func toValidation(row *validationResultRow) *entity.CapabilityValidationResult {
+func toValidation(row *validationResultRow) (*entity.CapabilityValidationResult, error) {
 	var codes []string
-	_ = json.Unmarshal([]byte(row.IssueCodesJSON), &codes)
+	if err := json.Unmarshal([]byte(row.IssueCodesJSON), &codes); err != nil {
+		return nil, entity.ErrConsistency
+	}
 	return &entity.CapabilityValidationResult{
 		ValidationID:               row.ValidationID,
 		TenantID:                   row.TenantID,
@@ -849,11 +854,15 @@ func toValidation(row *validationResultRow) *entity.CapabilityValidationResult {
 		ValidatedBy:                row.ValidatedBy,
 		ValidatedAt:                row.ValidatedAt,
 		CreatedAt:                  row.CreatedAt,
-	}
+	}, nil
 }
 
 func (d *CapabilityDAO) CreateValidationResult(ctx context.Context, v *entity.CapabilityValidationResult) error {
-	err := d.db.WithContext(ctx).Create(validationFrom(v)).Error
+	row, err := validationFrom(v)
+	if err != nil {
+		return err
+	}
+	err = d.db.WithContext(ctx).Create(row).Error
 	if isDup(err) {
 		return entity.ErrConflict
 	}
@@ -872,7 +881,7 @@ func (d *CapabilityDAO) GetValidationByEvidence(ctx context.Context, tenantID, r
 	if err != nil {
 		return nil, err
 	}
-	return toValidation(&row), nil
+	return toValidation(&row)
 }
 
 func (d *CapabilityDAO) ListValidationsByRevision(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {
@@ -884,7 +893,11 @@ func (d *CapabilityDAO) ListValidationsByRevision(ctx context.Context, tenantID,
 	}
 	out := make([]*entity.CapabilityValidationResult, 0, len(rows))
 	for i := range rows {
-		out = append(out, toValidation(&rows[i]))
+		v, err := toValidation(&rows[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
 	}
 	return out, nil
 }
@@ -901,5 +914,5 @@ func (d *CapabilityDAO) GetLatestPASSValidation(ctx context.Context, tenantID, r
 	if err != nil {
 		return nil, err
 	}
-	return toValidation(&row), nil
+	return toValidation(&row)
 }

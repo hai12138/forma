@@ -157,6 +157,7 @@ func MustCapabilityContentDigest(payload entity.SemanticPayload) string {
 }
 
 // ContractEvidenceDigest digests sorted Active contract logical pins/descriptors used at validate time.
+// Includes sorted SortSchema (keys + directions) and sorted Classification map entries.
 func ContractEvidenceDigest(descriptors []*ContractLogicalDescriptor) (string, error) {
 	docs := make([]map[string]any, 0, len(descriptors))
 	sorted := append([]*ContractLogicalDescriptor(nil), descriptors...)
@@ -181,6 +182,24 @@ func ContractEvidenceDigest(descriptors []*ContractLogicalDescriptor) (string, e
 			sort.Strings(ops)
 			filter[i].Operators = ops
 		}
+		sortFields := append([]ContractSortFieldSpec(nil), d.SortSchema...)
+		sort.Slice(sortFields, func(a, b int) bool { return sortFields[a].LogicalKey < sortFields[b].LogicalKey })
+		for i := range sortFields {
+			dirs := append([]string(nil), sortFields[i].Directions...)
+			sort.Strings(dirs)
+			sortFields[i].Directions = dirs
+		}
+		classEntries := make([]map[string]string, 0, len(d.Classification))
+		if d.Classification != nil {
+			keys := make([]string, 0, len(d.Classification))
+			for k := range d.Classification {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				classEntries = append(classEntries, map[string]string{"key": k, "value": d.Classification[k]})
+			}
+		}
 		docs = append(docs, map[string]any{
 			"tenant_id":               d.TenantID,
 			"business_id":             d.BusinessID,
@@ -192,6 +211,8 @@ func ContractEvidenceDigest(descriptors []*ContractLogicalDescriptor) (string, e
 			"logical_schema":          fields,
 			"query_capabilities":      caps,
 			"filter_schema":           filter,
+			"sort_schema":             sortFields,
+			"classification":          classEntries,
 			"pagination_policy":       d.PaginationPolicy,
 			"freshness_policy":        d.FreshnessPolicy,
 			"access_policy_ref":       d.AccessPolicyRef,

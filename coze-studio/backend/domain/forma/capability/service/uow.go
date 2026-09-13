@@ -59,11 +59,12 @@ func (u *gormUoW) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx
 
 // MemoryUoWOptions injects failures for tests without losing ownership of repo/assets.
 type MemoryUoWOptions struct {
-	FailAssetCreate bool
-	FailAssetUpdate bool
-	FailCommit      bool // after successful callback, before commit — restore both
-	OnCommitFail    func()
-	OnAssetFail     func()
+	FailAssetCreate       bool
+	FailAssetUpdate       bool
+	FailCreateValidation  bool
+	FailCommit            bool // after successful callback, before commit — restore both
+	OnCommitFail          func()
+	OnAssetFail           func()
 }
 
 // MemoryUnitOfWork owns both the in-memory Cap repo and AssetProjection.
@@ -97,6 +98,11 @@ func (u *MemoryUnitOfWork) SetFailAssetUpdate(v bool) {
 	u.opts.FailAssetUpdate = v
 }
 
+// SetFailCreateValidation toggles CreateValidationResult failure injection (tests).
+func (u *MemoryUnitOfWork) SetFailCreateValidation(v bool) {
+	u.opts.FailCreateValidation = v
+}
+
 func (u *MemoryUnitOfWork) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
 	// Snapshot assets inside repo.Transaction so concurrent losers restore to a snap
 	// that already includes winners' commits (repo lock serializes Memory UoW).
@@ -111,7 +117,11 @@ func (u *MemoryUnitOfWork) WithinTransaction(ctx context.Context, fn func(tx Cap
 				onFail:     u.opts.OnAssetFail,
 			}
 		}
-		err := fn(&capabilityTx{repo: txRepo, assets: assets})
+		repo := txRepo
+		if u.opts.FailCreateValidation {
+			repo = &failCreateValidationRepo{CapabilityRepository: txRepo}
+		}
+		err := fn(&capabilityTx{repo: repo, assets: assets})
 		if err != nil {
 			u.memAssets.restore(assetSnap)
 			return err
@@ -125,6 +135,15 @@ func (u *MemoryUnitOfWork) WithinTransaction(ctx context.Context, fn func(tx Cap
 		}
 		return nil
 	})
+}
+
+// failCreateValidationRepo injects CreateValidationResult failures for UoW tests.
+type failCreateValidationRepo struct {
+	repository.CapabilityRepository
+}
+
+func (r *failCreateValidationRepo) CreateValidationResult(ctx context.Context, v *entity.CapabilityValidationResult) error {
+	return entity.ErrConsistency
 }
 
 // txnFailingAssets wraps owned MemoryAssetProjection for a single transaction only.

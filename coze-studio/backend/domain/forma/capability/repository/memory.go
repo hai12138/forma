@@ -922,3 +922,42 @@ func SetLeaseExpiresAtForTest(repo CapabilityRepository, _ context.Context, tena
 	run.LeaseExpiresAt = &expiresAt
 	return nil
 }
+
+// ReplaceDecisionForTest overwrites an existing decision row (negative provenance tests).
+func ReplaceDecisionForTest(repo CapabilityRepository, d *entity.CapabilityDecision) error {
+	r, ok := repo.(*memRepo)
+	if !ok {
+		return errors.New("not memory repo")
+	}
+	if d == nil || d.DecisionID == "" {
+		return entity.ErrInvalidPayload
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	dk := k(d.TenantID, d.DecisionID)
+	if _, ok := r.decisions[dk]; !ok {
+		return entity.ErrDecisionNotFound
+	}
+	cp := *d
+	r.decisions[dk] = &cp
+	return nil
+}
+
+// ReplaceProposalForTest overwrites an existing proposal row (negative provenance tests).
+func ReplaceProposalForTest(repo CapabilityRepository, p *entity.CapabilityProposal) error {
+	r, ok := repo.(*memRepo)
+	if !ok {
+		return errors.New("not memory repo")
+	}
+	if p == nil || p.ProposalID == "" {
+		return entity.ErrInvalidPayload
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id := k(p.TenantID, p.ProposalID)
+	if _, ok := r.proposals[id]; !ok {
+		return entity.ErrNotFound
+	}
+	r.proposals[id] = cloneProposal(p)
+	return nil
+}

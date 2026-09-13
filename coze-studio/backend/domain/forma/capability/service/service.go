@@ -918,40 +918,14 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 		return nil, nil, entity.ErrPortsNotConfigured
 	}
 
-	revPeek, err := s.root().GetRevision(ctx, tenantID, revisionID)
-	if err != nil {
+	// Existence / early deny peek only — digests rebuilt under lock from locked revision.
+	if _, err := s.root().GetRevision(ctx, tenantID, revisionID); err != nil {
 		return nil, nil, err
-	}
-
-	bmEvidence, descriptors, err := s.fetchValidationEvidence(ctx, revPeek)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	revDigest, err := CapabilityContentDigest(revPeek.ToSemanticPayload())
-	if err != nil {
-		return nil, nil, entity.ErrConsistency
-	}
-	descList := make([]*ContractLogicalDescriptor, 0, len(descriptors))
-	for _, d := range descriptors {
-		descList = append(descList, d)
-	}
-	contractDigest, err := ContractEvidenceDigest(descList)
-	if err != nil {
-		return nil, nil, entity.ErrConsistency
-	}
-	bmDigest := ""
-	if bmEvidence != nil {
-		bmDigest = bmEvidence.ContentDigest
-	}
-	evidenceDigest, err := ValidationEvidenceDigest(revPeek.BusinessModelRevision, bmDigest, contractDigest)
-	if err != nil {
-		return nil, nil, entity.ErrConsistency
 	}
 
 	var outRev *entity.BusinessCapabilityRevision
 	var outResult *entity.CapabilityValidationResult
-	err = s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
+	err := s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
 		cap, rev, err := s.lockCapAndRev(ctx, tx, tenantID, revisionID)
 		if err != nil {
 			return err
@@ -963,10 +937,15 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 			return entity.ErrConsistency
 		}
 
+		ev, err := s.buildValidationEvidence(ctx, rev)
+		if err != nil {
+			return err
+		}
+
 		if rev.Status == entity.RevisionValidated {
-			existing, getErr := tx.Repo().GetValidationByEvidence(ctx, tenantID, revisionID, evidenceDigest)
+			existing, getErr := tx.Repo().GetValidationByEvidence(ctx, tenantID, revisionID, ev.evidenceDigest)
 			if getErr == nil && existing.Status == entity.ValidationPass &&
-				existing.RevisionContentDigest == revDigest {
+				existing.RevisionContentDigest == ev.revDigest {
 				outRev = rev
 				outResult = existing
 				return nil
@@ -986,7 +965,7 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 			return err
 		}
 
-		issues := validateCompatibility(rev, bmEvidence, descriptors)
+		issues := validateCompatibility(rev, ev.bmEvidence, ev.descriptors)
 		now := s.now()
 		result := &entity.CapabilityValidationResult{
 			ValidationID:               newID("cval"),
@@ -994,11 +973,11 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 			BusinessID:                 rev.BusinessID,
 			CapabilityID:               rev.CapabilityID,
 			RevisionID:                 revisionID,
-			RevisionContentDigest:      revDigest,
+			RevisionContentDigest:      ev.revDigest,
 			BusinessModelRevision:      rev.BusinessModelRevision,
-			BusinessModelContentDigest: bmDigest,
-			ContractEvidenceDigest:     contractDigest,
-			EvidenceDigest:             evidenceDigest,
+			BusinessModelContentDigest: ev.bmDigest,
+			ContractEvidenceDigest:     ev.contractDigest,
+			EvidenceDigest:             ev.evidenceDigest,
 			IssueCodes:                 issues,
 			ValidatedBy:                actorID,
 			ValidatedAt:                now,
@@ -1012,7 +991,8 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 			}
 			outResult = created
 			outRev = rev
-			return entity.ErrValidationFailed
+			// Commit FAIL rows — never return ErrValidationFailed from the txn callback.
+			return nil
 		}
 		result.Status = entity.ValidationPass
 		created, createErr := s.createOrGetValidation(ctx, tx, result)
@@ -1035,7 +1015,13 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 		outResult = created
 		return nil
 	})
-	return outRev, outResult, err
+	if err != nil {
+		return outRev, outResult, err
+	}
+	if outResult != nil && outResult.Status == entity.ValidationFail {
+		return outRev, outResult, entity.ErrValidationFailed
+	}
+	return outRev, outResult, nil
 }
 
 func (s *capabilityService) createOrGetValidation(ctx context.Context, tx CapabilityTx, result *entity.CapabilityValidationResult) (*entity.CapabilityValidationResult, error) {
@@ -1051,6 +1037,52 @@ func (s *capabilityService) createOrGetValidation(ctx context.Context, tx Capabi
 		return nil, entity.ErrConflict
 	}
 	return existing, nil
+}
+
+type evidenceBundle struct {
+	bmEvidence     *BusinessModelRevisionEvidence
+	descriptors    map[string]*ContractLogicalDescriptor
+	revDigest      string
+	contractDigest string
+	bmDigest       string
+	evidenceDigest string
+}
+
+// buildValidationEvidence fetches BM/contract ports and digests from the locked revision.
+// Shared by Validate and Activate so final writes/gates never rely solely on a pre-UoW snapshot.
+func (s *capabilityService) buildValidationEvidence(ctx context.Context, rev *entity.BusinessCapabilityRevision) (*evidenceBundle, error) {
+	bmEvidence, descriptors, err := s.fetchValidationEvidence(ctx, rev)
+	if err != nil {
+		return nil, err
+	}
+	revDigest, err := CapabilityContentDigest(rev.ToSemanticPayload())
+	if err != nil {
+		return nil, entity.ErrConsistency
+	}
+	descList := make([]*ContractLogicalDescriptor, 0, len(descriptors))
+	for _, d := range descriptors {
+		descList = append(descList, d)
+	}
+	contractDigest, err := ContractEvidenceDigest(descList)
+	if err != nil {
+		return nil, entity.ErrConsistency
+	}
+	bmDigest := ""
+	if bmEvidence != nil {
+		bmDigest = bmEvidence.ContentDigest
+	}
+	evidenceDigest, err := ValidationEvidenceDigest(rev.BusinessModelRevision, bmDigest, contractDigest)
+	if err != nil {
+		return nil, entity.ErrConsistency
+	}
+	return &evidenceBundle{
+		bmEvidence:     bmEvidence,
+		descriptors:    descriptors,
+		revDigest:      revDigest,
+		contractDigest: contractDigest,
+		bmDigest:       bmDigest,
+		evidenceDigest: evidenceDigest,
+	}, nil
 }
 
 func (s *capabilityService) fetchValidationEvidence(ctx context.Context, rev *entity.BusinessCapabilityRevision) (*BusinessModelRevisionEvidence, map[string]*ContractLogicalDescriptor, error) {
@@ -1107,7 +1139,7 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 	if !s.portsConfigured() {
 		return nil, entity.ErrPortsNotConfigured
 	}
-	// Optimistic read outside the lock for CAS expected values.
+	// Optimistic read outside the lock for CAS expected values only.
 	revPeek, err := s.root().GetRevision(ctx, tenantID, revisionID)
 	if err != nil {
 		return nil, err
@@ -1118,31 +1150,6 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 	}
 	expectedActive := capPeek.ActiveRevisionID
 	expectedGen := capPeek.AggregateGeneration
-
-	bmEvidence, descriptors, err := s.fetchValidationEvidence(ctx, revPeek)
-	if err != nil {
-		return nil, err
-	}
-	revDigest, err := CapabilityContentDigest(revPeek.ToSemanticPayload())
-	if err != nil {
-		return nil, entity.ErrConsistency
-	}
-	descList := make([]*ContractLogicalDescriptor, 0, len(descriptors))
-	for _, d := range descriptors {
-		descList = append(descList, d)
-	}
-	contractDigest, err := ContractEvidenceDigest(descList)
-	if err != nil {
-		return nil, entity.ErrConsistency
-	}
-	bmDigest := ""
-	if bmEvidence != nil {
-		bmDigest = bmEvidence.ContentDigest
-	}
-	evidenceDigest, err := ValidationEvidenceDigest(revPeek.BusinessModelRevision, bmDigest, contractDigest)
-	if err != nil {
-		return nil, entity.ErrConsistency
-	}
 
 	var out *entity.BusinessCapabilityRevision
 	err = s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
@@ -1159,15 +1166,19 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 		if !AllowTransition(rev.Status, entity.RevisionActive) {
 			return entity.ErrIllegalTransition
 		}
-		pass, err := tx.Repo().GetValidationByEvidence(ctx, tenantID, revisionID, evidenceDigest)
+		ev, err := s.buildValidationEvidence(ctx, rev)
+		if err != nil {
+			return err
+		}
+		pass, err := tx.Repo().GetValidationByEvidence(ctx, tenantID, revisionID, ev.evidenceDigest)
 		if err != nil || pass.Status != entity.ValidationPass ||
-			pass.RevisionContentDigest != revDigest ||
+			pass.RevisionContentDigest != ev.revDigest ||
 			pass.BusinessModelRevision != rev.BusinessModelRevision ||
-			pass.BusinessModelContentDigest != bmDigest {
+			pass.BusinessModelContentDigest != ev.bmDigest {
 			return entity.ErrMissingValidationEvidence
 		}
-		// Re-check pin consistency against current Active descriptors (already in evidenceDigest).
-		if pass.EvidenceDigest != evidenceDigest || pass.ContractEvidenceDigest != contractDigest {
+		// Fresh digests under lock — old PASS must fail if descriptors drifted.
+		if pass.EvidenceDigest != ev.evidenceDigest || pass.ContractEvidenceDigest != ev.contractDigest {
 			return entity.ErrMissingValidationEvidence
 		}
 		revs, err := tx.Repo().ListRevisions(ctx, tenantID, cap.CapabilityID)
@@ -1297,7 +1308,20 @@ func (s *capabilityService) lockCapAndRev(ctx context.Context, tx CapabilityTx, 
 func (s *capabilityService) requireValidateProvenance(ctx context.Context, tx CapabilityTx, rev *entity.BusinessCapabilityRevision) error {
 	switch rev.Source {
 	case entity.SourceAIProposal:
-		if rev.ProposalID == "" {
+		if rev.ProposalID == "" || rev.AnalysisRunID == "" {
+			return entity.ErrMissingProvenance
+		}
+		prop, err := tx.Repo().GetProposal(ctx, rev.TenantID, rev.ProposalID)
+		if err != nil {
+			return entity.ErrMissingProvenance
+		}
+		if prop.AnalysisRunID != rev.AnalysisRunID {
+			return entity.ErrMissingProvenance
+		}
+		if prop.CapabilityID != "" && prop.CapabilityID != rev.CapabilityID {
+			return entity.ErrMissingProvenance
+		}
+		if prop.MaterializedRevisionID != "" && prop.MaterializedRevisionID != rev.RevisionID {
 			return entity.ErrMissingProvenance
 		}
 		dec, err := tx.Repo().GetDecisionByProposal(ctx, rev.TenantID, rev.ProposalID)
@@ -1305,6 +1329,19 @@ func (s *capabilityService) requireValidateProvenance(ctx context.Context, tx Ca
 			return entity.ErrMissingProvenance
 		}
 		if dec.Action != entity.DecisionConfirm && dec.Action != entity.DecisionEditConfirm {
+			return entity.ErrMissingProvenance
+		}
+		if dec.TargetRevisionID != rev.RevisionID {
+			return entity.ErrMissingProvenance
+		}
+		if dec.CapabilityID != "" && dec.CapabilityID != rev.CapabilityID {
+			return entity.ErrMissingProvenance
+		}
+		run, err := tx.Repo().GetAnalysisRun(ctx, rev.TenantID, rev.AnalysisRunID)
+		if err != nil {
+			return entity.ErrMissingProvenance
+		}
+		if run.TenantID != rev.TenantID || run.BusinessID != rev.BusinessID || run.AnalysisRunID != rev.AnalysisRunID {
 			return entity.ErrMissingProvenance
 		}
 		return nil
@@ -1320,13 +1357,18 @@ func (s *capabilityService) requireValidateProvenance(ctx context.Context, tx Ca
 		}
 		return entity.ErrMissingProvenance
 	case entity.SourceDerivedEdit:
+		if rev.DerivedFromRevisionID == "" {
+			return entity.ErrMissingProvenance
+		}
 		decs, err := tx.Repo().ListDecisionsByCapability(ctx, rev.TenantID, rev.CapabilityID)
 		if err != nil {
 			return err
 		}
 		for _, d := range decs {
 			if (d.Action == entity.DecisionEdit || d.Action == entity.DecisionDerive) &&
-				d.TargetRevisionID == rev.RevisionID && d.SourceRevisionID != "" {
+				d.TargetRevisionID == rev.RevisionID &&
+				d.SourceRevisionID == rev.DerivedFromRevisionID &&
+				d.CapabilityID == rev.CapabilityID {
 				return nil
 			}
 		}
