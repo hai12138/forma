@@ -26,7 +26,7 @@ func TestG3F3ActivateListRevisionsRaceCaughtByFence(t *testing.T) {
 	svc := NewCapabilityService(&Components{UoW: uow, Business: bm, Contract: contracts})
 
 	_, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev1)

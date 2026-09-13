@@ -24,7 +24,10 @@ import (
 	"github.com/coze-dev/coze-studio/backend/domain/forma/capability/repository"
 )
 
-const testActor = "1001"
+const (
+	testActor   = "principal-test-1"
+	testOwnerID = int64(1001)
+)
 
 func newTestService(gen ProposalGenerator) (CapabilityService, repository.CapabilityRepository, *MemoryAssetProjection, *FakeBusinessModelPort, *FakeContractPort) {
 	uow := NewMemoryUnitOfWork()
@@ -126,7 +129,7 @@ func seedPASSValidationForTest(t *testing.T, repo repository.CapabilityRepositor
 func TestManualCreateLifecycle(t *testing.T) {
 	svc, repo, assets, bmPort, contractPort := newTestService(nil)
 	cap, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor,
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID,
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
@@ -148,6 +151,10 @@ func TestManualCreateLifecycle(t *testing.T) {
 	require.Equal(t, int32(1), asset.Revision)
 	require.Equal(t, "1.0", asset.SchemaVersion)
 	require.Equal(t, assetentity.AssetStatusDraft, asset.Status)
+	require.Equal(t, testOwnerID, asset.OwnerID)
+	require.Equal(t, testOwnerID, asset.CreatedBy)
+	require.Equal(t, testActor, cap.CreatedBy)
+	require.Equal(t, testActor, rev.CreatedBy)
 
 	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
 	forceStatusForTest(t, repo, "t1", rev.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
@@ -176,7 +183,7 @@ func TestManualCreateLifecycle(t *testing.T) {
 func TestDeriveIdempotency(t *testing.T) {
 	svc, _, _, _, _ := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-d",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-d",
 		Payload: fixture.ProcurementApprovalCapability(),
 	})
 	require.NoError(t, err)
@@ -237,7 +244,7 @@ func TestConfirmFirstCreateAndReplay(t *testing.T) {
 	require.NoError(t, err)
 	propID := res.Proposals[0].ProposalID
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-ai",
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-ai",
 	})
 	require.NoError(t, err)
 	require.Equal(t, entity.SourceAIProposal, rev.Source)
@@ -246,7 +253,7 @@ func TestConfirmFirstCreateAndReplay(t *testing.T) {
 	require.Equal(t, int32(1), asset.Revision)
 
 	rev2, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-ai",
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-ai",
 	})
 	require.NoError(t, err)
 	require.Equal(t, rev.RevisionID, rev2.RevisionID)
@@ -257,7 +264,7 @@ func TestConfirmOntoExistingKeepsACTIVEProjection(t *testing.T) {
 		Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()},
 	})
 	cap, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-x",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-x",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
@@ -273,7 +280,7 @@ func TestConfirmOntoExistingKeepsACTIVEProjection(t *testing.T) {
 	})
 	require.NoError(t, err)
 	draft, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: cap.CapabilityID,
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: cap.CapabilityID,
 	})
 	require.NoError(t, err)
 	require.Equal(t, entity.RevisionDraft, draft.Status)
@@ -334,7 +341,7 @@ func TestConcurrentConfirmDistinctDrafts(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{payload, payload}}
 	svc, repo, assets, bmPort, contractPort := newTestService(gen)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-c",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-c",
 		Payload: payload,
 	})
 	require.NoError(t, err)
@@ -358,7 +365,7 @@ func TestConcurrentConfirmDistinctDrafts(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			r, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-				TenantID: "t1", ProposalID: res.Proposals[idx].ProposalID, ActorID: testActor, CapabilityID: "cap-c",
+				TenantID: "t1", ProposalID: res.Proposals[idx].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-c",
 			})
 			revs[idx] = r
 			errs <- err
@@ -387,7 +394,7 @@ func TestConcurrentFirstCreateRace(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-				TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "same-id",
+				TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "same-id",
 				Payload: payload,
 			})
 			results[idx] = err
@@ -415,7 +422,7 @@ func TestConcurrentFirstCreateRace(t *testing.T) {
 func TestTenantIsolation(t *testing.T) {
 	svc, _, _, _, _ := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "tenant-a", BusinessID: "biz", ActorID: testActor,
+		TenantID: "tenant-a", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID,
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
@@ -426,11 +433,11 @@ func TestTenantIsolation(t *testing.T) {
 func TestDualIndustryFixturesAgnostic(t *testing.T) {
 	svc, _, _, _, _ := newTestService(nil)
 	_, r1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	_, r2, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "proc", ActorID: testActor, Payload: fixture.ProcurementApprovalCapability(),
+		TenantID: "t1", BusinessID: "proc", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.ProcurementApprovalCapability(),
 	})
 	require.NoError(t, err)
 	require.Equal(t, entity.KindQuery, r1.CapabilityKind)
@@ -441,7 +448,7 @@ func TestValidateFailClosedWithoutEvidence(t *testing.T) {
 	uow := NewMemoryUnitOfWork()
 	svc := NewCapabilityService(&Components{UoW: uow}) // no validation ports
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	_, _, err = svc.Validate(context.Background(), "t1", rev.RevisionID, testActor)
@@ -454,7 +461,7 @@ func TestValidateFailClosedWithoutEvidence(t *testing.T) {
 func TestMarkStaleFailClosedWithoutEvidence(t *testing.T) {
 	svc, repo, _, bmPort, contractPort := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
@@ -476,7 +483,7 @@ func TestEditConfirmRequiresFullPayloadAndReplay(t *testing.T) {
 	payload := fixture.LaboratoryFlowCapability()
 	payload.Name = "EditedLabFlow"
 	rev, err := svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-edit",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-edit",
 		EffectivePayload: payload,
 	})
 	require.NoError(t, err)
@@ -484,7 +491,7 @@ func TestEditConfirmRequiresFullPayloadAndReplay(t *testing.T) {
 	require.Equal(t, entity.SourceAIProposal, rev.Source)
 
 	rev2, err := svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-edit",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-edit",
 		EffectivePayload: payload,
 	})
 	require.NoError(t, err)
@@ -492,7 +499,7 @@ func TestEditConfirmRequiresFullPayloadAndReplay(t *testing.T) {
 
 	payload.Description = "different"
 	_, err = svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-edit",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-edit",
 		EffectivePayload: payload,
 	})
 	require.ErrorIs(t, err, entity.ErrIdempotencyConflict)
@@ -545,7 +552,7 @@ func TestStaleGenerationCompletionRejected(t *testing.T) {
 func TestProjectionConsistencyRollsBackAsset(t *testing.T) {
 	svc, repo, assets, bmPort, contractPort := newTestService(nil)
 	cap, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-cons",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-cons",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
@@ -593,14 +600,14 @@ func TestNoSecretFieldsInDomainPayload(t *testing.T) {
 func TestUoWFailClosedWithoutUoW(t *testing.T) {
 	svc := NewCapabilityService(&Components{})
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID,
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.ErrorIs(t, err, entity.ErrNotConfigured)
 
 	svc2 := NewCapabilityService(nil)
 	_, _, err = svc2.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID,
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.ErrorIs(t, err, entity.ErrNotConfigured)
@@ -615,7 +622,7 @@ func TestAssetProjectionFailureFullRollback(t *testing.T) {
 	svc := NewCapabilityService(&Components{UoW: uow})
 
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-rb",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-rb",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.Error(t, err)
@@ -635,7 +642,7 @@ func TestAssetCreateFailureFullRollback(t *testing.T) {
 	svc := NewCapabilityService(&Components{UoW: uow})
 
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-cr",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-cr",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.Error(t, err)
@@ -706,7 +713,7 @@ func TestConcurrentActivateExactlyOneSuccess(t *testing.T) {
 	svc := NewCapabilityService(&Components{UoW: uow, Business: bm, Contract: contracts})
 
 	cap, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-act",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-act",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
@@ -774,7 +781,7 @@ func (r *activatePeekBarrierRepo) GetCapability(ctx context.Context, tenantID, c
 func TestProposalTargetMismatchNoWrites(t *testing.T) {
 	svc, repo, assets, _, _ := newTestService(nil)
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-a",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-a",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
@@ -787,7 +794,7 @@ func TestProposalTargetMismatchNoWrites(t *testing.T) {
 	beforeRevs, err := repo.ListRevisions(context.Background(), "t1", "cap-a")
 	require.NoError(t, err)
 	_, err = svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: "cprop_bound", ActorID: testActor, CapabilityID: "cap-b",
+		TenantID: "t1", ProposalID: "cprop_bound", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-b",
 	})
 	require.ErrorIs(t, err, entity.ErrConflict)
 	afterRevs, err := repo.ListRevisions(context.Background(), "t1", "cap-a")
@@ -811,7 +818,7 @@ func TestConfirmedReplayCapabilityIDMismatch(t *testing.T) {
 	require.NoError(t, err)
 	propID := res.Proposals[0].ProposalID
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-term-a",
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-term-a",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, rev.RevisionID)
@@ -819,7 +826,7 @@ func TestConfirmedReplayCapabilityIDMismatch(t *testing.T) {
 	beforeDecs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-term-a")
 	require.NoError(t, err)
 	_, err = svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-term-b",
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-term-b",
 	})
 	require.ErrorIs(t, err, entity.ErrConflict)
 	afterDecs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-term-a")
@@ -846,7 +853,7 @@ func TestEditConfirmedReplayCapabilityIDMismatch(t *testing.T) {
 	payload := fixture.LaboratoryFlowCapability()
 	payload.Name = "EditedTermFlow"
 	rev, err := svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
-		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-edit-a",
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-edit-a",
 		EffectivePayload: payload,
 	})
 	require.NoError(t, err)
@@ -855,7 +862,7 @@ func TestEditConfirmedReplayCapabilityIDMismatch(t *testing.T) {
 	beforeDecs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-edit-a")
 	require.NoError(t, err)
 	_, err = svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
-		TenantID: "t1", ProposalID: propID, ActorID: testActor, CapabilityID: "cap-edit-b",
+		TenantID: "t1", ProposalID: propID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-edit-b",
 		EffectivePayload: payload,
 	})
 	require.ErrorIs(t, err, entity.ErrConflict)
@@ -875,42 +882,42 @@ func TestIllegalMaterializationPayload(t *testing.T) {
 	bad := fixture.LaboratoryFlowCapability()
 	bad.Name = ""
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
 	bad.CapabilityKind = "UNKNOWN"
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
 	bad.QueryOperation = ""
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
 	bad.Preconditions = []entity.Precondition{{ID: "x", Predicate: entity.PredicateKind("DROP_TABLE"), LogicalKey: "a"}}
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
 	bad.Effects = []entity.Effect{{ID: "e", Kind: entity.EffectKind("EXEC"), Description: "x"}}
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
 	bad.Description = "run SELECT * FROM users"
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 }
@@ -921,7 +928,7 @@ func TestSecretRejectionInPayloadAndAnalysis(t *testing.T) {
 	ok.Name = "GetPasswordReset"
 	ok.Description = "password reset flow"
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: ok,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: ok,
 	})
 	require.NoError(t, err)
 
@@ -929,29 +936,21 @@ func TestSecretRejectionInPayloadAndAnalysis(t *testing.T) {
 	ok.Name = "ReviewTradeSecretPolicy"
 	ok.Description = "Review trade secret policy"
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz2", ActorID: testActor, Payload: ok,
+		TenantID: "t1", BusinessID: "biz2", ActorID: testActor, OwnerID: testOwnerID, Payload: ok,
 	})
 	require.NoError(t, err)
 
 	bad := fixture.LaboratoryFlowCapability()
 	bad.Description = "password=hunter2"
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
 	bad = fixture.LaboratoryFlowCapability()
 	bad.InputSchema.Fields = []entity.LogicalField{{LogicalKey: "api_key", LogicalType: "STRING"}}
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: bad,
-	})
-	require.ErrorIs(t, err, entity.ErrInvalidPayload)
-
-	_, err = parseOwnerID("not-a-number")
-	require.ErrorIs(t, err, entity.ErrInvalidPayload)
-	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: "alice",
-		Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, Payload: bad,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 }
@@ -1037,7 +1036,7 @@ func TestCorruptJSONFailClosed(t *testing.T) {
 func TestDeprecateCreatesDecision(t *testing.T) {
 	svc, repo, _, bmPort, contractPort := newTestService(nil)
 	cap, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-dep",
+		TenantID: "t1", BusinessID: "biz", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-dep",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
@@ -1332,13 +1331,13 @@ func TestConfirmedReplayCapabilityMismatch(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-term",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-term",
 	})
 	require.NoError(t, err)
 	require.Equal(t, "cap-term", rev.CapabilityID)
 
 	_, err = svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-other",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-other",
 	})
 	require.ErrorIs(t, err, entity.ErrConflict)
 	got, err := repo.GetProposal(context.Background(), "t1", res.Proposals[0].ProposalID)
@@ -1357,14 +1356,14 @@ func TestEditConfirmedReplayCapabilityMismatch(t *testing.T) {
 	eff := fixture.LaboratoryFlowCapability()
 	eff.Name = "ListLaboratoryDevices-edited"
 	rev, err := svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-edit2",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-edit2",
 		EffectivePayload: eff,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "cap-edit2", rev.CapabilityID)
 
 	_, err = svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-wrong",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-wrong",
 		EffectivePayload: eff,
 	})
 	require.ErrorIs(t, err, entity.ErrConflict)

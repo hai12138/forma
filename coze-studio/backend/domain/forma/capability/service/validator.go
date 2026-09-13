@@ -6,7 +6,6 @@
 package service
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -495,18 +494,3 @@ func SanitizedAnalysisErrorCode(err error) string {
 	}
 }
 
-func parseOwnerID(actor string) (int64, error) {
-	s := strings.TrimSpace(actor)
-	if s == "" {
-		return 0, nil
-	}
-	var n int64
-	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
-		return 0, entity.ErrInvalidPayload
-	}
-	// Reject non-numeric remainder (e.g. "12abc").
-	if fmt.Sprintf("%d", n) != s {
-		return 0, entity.ErrInvalidPayload
-	}
-	return n, nil
-}

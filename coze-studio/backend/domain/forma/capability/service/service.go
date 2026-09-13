@@ -149,6 +149,7 @@ type ConfirmInput struct {
 	TenantID        string
 	ProposalID      string
 	ActorID         string
+	OwnerID         int64 // REQUIRED when materializing creates new Capability
 	Reason          string
 	ClientRequestID string
 	CapabilityID    string // optional bind / first-create id
@@ -158,6 +159,7 @@ type EditConfirmInput struct {
 	TenantID         string
 	ProposalID       string
 	ActorID          string
+	OwnerID          int64 // REQUIRED when materializing creates new Capability
 	Reason           string
 	ClientRequestID  string
 	CapabilityID     string
@@ -186,17 +188,13 @@ func (s *capabilityService) ManualCreate(ctx context.Context, in *ManualCreateIn
 	if in == nil || strings.TrimSpace(in.TenantID) == "" || strings.TrimSpace(in.BusinessID) == "" || strings.TrimSpace(in.ActorID) == "" {
 		return nil, nil, entity.ErrInvalidPayload
 	}
+	if in.OwnerID <= 0 {
+		return nil, nil, entity.ErrInvalidPayload
+	}
 	if err := ValidateMaterializationPayload(in.Payload); err != nil {
 		return nil, nil, err
 	}
-	parsedOwner, err := parseOwnerID(in.ActorID)
-	if err != nil {
-		return nil, nil, err
-	}
 	ownerID := in.OwnerID
-	if ownerID == 0 {
-		ownerID = parsedOwner
-	}
 	capID := strings.TrimSpace(in.CapabilityID)
 	if capID == "" {
 		capID = newID("cap")
@@ -204,7 +202,7 @@ func (s *capabilityService) ManualCreate(ctx context.Context, in *ManualCreateIn
 	now := s.now()
 	var outCap *entity.BusinessCapability
 	var outRev *entity.BusinessCapabilityRevision
-	err = s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
+	err := s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
 		cap := &entity.BusinessCapability{
 			CapabilityID: capID, TenantID: in.TenantID, BusinessID: in.BusinessID,
 			AggregateGeneration: 0, CreatedBy: in.ActorID, CreatedAt: now, UpdatedAt: now,
@@ -258,6 +256,9 @@ func (s *capabilityService) DeriveRevision(ctx context.Context, in *DeriveInput)
 	}
 	if in == nil || in.TenantID == "" || in.CapabilityID == "" || in.SourceRevisionID == "" || in.ClientRequestID == "" || in.ActorID == "" {
 		return nil, nil, entity.ErrInvalidPayload
+	}
+	if err := ValidateAuditMetadata(in.Reason, in.ClientRequestID); err != nil {
+		return nil, nil, err
 	}
 	action := in.Action
 	if action == "" {
@@ -352,6 +353,9 @@ func (s *capabilityService) StartAnalysis(ctx context.Context, in *StartAnalysis
 	}
 	if strings.TrimSpace(in.ActorID) == "" {
 		return nil, entity.ErrInvalidPayload
+	}
+	if err := ValidateAuditMetadata("", in.ClientRequestID); err != nil {
+		return nil, err
 	}
 	analysis := in.Analysis
 	analysis.BusinessModelRevision = in.BusinessModelRevision
@@ -630,7 +634,10 @@ func (s *capabilityService) ConfirmProposal(ctx context.Context, in *ConfirmInpu
 	if in == nil || in.TenantID == "" || in.ProposalID == "" || in.ActorID == "" {
 		return nil, entity.ErrInvalidPayload
 	}
-	return s.materializeProposal(ctx, in.TenantID, in.ProposalID, in.ActorID, in.Reason, in.ClientRequestID, in.CapabilityID, entity.DecisionConfirm, nil)
+	if err := ValidateAuditMetadata(in.Reason, in.ClientRequestID); err != nil {
+		return nil, err
+	}
+	return s.materializeProposal(ctx, in.TenantID, in.ProposalID, in.ActorID, in.OwnerID, in.Reason, in.ClientRequestID, in.CapabilityID, entity.DecisionConfirm, nil)
 }
 
 func (s *capabilityService) EditConfirmProposal(ctx context.Context, in *EditConfirmInput) (*entity.BusinessCapabilityRevision, error) {
@@ -640,10 +647,13 @@ func (s *capabilityService) EditConfirmProposal(ctx context.Context, in *EditCon
 	if in == nil || in.TenantID == "" || in.ProposalID == "" || in.ActorID == "" {
 		return nil, entity.ErrInvalidPayload
 	}
+	if err := ValidateAuditMetadata(in.Reason, in.ClientRequestID); err != nil {
+		return nil, err
+	}
 	if err := ValidateMaterializationPayload(in.EffectivePayload); err != nil {
 		return nil, err
 	}
-	return s.materializeProposal(ctx, in.TenantID, in.ProposalID, in.ActorID, in.Reason, in.ClientRequestID, in.CapabilityID, entity.DecisionEditConfirm, &in.EffectivePayload)
+	return s.materializeProposal(ctx, in.TenantID, in.ProposalID, in.ActorID, in.OwnerID, in.Reason, in.ClientRequestID, in.CapabilityID, entity.DecisionEditConfirm, &in.EffectivePayload)
 }
 
 func assertProposalCapabilityBinding(prop *entity.CapabilityProposal, capabilityID string) error {
@@ -657,7 +667,7 @@ func assertProposalCapabilityBinding(prop *entity.CapabilityProposal, capability
 	return nil
 }
 
-func (s *capabilityService) materializeProposal(ctx context.Context, tenantID, proposalID, actorID, reason, clientRequestID, capabilityID string, action entity.DecisionAction, editPayload *entity.SemanticPayload) (*entity.BusinessCapabilityRevision, error) {
+func (s *capabilityService) materializeProposal(ctx context.Context, tenantID, proposalID, actorID string, ownerID int64, reason, clientRequestID, capabilityID string, action entity.DecisionAction, editPayload *entity.SemanticPayload) (*entity.BusinessCapabilityRevision, error) {
 	var out *entity.BusinessCapabilityRevision
 	err := s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
 		prop, err := tx.Repo().GetProposalForUpdate(ctx, tenantID, proposalID)
@@ -728,7 +738,7 @@ func (s *capabilityService) materializeProposal(ctx context.Context, tenantID, p
 		if capID == "" {
 			capID = newID("cap")
 		}
-		return s.materializeFirstCreate(ctx, tx, prop, capID, effective, digest, action, terminalStatus, actorID, reason, clientRequestID, now, &out)
+		return s.materializeFirstCreate(ctx, tx, prop, capID, effective, digest, action, terminalStatus, actorID, ownerID, reason, clientRequestID, now, &out)
 	})
 	return out, err
 }
@@ -794,10 +804,9 @@ func (s *capabilityService) materializeExisting(ctx context.Context, tx Capabili
 	return nil
 }
 
-func (s *capabilityService) materializeFirstCreate(ctx context.Context, tx CapabilityTx, prop *entity.CapabilityProposal, capID string, effective entity.SemanticPayload, digest string, action entity.DecisionAction, terminal entity.ProposalStatus, actorID, reason, clientRequestID string, now time.Time, out **entity.BusinessCapabilityRevision) error {
-	ownerID, err := parseOwnerID(actorID)
-	if err != nil {
-		return err
+func (s *capabilityService) materializeFirstCreate(ctx context.Context, tx CapabilityTx, prop *entity.CapabilityProposal, capID string, effective entity.SemanticPayload, digest string, action entity.DecisionAction, terminal entity.ProposalStatus, actorID string, ownerID int64, reason, clientRequestID string, now time.Time, out **entity.BusinessCapabilityRevision) error {
+	if ownerID <= 0 {
+		return entity.ErrInvalidPayload
 	}
 	cap := &entity.BusinessCapability{
 		CapabilityID: capID, TenantID: prop.TenantID, BusinessID: prop.BusinessID,
@@ -850,6 +859,9 @@ func (s *capabilityService) RejectProposal(ctx context.Context, in *RejectInput)
 	}
 	if in == nil || in.TenantID == "" || in.ProposalID == "" || in.ActorID == "" {
 		return nil, entity.ErrInvalidPayload
+	}
+	if err := ValidateAuditMetadata(in.Reason, in.ClientRequestID); err != nil {
+		return nil, err
 	}
 	var out *entity.CapabilityDecision
 	err := s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
@@ -1211,6 +1223,9 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 	if !s.portsConfigured() {
 		return nil, entity.ErrPortsNotConfigured
 	}
+	if err := ValidateAuditMetadata(reason, ""); err != nil {
+		return nil, err
+	}
 	// Optimistic read outside the lock for CAS expected values only.
 	revPeek, err := s.root().GetRevision(ctx, tenantID, revisionID)
 	if err != nil {
@@ -1330,6 +1345,9 @@ func (s *capabilityService) MarkStale(ctx context.Context, tenantID, revisionID,
 func (s *capabilityService) Deprecate(ctx context.Context, tenantID, revisionID, actorID, reason string) (*entity.BusinessCapabilityRevision, error) {
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
+	}
+	if err := ValidateAuditMetadata(reason, ""); err != nil {
+		return nil, err
 	}
 	var out *entity.BusinessCapabilityRevision
 	err := s.uow.WithinTransaction(ctx, func(tx CapabilityTx) error {
