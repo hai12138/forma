@@ -54,7 +54,7 @@ Freeze: `forma/cursor-results/FORMA-S5-G4-F1-INTERFACE-FREEZE.md`
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA (integrator product) | _pending this commit_ |
+| COMMIT_SHA (integrator product) | 14ab0af8f23d7b8974fce36cce12beaa35762e4a |
 | Merges | `0dd1fdab` (A), `9fad0c30` (B), `edcb59a5` (C) + integrator identity/split |
 
 ---
@@ -74,7 +74,7 @@ REAL_HANDLER_TESTS = PASS
 PRODUCT_CODE_CHANGE = YES
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
-COMMIT_SHA = pending
+COMMIT_SHA = 14ab0af8f23d7b8974fce36cce12beaa35762e4a
 CI_RUN = pending
 CI = pending
 S5_G5_READY = NO
