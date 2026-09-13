@@ -3,7 +3,7 @@
 
 **Gate:** S5-G3-F2
 **Date:** 2026-09-13
-**Status:** **PENDING_CI** (implementation committed; awaiting Forma CI)
+**Status:** **PASS** (Forma CI ALL GREEN)
 
 ---
 
@@ -49,19 +49,20 @@ Local verification:
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA | `74db871d4a944a2bcd0957374c5d39a91381b319` |
-| CI_RUN | _(pending push)_ |
-| forma-backend | _(pending)_ |
-| forma-migration-apply | _(pending)_ |
-| forma-frontend | _(pending)_ |
-| CI | PENDING |
+| COMMIT_SHA (implementation) | `74db871d4a944a2bcd0957374c5d39a91381b319` |
+| RESULT tip (pre-CI) | `5dab1025abd83a9371d8289ad7529990df12636b` |
+| CI_RUN | [34758069713](https://github.com/hai12138/forma/actions/runs/34758069713) |
+| forma-backend | **PASS** |
+| forma-migration-apply | **PASS** |
+| forma-frontend | **PASS** |
+| CI | **ALL GREEN** |
 
 ---
 
 ## 4. Gate Summary
 
 ```text
-S5_G3_F2_STATUS = PENDING_CI
+S5_G3_F2_STATUS = PASS
 BM_CURRENT_ONLY = PASS
 AI_PROVENANCE_STRICT = PASS
 DERIVED_SOURCE_REVISION = PASS
@@ -69,8 +70,8 @@ FINAL_EVIDENCE_FENCE = PASS
 PRODUCT_CODE_CHANGE = CAPABILITY_DOMAIN_PLUS_ADAPTER
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
-CI = PENDING
+CI = ALL_GREEN
 S5_G4_READY = NO
 ```
 
-**Stop:** Do not start S5-G4. Await Forma CI + human review.
+**Stop:** **STOP**. Do not start S5-G4. Await human review.
