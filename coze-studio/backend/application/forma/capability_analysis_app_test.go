@@ -281,7 +281,7 @@ func TestCapabilityAnalysisApp_RetryReasonSecretRejected(t *testing.T) {
 	ownerCtx := ctxCapability(ownerSession, tenantID, boot.Principal.PrincipalID, tenantentity.RoleOwner, 9160)
 
 	failed, err := h.app.StartCapabilityAnalysis(ownerCtx, "lab", &formaapp.StartCapabilityAnalysisInput{
-		BusinessModelRevision: 1, ClientRequestID: "reason-secret",
+		BusinessModelRevision: 1, ClientRequestID: "reason-reject-case",
 		Analysis: capentity.AnalysisRequest{BusinessModelRevision: 1},
 	})
 	require.NoError(t, err)

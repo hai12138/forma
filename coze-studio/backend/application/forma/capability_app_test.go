@@ -516,6 +516,50 @@ func TestCapabilityApp_DTOExcludesSecrets(t *testing.T) {
 	require.Contains(t, body, "logical_field_mappings")
 }
 
+func TestCapabilityApp_PrincipalIdentitySeparatedFromOwnerID(t *testing.T) {
+	h := newCapabilityAppHarness()
+	ownerSession := withSession(8600, "cap-prin@example.com")
+	boot, err := h.app.TenancySVC.Bootstrap(ownerSession, 8600, "cap-prin@example.com", 0)
+	require.NoError(t, err)
+	tenantID := boot.Tenant.TenantID
+	principalID := boot.Principal.PrincipalID
+	h.seedBiz(tenantID, "lab")
+	ownerCtx := ctxCapability(ownerSession, tenantID, principalID, tenantentity.RoleOwner, 8600)
+
+	cmd := fixture.LaboratoryCommandCapability()
+	created, err := h.app.CreateCapability(ownerCtx, "lab", &formaapp.CreateCapabilityInput{
+		CapabilityID: "cap-prin-1", Payload: cmd,
+	})
+	require.NoError(t, err)
+	require.Equal(t, principalID, created.Capability.CreatedBy)
+	require.Equal(t, principalID, created.Revision.CreatedBy)
+	require.NotEqual(t, "8600", created.Revision.CreatedBy)
+
+	decs, err := h.app.ListCapabilityDecisions(ownerCtx, "lab", "cap-prin-1")
+	require.NoError(t, err)
+	require.NotEmpty(t, decs)
+	require.Equal(t, principalID, decs[0].ActorPrincipalID)
+
+	asset, err := h.uow.AssetsView().GetCapabilityAsset(context.Background(), tenantID, "cap-prin-1")
+	require.NoError(t, err)
+	require.Equal(t, int64(8600), asset.OwnerID)
+	require.Equal(t, int64(8600), asset.CreatedBy)
+
+	// Secret-bearing reason rejected before any derive write
+	_, err = h.app.DeriveCapability(ownerCtx, "lab", "cap-prin-1", &formaapp.DeriveCapabilityInput{
+		SourceRevisionID: created.Revision.RevisionID,
+		ClientRequestID:  "derive-reject-case",
+		Reason:           "contains password=secret",
+		Payload:          cmd,
+	})
+	fe, ok := formaerrors.AsFormaError(err)
+	require.True(t, ok)
+	require.Equal(t, formaerrors.CodeCapabilityInvalidPayload, fe.Code)
+	revs, err := h.app.ListCapabilityRevisions(ownerCtx, "lab", "cap-prin-1")
+	require.NoError(t, err)
+	require.Len(t, revs, 1)
+}
+
 func TestMapDomainError_CapabilityCodes(t *testing.T) {
 	cases := []struct {
 		err  error

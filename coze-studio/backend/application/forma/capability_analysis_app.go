@@ -8,8 +8,6 @@ package forma
 import (
 	"context"
 	"errors"
-	"strings"
-	"unicode/utf8"
 
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	capsvc "github.com/coze-dev/coze-studio/backend/domain/forma/capability/service"
@@ -103,28 +101,8 @@ func (s *ApplicationService) RetryCapabilityAnalysis(ctx context.Context, busine
 }
 
 func validateCapabilityRetryReason(reason string) error {
-	if reason == "" {
-		return nil
-	}
-	if !utf8.ValidString(reason) {
-		return formaerrors.CapabilityInvalidPayload("reason must be valid UTF-8")
-	}
-	if utf8.RuneCountInString(reason) > 1024 {
-		return formaerrors.CapabilityInvalidPayload("reason too long")
-	}
-	for _, r := range reason {
-		if r < 0x20 && r != '\n' && r != '\t' {
-			return formaerrors.CapabilityInvalidPayload("reason contains control characters")
-		}
-	}
-	lower := strings.ToLower(reason)
-	for _, needle := range []string{
-		"password", "token", "cookie", "authorization", "bearer", "jwt",
-		"api_key", "api-key", "private_key", "private-key", "secret", "-----begin",
-	} {
-		if strings.Contains(lower, needle) {
-			return formaerrors.CapabilityInvalidPayload("reason contains disallowed content")
-		}
+	if err := capsvc.ValidateAuditMetadata(reason, ""); err != nil {
+		return formaerrors.MapDomainError(err)
 	}
 	return nil
 }
