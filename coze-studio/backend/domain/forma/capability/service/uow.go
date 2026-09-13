@@ -59,12 +59,14 @@ func (u *gormUoW) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx
 
 // MemoryUoWOptions injects failures for tests without losing ownership of repo/assets.
 type MemoryUoWOptions struct {
-	FailAssetCreate       bool
-	FailAssetUpdate       bool
-	FailCreateValidation  bool
-	FailCommit            bool // after successful callback, before commit — restore both
-	OnCommitFail          func()
-	OnAssetFail           func()
+	FailAssetCreate      bool
+	FailAssetUpdate      bool
+	FailCreateValidation bool
+	FailCommit           bool // after successful callback, before commit — restore both
+	OnCommitFail         func()
+	OnAssetFail          func()
+	// OnBeforeListRevisions runs before each ListRevisions in the UoW txn (race/fence tests).
+	OnBeforeListRevisions func()
 }
 
 // MemoryUnitOfWork owns both the in-memory Cap repo and AssetProjection.
@@ -103,6 +105,11 @@ func (u *MemoryUnitOfWork) SetFailCreateValidation(v bool) {
 	u.opts.FailCreateValidation = v
 }
 
+// SetOnBeforeListRevisions installs a hook invoked before each ListRevisions in UoW txns (tests).
+func (u *MemoryUnitOfWork) SetOnBeforeListRevisions(fn func()) {
+	u.opts.OnBeforeListRevisions = fn
+}
+
 func (u *MemoryUnitOfWork) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
 	// Snapshot assets inside repo.Transaction so concurrent losers restore to a snap
 	// that already includes winners' commits (repo lock serializes Memory UoW).
@@ -119,7 +126,10 @@ func (u *MemoryUnitOfWork) WithinTransaction(ctx context.Context, fn func(tx Cap
 		}
 		repo := txRepo
 		if u.opts.FailCreateValidation {
-			repo = &failCreateValidationRepo{CapabilityRepository: txRepo}
+			repo = &failCreateValidationRepo{CapabilityRepository: repo}
+		}
+		if u.opts.OnBeforeListRevisions != nil {
+			repo = &listRevisionsHookRepo{CapabilityRepository: repo, before: u.opts.OnBeforeListRevisions}
 		}
 		err := fn(&capabilityTx{repo: repo, assets: assets})
 		if err != nil {
@@ -144,6 +154,19 @@ type failCreateValidationRepo struct {
 
 func (r *failCreateValidationRepo) CreateValidationResult(ctx context.Context, v *entity.CapabilityValidationResult) error {
 	return entity.ErrConsistency
+}
+
+// listRevisionsHookRepo runs a test hook before ListRevisions (Activate fence race).
+type listRevisionsHookRepo struct {
+	repository.CapabilityRepository
+	before func()
+}
+
+func (r *listRevisionsHookRepo) ListRevisions(ctx context.Context, tenantID, capabilityID string) ([]*entity.BusinessCapabilityRevision, error) {
+	if r.before != nil {
+		r.before()
+	}
+	return r.CapabilityRepository.ListRevisions(ctx, tenantID, capabilityID)
 }
 
 // txnFailingAssets wraps owned MemoryAssetProjection for a single transaction only.

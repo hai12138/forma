@@ -1218,6 +1218,12 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 		if pass.EvidenceDigest != ev.evidenceDigest || pass.ContractEvidenceDigest != ev.contractDigest {
 			return entity.ErrMissingValidationEvidence
 		}
+		// List revisions before the final fence so no repo/port I/O sits between
+		// fence success and the first UpdateRevisionStatus (S5-G3-F3).
+		revs, err := tx.Repo().ListRevisions(ctx, tenantID, cap.CapabilityID)
+		if err != nil {
+			return err
+		}
 		// Final fence before first Activate status write (Capability lock ≠ BM/Contract lock).
 		ev, err = s.requireFinalEvidenceFence(ctx, rev, ev)
 		if err != nil {
@@ -1227,10 +1233,7 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 			pass.RevisionContentDigest != ev.revDigest || pass.BusinessModelContentDigest != ev.bmDigest {
 			return entity.ErrMissingValidationEvidence
 		}
-		revs, err := tx.Repo().ListRevisions(ctx, tenantID, cap.CapabilityID)
-		if err != nil {
-			return err
-		}
+		// Between fence and first status write: memory checks only (no port/repo/DAO calls).
 		for _, r := range revs {
 			if r.Status == entity.RevisionActive && r.RevisionID != revisionID {
 				ok, err := tx.Repo().UpdateRevisionStatus(ctx, tenantID, r.RevisionID, entity.RevisionActive, entity.RevisionDeprecated)

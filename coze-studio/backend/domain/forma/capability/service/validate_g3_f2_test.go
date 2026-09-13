@@ -310,12 +310,11 @@ func TestG3F2DerivedSourceOtherCapabilityFAIL(t *testing.T) {
 
 // flipAfterReadsContractPort returns stable descriptors until the Nth Get, then swaps to drifted.
 type flipAfterReadsContractPort struct {
-	mu       sync.Mutex
-	reads    int
-	flipAt   int
-	stable   *FakeContractPort
-	drifted  *ContractLogicalDescriptor
-	driftKey string
+	mu      sync.Mutex
+	reads   int
+	flipAt  int
+	stable  *FakeContractPort
+	drifted *ContractLogicalDescriptor
 }
 
 func (p *flipAfterReadsContractPort) GetActiveContractLogicalDescriptor(ctx context.Context, tenantID, businessID, contractID string) (*ContractLogicalDescriptor, error) {
