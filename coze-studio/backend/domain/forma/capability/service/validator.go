@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
+	datasvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
 )
 
 var (
@@ -40,33 +41,28 @@ var (
 	}
 	executablePattern = regexp.MustCompile(`(?i)(SELECT\s|;|\$\(|eval\(|os\.system|import\s|require\(|Function\(|` + "`[^`]*\\$[^`]*`)")
 	shellPattern      = regexp.MustCompile(`(?i)(\brm\s+-rf\b|\bcurl\s+|\bwget\s+|\|.*sh\b|/bin/sh|/bin/bash)`)
-	// Free-text secret shapes — includes bare word "secret". Do NOT apply to opaque analysis IDs.
+	// Shared credential-shape patterns for free-text AND opaque IDs that already passed ValidateOpaqueID.
+	// Intentionally omits bare \bsecret\b so "trade secret" / ReviewTradeSecretPolicy remain allowed.
 	// Do NOT ban "password" as a substring of business names (GetPasswordReset).
-	freeTextSecretPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\bsecret\b`),
-		regexp.MustCompile(`(?i)(api[_-]?key|authorization)\s*[:=]`),
-		regexp.MustCompile(`(?i)bearer\s+[a-z0-9._\-]{8,}`),
-		regexp.MustCompile(`(?i)password\s*[:=]\s*\S+`),
-		regexp.MustCompile(`(?i)authorization\s*:`),
-		regexp.MustCompile(`(?i)(session|sid|jsessionid)\s*=\s*\S+`),
-		regexp.MustCompile(`(?i)-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----`),
-		regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.`),
-		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`),
-		regexp.MustCompile(`(?i)client_secret\s*=`),
-		regexp.MustCompile(`(?i)access_token\s*=`),
-		regexp.MustCompile(`(?i)refresh_token\s*=`),
-		regexp.MustCompile(`(?i)api_key\s*=`),
+	sharedCredentialShapePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.`),           // JWT
+		regexp.MustCompile(`(?i)\bghp_[A-Za-z0-9]{20,}\b`),                        // ghp_ prefix token
+		regexp.MustCompile(`(?i)\bgithub_pat_[A-Za-z0-9_]{20,}\b`),                // github_pat_ prefix token
+		regexp.MustCompile(`(?i)\bsk-proj-[A-Za-z0-9_-]{16,}\b`),                  // sk-proj- prefix token
+		regexp.MustCompile(`(?i)\bsk-[A-Za-z0-9]{20,}\b`),                         // sk- prefix token
+		regexp.MustCompile(`(?i)\bxox[baprs]-[A-Za-z0-9-]{10,}\b`),                // xox* prefix token
+		regexp.MustCompile(`(?i)\bxapp-[A-Za-z0-9-]{10,}\b`),                      // xapp- prefix token
+		regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._\-]{8,}`),                    // Bearer token
+		regexp.MustCompile(`(?i)-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----`), // PEM private key
+		regexp.MustCompile(`^[A-Za-z0-9]{48,}$`),                                  // long separator-free random token
+		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`),                          // long base64 (free-text)
 	}
-	// Credential shapes for opaque analysis pin/ref strings — no bare \bsecret\b.
-	credentialShapePatterns = []*regexp.Regexp{
+	// Assignment / delimiter forms — contain '=' or spaces, cannot pass ValidateOpaqueID.
+	freeTextAssignmentPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(api[_-]?key|authorization)\s*[:=]`),
-		regexp.MustCompile(`(?i)bearer\s+[a-z0-9._\-]{8,}`),
 		regexp.MustCompile(`(?i)password\s*[:=]\s*\S+`),
 		regexp.MustCompile(`(?i)authorization\s*:`),
 		regexp.MustCompile(`(?i)(session|sid|jsessionid)\s*=\s*\S+`),
-		regexp.MustCompile(`(?i)-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----`),
-		regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.`),
-		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`),
 		regexp.MustCompile(`(?i)client_secret\s*=`),
 		regexp.MustCompile(`(?i)access_token\s*=`),
 		regexp.MustCompile(`(?i)refresh_token\s*=`),
@@ -112,6 +108,9 @@ func ValidateAnalysisRequest(a entity.AnalysisRequest) error {
 		return err
 	}
 	for _, pin := range a.DataContractPins {
+		if pin.DataContractVersion <= 0 {
+			return entity.ErrInvalidPayload
+		}
 		if containsCredentialShape(pin.DataContractID) {
 			return entity.ErrInvalidPayload
 		}
@@ -191,13 +190,18 @@ func validateQueryPairing(p entity.SemanticPayload) error {
 
 func validateLogicalSchema(schema entity.LogicalSchema) error {
 	for _, f := range schema.Fields {
+		if err := ValidateOpaqueID(f.LogicalKey); err != nil {
+			return entity.ErrInvalidPayload
+		}
 		if isCredentialKeyName(f.LogicalKey) {
 			return entity.ErrInvalidPayload
 		}
-		if f.LogicalKey != "" {
-			if err := ValidateOpaqueID(f.LogicalKey); err != nil {
-				return entity.ErrInvalidPayload
-			}
+		lt := strings.TrimSpace(f.LogicalType)
+		if lt == "" || lt != f.LogicalType {
+			return entity.ErrInvalidPayload
+		}
+		if !datasvc.IsAllowedLogicalType(f.LogicalType) {
+			return entity.ErrInvalidPayload
 		}
 		for _, s := range []string{f.LogicalKey, f.LogicalType, f.Description} {
 			if containsSecret(s) || containsExecutable(s) || shellPattern.MatchString(s) {
@@ -221,8 +225,10 @@ func validateBinding(b entity.DataContractBinding) error {
 	if containsSecret(b.DataContractID) || containsSecret(b.DataContractRevisionID) {
 		return entity.ErrInvalidPayload
 	}
-	// Version > 0 if set (zero means unset).
-	if b.DataContractVersion < 0 {
+	if containsCredentialShape(b.DataContractID) || containsCredentialShape(b.DataContractRevisionID) {
+		return entity.ErrInvalidPayload
+	}
+	if b.DataContractVersion <= 0 {
 		return entity.ErrInvalidPayload
 	}
 	for _, m := range b.LogicalFieldMappings {
@@ -426,7 +432,12 @@ func containsSecret(s string) bool {
 	if strings.TrimSpace(s) == "" {
 		return false
 	}
-	for _, re := range freeTextSecretPatterns {
+	for _, re := range sharedCredentialShapePatterns {
+		if re.MatchString(s) {
+			return true
+		}
+	}
+	for _, re := range freeTextAssignmentPatterns {
 		if re.MatchString(s) {
 			return true
 		}
@@ -435,12 +446,13 @@ func containsSecret(s string) bool {
 }
 
 // containsCredentialShape blocks credential-like tokens in opaque analysis IDs.
+// Uses the shared pattern set only (no assignment forms that cannot pass ValidateOpaqueID).
 // Does NOT reject the bare word "secret" alone.
 func containsCredentialShape(s string) bool {
 	if strings.TrimSpace(s) == "" {
 		return false
 	}
-	for _, re := range credentialShapePatterns {
+	for _, re := range sharedCredentialShapePatterns {
 		if re.MatchString(s) {
 			return true
 		}

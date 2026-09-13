@@ -835,6 +835,14 @@ func TestSecretRejectionInPayloadAndAnalysis(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	ok = fixture.LaboratoryFlowCapability()
+	ok.Name = "ReviewTradeSecretPolicy"
+	ok.Description = "Review trade secret policy"
+	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
+		TenantID: "t1", BusinessID: "biz2", ActorID: testActor, Payload: ok,
+	})
+	require.NoError(t, err)
+
 	bad := fixture.LaboratoryFlowCapability()
 	bad.Description = "password=hunter2"
 	_, _, err = svc.ManualCreate(context.Background(), &ManualCreateInput{
@@ -1006,11 +1014,13 @@ func TestMaterializationBypassAttempts(t *testing.T) {
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
-	// binding token id
+	// binding credential key name "token"
 	err = ValidateMaterializationPayload(entity.SemanticPayload{
 		Name: "x", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
 		QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
-		DataContractBindings: []entity.DataContractBinding{{DataContractID: "token", DataContractRevisionID: "r1"}},
+		DataContractBindings: []entity.DataContractBinding{{
+			DataContractID: "token", DataContractRevisionID: "r1", DataContractVersion: 1,
+		}},
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 
@@ -1302,19 +1312,34 @@ func TestAnalysisActorIDRequired(t *testing.T) {
 }
 
 func TestAnalysisCredentialShapeRejection(t *testing.T) {
-	svc, _, _ := newTestService(&DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}})
-	_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
-		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "cred", ActorID: testActor,
-		Analysis: entity.AnalysisRequest{
-			BusinessModelRevision: 1,
-			RequirementRefs:       []string{"client_secret=abc123"},
-		},
-	})
-	require.ErrorIs(t, err, entity.ErrInvalidPayload)
+	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc, _, _ := newTestService(gen)
 
-	// Bare word "secret" alone in an opaque ID path is not rejected by credential shape
-	// (but ValidateOpaqueID may still accept opaque-safe strings without '=').
-	err = ValidateAnalysisRequest(entity.AnalysisRequest{
+	// Samples must pass ValidateOpaqueID first, then fail credential-shape (no '=' / spaces).
+	opaqueSecrets := []string{
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig",
+		"ghp_abcdefghijklmnopqrstuvwxyz12",
+		"sk-proj-abcdefghijklmnopQR",
+	}
+	for i, tok := range opaqueSecrets {
+		require.NoError(t, ValidateOpaqueID(tok), "sample %q must pass ValidateOpaqueID", tok)
+		require.True(t, containsCredentialShape(tok), "sample %q must hit credential-shape", tok)
+		before := gen.CallCount()
+		_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+			TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
+			ClientRequestID: fmt.Sprintf("cred-%d", i), ActorID: testActor,
+			Analysis: entity.AnalysisRequest{
+				BusinessModelRevision: 1,
+				RequirementRefs:       []string{tok},
+			},
+		})
+		require.ErrorIs(t, err, entity.ErrInvalidPayload)
+		require.Equal(t, before, gen.CallCount(), "generator must not run for %q", tok)
+		require.NotContains(t, err.Error(), tok)
+	}
+
+	// Ordinary opaque ref with substring "secret" remains allowed.
+	err := ValidateAnalysisRequest(entity.AnalysisRequest{
 		BusinessModelRevision: 1,
 		RequirementRefs:       []string{"req_secret_ref"},
 	})
@@ -1401,4 +1426,63 @@ func TestConcurrentLeaseClaimExactlyOne(t *testing.T) {
 		}
 	}
 	require.Equal(t, 1, owners)
+}
+
+func TestStructuralLogicalFieldValidation(t *testing.T) {
+	base := func() entity.SemanticPayload {
+		return entity.SemanticPayload{
+			Name: "X", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
+			QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
+			InputSchema: entity.LogicalSchema{Fields: []entity.LogicalField{
+				{LogicalKey: "work_cell_id", LogicalType: "STRING"},
+			}},
+		}
+	}
+
+	emptyKey := base()
+	emptyKey.InputSchema.Fields = []entity.LogicalField{{LogicalKey: "", LogicalType: "STRING"}}
+	require.ErrorIs(t, ValidateMaterializationPayload(emptyKey), entity.ErrInvalidPayload)
+
+	emptyType := base()
+	emptyType.InputSchema.Fields = []entity.LogicalField{{LogicalKey: "work_cell_id", LogicalType: ""}}
+	require.ErrorIs(t, ValidateMaterializationPayload(emptyType), entity.ErrInvalidPayload)
+
+	unknownType := base()
+	unknownType.InputSchema.Fields = []entity.LogicalField{{LogicalKey: "work_cell_id", LogicalType: "VARCHAR"}}
+	require.ErrorIs(t, ValidateMaterializationPayload(unknownType), entity.ErrInvalidPayload)
+
+	paddedType := base()
+	paddedType.InputSchema.Fields = []entity.LogicalField{{LogicalKey: "work_cell_id", LogicalType: " STRING"}}
+	require.ErrorIs(t, ValidateMaterializationPayload(paddedType), entity.ErrInvalidPayload)
+}
+
+func TestStructuralBindingAndPinVersions(t *testing.T) {
+	svcPayload := func(version int32) entity.SemanticPayload {
+		return entity.SemanticPayload{
+			Name: "X", CapabilityKind: entity.KindQuery, BusinessModelRevision: 1,
+			QueryOperation: entity.QueryOpRead, OutputCardinality: entity.CardinalityOne,
+			DataContractBindings: []entity.DataContractBinding{{
+				DataContractID: "dc_lab", DataContractRevisionID: "dcr_lab_1", DataContractVersion: version,
+			}},
+		}
+	}
+	require.ErrorIs(t, ValidateMaterializationPayload(svcPayload(0)), entity.ErrInvalidPayload)
+	require.ErrorIs(t, ValidateMaterializationPayload(svcPayload(-1)), entity.ErrInvalidPayload)
+	require.NoError(t, ValidateMaterializationPayload(svcPayload(1)))
+
+	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc, _, _ := newTestService(gen)
+	for i, ver := range []int32{0, -3} {
+		before := gen.CallCount()
+		_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+			TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1,
+			ClientRequestID: fmt.Sprintf("pin-ver-%d", i), ActorID: testActor,
+			Analysis: entity.AnalysisRequest{
+				BusinessModelRevision: 1,
+				DataContractPins:      []entity.DataContractPin{{DataContractID: "dc_ok", DataContractVersion: ver}},
+			},
+		})
+		require.ErrorIs(t, err, entity.ErrInvalidPayload)
+		require.Equal(t, before, gen.CallCount())
+	}
 }
