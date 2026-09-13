@@ -92,6 +92,11 @@ func (u *MemoryUnitOfWork) Root() repository.CapabilityRepository { return u.rep
 // AssetsView exposes the owned asset projection for test inspection.
 func (u *MemoryUnitOfWork) AssetsView() *MemoryAssetProjection { return u.memAssets }
 
+// SetFailAssetUpdate toggles asset update failure injection (tests).
+func (u *MemoryUnitOfWork) SetFailAssetUpdate(v bool) {
+	u.opts.FailAssetUpdate = v
+}
+
 func (u *MemoryUnitOfWork) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
 	// Snapshot assets inside repo.Transaction so concurrent losers restore to a snap
 	// that already includes winners' commits (repo lock serializes Memory UoW).

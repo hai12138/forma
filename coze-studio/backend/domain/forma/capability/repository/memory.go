@@ -26,6 +26,8 @@ func NewMemoryCapabilityRepository() CapabilityRepository {
 		decisions:         make(map[string]*entity.CapabilityDecision),
 		runs:              make(map[string]*entity.CapabilityAnalysisRun),
 		attempts:          make(map[string]*entity.CapabilityAnalysisAttempt),
+		validations:       make(map[string]*entity.CapabilityValidationResult),
+		validationEvidence: make(map[string]string),
 		runKeys:           make(map[string]string),
 		deriveKeys:        make(map[string]string),
 		proposalDecisions: make(map[string]string),
@@ -33,30 +35,34 @@ func NewMemoryCapabilityRepository() CapabilityRepository {
 }
 
 type memRepo struct {
-	mu                sync.Mutex
-	caps              map[string]*entity.BusinessCapability
-	revs              map[string]*entity.BusinessCapabilityRevision
-	proposals         map[string]*entity.CapabilityProposal
-	decisions         map[string]*entity.CapabilityDecision
-	runs              map[string]*entity.CapabilityAnalysisRun
-	attempts          map[string]*entity.CapabilityAnalysisAttempt
-	runKeys           map[string]string
-	deriveKeys        map[string]string
-	proposalDecisions map[string]string
+	mu                 sync.Mutex
+	caps               map[string]*entity.BusinessCapability
+	revs               map[string]*entity.BusinessCapabilityRevision
+	proposals          map[string]*entity.CapabilityProposal
+	decisions          map[string]*entity.CapabilityDecision
+	runs               map[string]*entity.CapabilityAnalysisRun
+	attempts           map[string]*entity.CapabilityAnalysisAttempt
+	validations        map[string]*entity.CapabilityValidationResult
+	validationEvidence map[string]string // tenant+rev+evidence → validation_id
+	runKeys            map[string]string
+	deriveKeys         map[string]string
+	proposalDecisions  map[string]string
 }
 
 type memTx struct{ r *memRepo }
 
 type memSnap struct {
-	caps              map[string]*entity.BusinessCapability
-	revs              map[string]*entity.BusinessCapabilityRevision
-	proposals         map[string]*entity.CapabilityProposal
-	decisions         map[string]*entity.CapabilityDecision
-	runs              map[string]*entity.CapabilityAnalysisRun
-	attempts          map[string]*entity.CapabilityAnalysisAttempt
-	runKeys           map[string]string
-	deriveKeys        map[string]string
-	proposalDecisions map[string]string
+	caps               map[string]*entity.BusinessCapability
+	revs               map[string]*entity.BusinessCapabilityRevision
+	proposals          map[string]*entity.CapabilityProposal
+	decisions          map[string]*entity.CapabilityDecision
+	runs               map[string]*entity.CapabilityAnalysisRun
+	attempts           map[string]*entity.CapabilityAnalysisAttempt
+	validations        map[string]*entity.CapabilityValidationResult
+	validationEvidence map[string]string
+	runKeys            map[string]string
+	deriveKeys         map[string]string
+	proposalDecisions  map[string]string
 }
 
 func k(parts ...string) string {
@@ -71,6 +77,7 @@ func (r *memRepo) snapshot() memSnap {
 	return memSnap{
 		caps: cloneCapMap(r.caps), revs: cloneRevMap(r.revs), proposals: clonePropMap(r.proposals),
 		decisions: cloneDecMap(r.decisions), runs: cloneRunMap(r.runs), attempts: cloneAttemptMap(r.attempts),
+		validations: cloneValidationMap(r.validations), validationEvidence: cloneStrMap(r.validationEvidence),
 		runKeys: cloneStrMap(r.runKeys), deriveKeys: cloneStrMap(r.deriveKeys),
 		proposalDecisions: cloneStrMap(r.proposalDecisions),
 	}
@@ -78,6 +85,7 @@ func (r *memRepo) snapshot() memSnap {
 
 func (r *memRepo) restore(s memSnap) {
 	r.caps, r.revs, r.proposals, r.decisions, r.runs, r.attempts = s.caps, s.revs, s.proposals, s.decisions, s.runs, s.attempts
+	r.validations, r.validationEvidence = s.validations, s.validationEvidence
 	r.runKeys, r.deriveKeys, r.proposalDecisions = s.runKeys, s.deriveKeys, s.proposalDecisions
 }
 
@@ -695,6 +703,114 @@ func (r *memRepo) listAnalysisAttempts(_ context.Context, tenantID, analysisRunI
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Attempt < out[j].Attempt })
 	return out, nil
+}
+
+func (r *memRepo) CreateValidationResult(ctx context.Context, v *entity.CapabilityValidationResult) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.createValidationResult(ctx, v)
+}
+func (t *memTx) CreateValidationResult(ctx context.Context, v *entity.CapabilityValidationResult) error {
+	return t.r.createValidationResult(ctx, v)
+}
+func (r *memRepo) createValidationResult(_ context.Context, v *entity.CapabilityValidationResult) error {
+	if v == nil || v.ValidationID == "" || v.EvidenceDigest == "" {
+		return entity.ErrInvalidPayload
+	}
+	idKey := k(v.TenantID, v.ValidationID)
+	evKey := k(v.TenantID, v.RevisionID, v.EvidenceDigest)
+	if _, ok := r.validations[idKey]; ok {
+		return entity.ErrConflict
+	}
+	if _, ok := r.validationEvidence[evKey]; ok {
+		return entity.ErrConflict
+	}
+	cp := cloneValidation(v)
+	r.validations[idKey] = cp
+	r.validationEvidence[evKey] = v.ValidationID
+	return nil
+}
+
+func (r *memRepo) GetValidationByEvidence(ctx context.Context, tenantID, revisionID, evidenceDigest string) (*entity.CapabilityValidationResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.getValidationByEvidence(ctx, tenantID, revisionID, evidenceDigest)
+}
+func (t *memTx) GetValidationByEvidence(ctx context.Context, tenantID, revisionID, evidenceDigest string) (*entity.CapabilityValidationResult, error) {
+	return t.r.getValidationByEvidence(ctx, tenantID, revisionID, evidenceDigest)
+}
+func (r *memRepo) getValidationByEvidence(_ context.Context, tenantID, revisionID, evidenceDigest string) (*entity.CapabilityValidationResult, error) {
+	vid, ok := r.validationEvidence[k(tenantID, revisionID, evidenceDigest)]
+	if !ok {
+		return nil, entity.ErrNotFound
+	}
+	v, ok := r.validations[k(tenantID, vid)]
+	if !ok {
+		return nil, entity.ErrNotFound
+	}
+	return cloneValidation(v), nil
+}
+
+func (r *memRepo) ListValidationsByRevision(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.listValidationsByRevision(ctx, tenantID, revisionID)
+}
+func (t *memTx) ListValidationsByRevision(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {
+	return t.r.listValidationsByRevision(ctx, tenantID, revisionID)
+}
+func (r *memRepo) listValidationsByRevision(_ context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {
+	out := make([]*entity.CapabilityValidationResult, 0)
+	for _, v := range r.validations {
+		if v.TenantID == tenantID && v.RevisionID == revisionID {
+			out = append(out, cloneValidation(v))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (r *memRepo) GetLatestPASSValidation(ctx context.Context, tenantID, revisionID string) (*entity.CapabilityValidationResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.getLatestPASSValidation(ctx, tenantID, revisionID)
+}
+func (t *memTx) GetLatestPASSValidation(ctx context.Context, tenantID, revisionID string) (*entity.CapabilityValidationResult, error) {
+	return t.r.getLatestPASSValidation(ctx, tenantID, revisionID)
+}
+func (r *memRepo) getLatestPASSValidation(_ context.Context, tenantID, revisionID string) (*entity.CapabilityValidationResult, error) {
+	var best *entity.CapabilityValidationResult
+	for _, v := range r.validations {
+		if v.TenantID != tenantID || v.RevisionID != revisionID || v.Status != entity.ValidationPass {
+			continue
+		}
+		if best == nil || v.ValidatedAt.After(best.ValidatedAt) {
+			best = v
+		}
+	}
+	if best == nil {
+		return nil, entity.ErrNotFound
+	}
+	return cloneValidation(best), nil
+}
+
+func cloneValidation(in *entity.CapabilityValidationResult) *entity.CapabilityValidationResult {
+	if in == nil {
+		return nil
+	}
+	cp := *in
+	if in.IssueCodes != nil {
+		cp.IssueCodes = append([]string(nil), in.IssueCodes...)
+	}
+	return &cp
+}
+
+func cloneValidationMap(in map[string]*entity.CapabilityValidationResult) map[string]*entity.CapabilityValidationResult {
+	out := make(map[string]*entity.CapabilityValidationResult, len(in))
+	for key, v := range in {
+		out[key] = cloneValidation(v)
+	}
+	return out
 }
 
 func cloneRevision(in *entity.BusinessCapabilityRevision) *entity.BusinessCapabilityRevision {

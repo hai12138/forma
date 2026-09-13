@@ -70,6 +70,16 @@ func MapRepoError(err error) error {
 		return entity.ErrMissingImpactEvidence
 	case errors.Is(err, entity.ErrAnalysisFailed):
 		return entity.ErrAnalysisFailed
+	case errors.Is(err, entity.ErrValidationFailed):
+		return entity.ErrValidationFailed
+	case errors.Is(err, entity.ErrPortsNotConfigured):
+		return entity.ErrPortsNotConfigured
+	case errors.Is(err, entity.ErrBusinessModelNotFound):
+		return entity.ErrBusinessModelNotFound
+	case errors.Is(err, entity.ErrContractNotFound):
+		return entity.ErrContractNotFound
+	case errors.Is(err, entity.ErrContractNotActive):
+		return entity.ErrContractNotActive
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return entity.ErrNotFound
 	}

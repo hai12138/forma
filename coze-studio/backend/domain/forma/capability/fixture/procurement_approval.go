@@ -46,8 +46,18 @@ func ProcurementQueryCapability() entity.SemanticPayload {
 			{LogicalKey: "approval_request_id", LogicalType: "STRING"},
 			{LogicalKey: "purchase_order_id", LogicalType: "STRING"},
 		}},
+		Preconditions: []entity.Precondition{
+			{ID: "pc_buyer", Predicate: entity.PredicateEQ, LogicalKey: "buyer_org_id", Comparand: ""},
+		},
 		DataContractBindings: []entity.DataContractBinding{
-			{DataContractID: "dc_proc", DataContractRevisionID: "dcr_proc_1", DataContractVersion: 1},
+			{
+				DataContractID: "dc_proc", DataContractRevisionID: "dcr_proc_1", DataContractVersion: 1,
+				LogicalFieldMappings: []entity.LogicalFieldMapping{
+					{CapabilityLogicalKey: "buyer_org_id", ContractLogicalKey: "buyer_org_id"},
+					{CapabilityLogicalKey: "approval_request_id", ContractLogicalKey: "approval_request_id"},
+					{CapabilityLogicalKey: "purchase_order_id", ContractLogicalKey: "purchase_order_id"},
+				},
+			},
 		},
 		QueryOperation:    entity.QueryOpFilter,
 		OutputCardinality: entity.CardinalityMany,

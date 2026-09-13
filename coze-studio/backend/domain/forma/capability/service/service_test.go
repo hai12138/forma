@@ -26,10 +26,12 @@ import (
 
 const testActor = "1001"
 
-func newTestService(gen ProposalGenerator) (CapabilityService, repository.CapabilityRepository, *MemoryAssetProjection) {
+func newTestService(gen ProposalGenerator) (CapabilityService, repository.CapabilityRepository, *MemoryAssetProjection, *FakeBusinessModelPort, *FakeContractPort) {
 	uow := NewMemoryUnitOfWork()
-	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen})
-	return svc, uow.Root(), uow.AssetsView()
+	bm := NewFakeBusinessModelPort()
+	contracts := NewFakeContractPort()
+	svc := NewCapabilityService(&Components{UoW: uow, Generator: gen, Business: bm, Contract: contracts})
+	return svc, uow.Root(), uow.AssetsView(), bm, contracts
 }
 
 // rootOverrideUoW overrides Root() for peek/list test seams while keeping owned UoW transactions.
@@ -43,7 +45,46 @@ func (u *rootOverrideUoW) WithinTransaction(ctx context.Context, fn func(tx Capa
 	return u.inner.WithinTransaction(ctx, fn)
 }
 
-// forceStatusForTest seeds a revision status via repository (Validate is fail-closed until G3).
+// seedPortsForRevision registers BM + Active contract descriptors matching the revision payload.
+func seedPortsForRevision(bm *FakeBusinessModelPort, contracts *FakeContractPort, rev *entity.BusinessCapabilityRevision) {
+	bm.Put(&BusinessModelRevisionEvidence{
+		TenantID: rev.TenantID, BusinessID: rev.BusinessID,
+		Revision: rev.BusinessModelRevision, ContentDigest: "bm-digest-" + rev.BusinessID,
+	})
+	for _, b := range rev.DataContractBindings {
+		fields := make([]ContractLogicalField, 0)
+		filters := make([]ContractFilterFieldSpec, 0)
+		seen := map[string]struct{}{}
+		for _, m := range b.LogicalFieldMappings {
+			if _, ok := seen[m.ContractLogicalKey]; ok {
+				continue
+			}
+			seen[m.ContractLogicalKey] = struct{}{}
+			lt := "STRING"
+			for _, f := range append(append([]entity.LogicalField{}, rev.InputSchema.Fields...), rev.OutputSchema.Fields...) {
+				if f.LogicalKey == m.CapabilityLogicalKey {
+					lt = f.LogicalType
+					break
+				}
+			}
+			fields = append(fields, ContractLogicalField{
+				LogicalKey: m.ContractLogicalKey, LogicalType: lt, Nullable: false,
+			})
+			filters = append(filters, ContractFilterFieldSpec{
+				LogicalKey: m.ContractLogicalKey, Operators: []string{"EQ", "NE", "GT", "GTE", "LT", "LTE", "IN"},
+			})
+		}
+		contracts.Put(&ContractLogicalDescriptor{
+			TenantID: rev.TenantID, BusinessID: rev.BusinessID,
+			ContractID: b.DataContractID, RevisionID: b.DataContractRevisionID, Version: b.DataContractVersion,
+			BusinessModelRevision: rev.BusinessModelRevision, Status: "ACTIVE",
+			LogicalSchema: fields, QueryCapabilities: []string{"READ", "LIST", "FILTER"}, FilterSchema: filters,
+			PaginationPolicy: ContractPaginationPolicy{DefaultLimit: 20, MaxLimit: 100},
+		})
+	}
+}
+
+// forceStatusForTest seeds a revision status via repository (prefer Validate in G3 tests).
 func forceStatusForTest(t *testing.T, repo repository.CapabilityRepository, tenantID, revisionID string, from, to entity.RevisionStatus) {
 	t.Helper()
 	ok, err := repo.UpdateRevisionStatus(context.Background(), tenantID, revisionID, from, to)
@@ -51,8 +92,37 @@ func forceStatusForTest(t *testing.T, repo repository.CapabilityRepository, tena
 	require.True(t, ok)
 }
 
+// seedPASSValidationForTest writes PASS evidence matching current ports for Activate gate tests.
+func seedPASSValidationForTest(t *testing.T, repo repository.CapabilityRepository, bm *FakeBusinessModelPort, contracts *FakeContractPort, rev *entity.BusinessCapabilityRevision) {
+	t.Helper()
+	seedPortsForRevision(bm, contracts, rev)
+	revDigest, err := CapabilityContentDigest(rev.ToSemanticPayload())
+	require.NoError(t, err)
+	descs := []*ContractLogicalDescriptor{}
+	for _, b := range rev.DataContractBindings {
+		d, err := contracts.GetActiveContractLogicalDescriptor(context.Background(), rev.TenantID, rev.BusinessID, b.DataContractID)
+		require.NoError(t, err)
+		descs = append(descs, d)
+	}
+	contractDigest, err := ContractEvidenceDigest(descs)
+	require.NoError(t, err)
+	bmEv, err := bm.GetBusinessModelRevision(context.Background(), rev.TenantID, rev.BusinessID, rev.BusinessModelRevision)
+	require.NoError(t, err)
+	evidenceDigest, err := ValidationEvidenceDigest(rev.BusinessModelRevision, bmEv.ContentDigest, contractDigest)
+	require.NoError(t, err)
+	now := time.Now().UTC()
+	require.NoError(t, repo.CreateValidationResult(context.Background(), &entity.CapabilityValidationResult{
+		ValidationID: "cval_seed_" + rev.RevisionID, TenantID: rev.TenantID, BusinessID: rev.BusinessID,
+		CapabilityID: rev.CapabilityID, RevisionID: rev.RevisionID,
+		RevisionContentDigest: revDigest, BusinessModelRevision: rev.BusinessModelRevision,
+		BusinessModelContentDigest: bmEv.ContentDigest, ContractEvidenceDigest: contractDigest,
+		EvidenceDigest: evidenceDigest, Status: entity.ValidationPass, IssueCodes: nil,
+		ValidatedBy: testActor, ValidatedAt: now, CreatedAt: now,
+	}))
+}
+
 func TestManualCreateLifecycle(t *testing.T) {
-	svc, repo, assets := newTestService(nil)
+	svc, repo, assets, bmPort, contractPort := newTestService(nil)
 	cap, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor,
 		Payload: fixture.LaboratoryFlowCapability(),
@@ -69,6 +139,7 @@ func TestManualCreateLifecycle(t *testing.T) {
 	require.Equal(t, "1.0", asset.SchemaVersion)
 	require.Equal(t, assetentity.AssetStatusDraft, asset.Status)
 
+	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
 	forceStatusForTest(t, repo, "t1", rev.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 
 	active, err := svc.Activate(context.Background(), "t1", rev.RevisionID, testActor, "go-live")
@@ -93,7 +164,7 @@ func TestManualCreateLifecycle(t *testing.T) {
 }
 
 func TestDeriveIdempotency(t *testing.T) {
-	svc, _, _ := newTestService(nil)
+	svc, _, _, _, _ := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-d",
 		Payload: fixture.ProcurementApprovalCapability(),
@@ -127,7 +198,7 @@ func TestDeriveIdempotency(t *testing.T) {
 
 func TestRejectNoShell(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
-	svc, repo, assets := newTestService(gen)
+	svc, repo, assets, _, _ := newTestService(gen)
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "an1", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
@@ -148,7 +219,7 @@ func TestRejectNoShell(t *testing.T) {
 
 func TestConfirmFirstCreateAndReplay(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
-	svc, _, assets := newTestService(gen)
+	svc, _, assets, _, _ := newTestService(gen)
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "an2", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
@@ -172,7 +243,7 @@ func TestConfirmFirstCreateAndReplay(t *testing.T) {
 }
 
 func TestConfirmOntoExistingKeepsACTIVEProjection(t *testing.T) {
-	svc, repo, assets := newTestService(&DeterministicFakeGenerator{
+	svc, repo, assets, bmPort, contractPort := newTestService(&DeterministicFakeGenerator{
 		Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()},
 	})
 	cap, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
@@ -180,6 +251,7 @@ func TestConfirmOntoExistingKeepsACTIVEProjection(t *testing.T) {
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
+	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
 	forceStatusForTest(t, repo, "t1", rev.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 	_, err = svc.Activate(context.Background(), "t1", rev.RevisionID, testActor, "")
 	require.NoError(t, err)
@@ -207,7 +279,7 @@ func TestConfirmOntoExistingKeepsACTIVEProjection(t *testing.T) {
 
 func TestAnalysisIdempotencyAndRetry(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.ProcurementQueryCapability()}}
-	svc, _, _ := newTestService(gen)
+	svc, _, _, _, _ := newTestService(gen)
 	in := &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 2, ClientRequestID: "same", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 2, RequirementRefs: []string{"r1"}},
@@ -228,7 +300,7 @@ func TestAnalysisIdempotencyAndRetry(t *testing.T) {
 	require.ErrorIs(t, err, entity.ErrIdempotencyConflict)
 
 	failGen := &DeterministicFakeGenerator{Err: errors.New("boom secret password=xyz")}
-	svc2, _, _ := newTestService(failGen)
+	svc2, _, _, _, _ := newTestService(failGen)
 	failed, err := svc2.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 2, ClientRequestID: "fail", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 2},
@@ -250,12 +322,13 @@ func TestAnalysisIdempotencyAndRetry(t *testing.T) {
 func TestConcurrentConfirmDistinctDrafts(t *testing.T) {
 	payload := fixture.LaboratoryFlowCapability()
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{payload, payload}}
-	svc, repo, assets := newTestService(gen)
+	svc, repo, assets, bmPort, contractPort := newTestService(gen)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-c",
 		Payload: payload,
 	})
 	require.NoError(t, err)
+	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
 	forceStatusForTest(t, repo, "t1", rev.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 	_, err = svc.Activate(context.Background(), "t1", rev.RevisionID, testActor, "")
 	require.NoError(t, err)
@@ -294,7 +367,7 @@ func TestConcurrentConfirmDistinctDrafts(t *testing.T) {
 }
 
 func TestConcurrentFirstCreateRace(t *testing.T) {
-	svc, repo, assets := newTestService(nil)
+	svc, repo, assets, _, _ := newTestService(nil)
 	payload := fixture.ProcurementApprovalCapability()
 
 	var wg sync.WaitGroup
@@ -330,7 +403,7 @@ func TestConcurrentFirstCreateRace(t *testing.T) {
 }
 
 func TestTenantIsolation(t *testing.T) {
-	svc, _, _ := newTestService(nil)
+	svc, _, _, _, _ := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "tenant-a", BusinessID: "biz", ActorID: testActor,
 		Payload: fixture.LaboratoryFlowCapability(),
@@ -341,7 +414,7 @@ func TestTenantIsolation(t *testing.T) {
 }
 
 func TestDualIndustryFixturesAgnostic(t *testing.T) {
-	svc, _, _ := newTestService(nil)
+	svc, _, _, _, _ := newTestService(nil)
 	_, r1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
 	})
@@ -355,24 +428,26 @@ func TestDualIndustryFixturesAgnostic(t *testing.T) {
 }
 
 func TestValidateFailClosedWithoutEvidence(t *testing.T) {
-	svc, repo, _ := newTestService(nil)
+	uow := NewMemoryUnitOfWork()
+	svc := NewCapabilityService(&Components{UoW: uow}) // no validation ports
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
-	_, err = svc.Validate(context.Background(), "t1", rev.RevisionID, testActor)
-	require.ErrorIs(t, err, entity.ErrMissingValidationEvidence)
-	got, err := repo.GetRevision(context.Background(), "t1", rev.RevisionID)
+	_, _, err = svc.Validate(context.Background(), "t1", rev.RevisionID, testActor)
+	require.ErrorIs(t, err, entity.ErrPortsNotConfigured)
+	got, err := uow.Root().GetRevision(context.Background(), "t1", rev.RevisionID)
 	require.NoError(t, err)
 	require.Equal(t, entity.RevisionDraft, got.Status)
 }
 
 func TestMarkStaleFailClosedWithoutEvidence(t *testing.T) {
-	svc, repo, _ := newTestService(nil)
+	svc, repo, _, bmPort, contractPort := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
+	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
 	forceStatusForTest(t, repo, "t1", rev.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 	_, err = svc.Activate(context.Background(), "t1", rev.RevisionID, testActor, "")
 	require.NoError(t, err)
@@ -382,7 +457,7 @@ func TestMarkStaleFailClosedWithoutEvidence(t *testing.T) {
 
 func TestEditConfirmRequiresFullPayloadAndReplay(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
-	svc, _, _ := newTestService(gen)
+	svc, _, _, _, _ := newTestService(gen)
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "edit-an", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
@@ -415,7 +490,7 @@ func TestEditConfirmRequiresFullPayloadAndReplay(t *testing.T) {
 
 func TestConcurrentAnalysisSingleGeneratorInvocation(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.ProcurementQueryCapability()}}
-	svc, _, _ := newTestService(gen)
+	svc, _, _, _, _ := newTestService(gen)
 	var wg sync.WaitGroup
 	results := make([]*AnalysisResult, 8)
 	errs := make([]error, 8)
@@ -458,12 +533,13 @@ func TestStaleGenerationCompletionRejected(t *testing.T) {
 }
 
 func TestProjectionConsistencyRollsBackAsset(t *testing.T) {
-	svc, repo, assets := newTestService(nil)
+	svc, repo, assets, bmPort, contractPort := newTestService(nil)
 	cap, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-cons",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
+	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
 	forceStatusForTest(t, repo, "t1", rev.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 	_, err = svc.Activate(context.Background(), "t1", rev.RevisionID, testActor, "")
 	require.NoError(t, err)
@@ -615,7 +691,9 @@ func TestConcurrentActivateExactlyOneSuccess(t *testing.T) {
 	var peeks atomic.Int32
 	repo := &activatePeekBarrierRepo{CapabilityRepository: inner.Root(), peeks: &peeks, gate: gate}
 	uow := &rootOverrideUoW{inner: inner, root: repo}
-	svc := NewCapabilityService(&Components{UoW: uow})
+	bm := NewFakeBusinessModelPort()
+	contracts := NewFakeContractPort()
+	svc := NewCapabilityService(&Components{UoW: uow, Business: bm, Contract: contracts})
 
 	cap, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-act",
@@ -629,6 +707,8 @@ func TestConcurrentActivateExactlyOneSuccess(t *testing.T) {
 		ClientRequestID: "d2", ActorID: testActor, Payload: payload2,
 	})
 	require.NoError(t, err)
+	seedPASSValidationForTest(t, inner.Root(), bm, contracts, rev1)
+	seedPASSValidationForTest(t, inner.Root(), bm, contracts, rev2)
 	forceStatusForTest(t, inner.Root(), "t1", rev1.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 	forceStatusForTest(t, inner.Root(), "t1", rev2.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 
@@ -682,7 +762,7 @@ func (r *activatePeekBarrierRepo) GetCapability(ctx context.Context, tenantID, c
 }
 
 func TestProposalTargetMismatchNoWrites(t *testing.T) {
-	svc, repo, assets := newTestService(nil)
+	svc, repo, assets, _, _ := newTestService(nil)
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-a",
 		Payload: fixture.LaboratoryFlowCapability(),
@@ -711,7 +791,7 @@ func TestProposalTargetMismatchNoWrites(t *testing.T) {
 }
 
 func TestConfirmedReplayCapabilityIDMismatch(t *testing.T) {
-	svc, repo, assets := newTestService(&DeterministicFakeGenerator{
+	svc, repo, assets, _, _ := newTestService(&DeterministicFakeGenerator{
 		Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()},
 	})
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
@@ -744,7 +824,7 @@ func TestConfirmedReplayCapabilityIDMismatch(t *testing.T) {
 }
 
 func TestEditConfirmedReplayCapabilityIDMismatch(t *testing.T) {
-	svc, repo, assets := newTestService(&DeterministicFakeGenerator{
+	svc, repo, assets, _, _ := newTestService(&DeterministicFakeGenerator{
 		Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()},
 	})
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
@@ -781,7 +861,7 @@ func TestEditConfirmedReplayCapabilityIDMismatch(t *testing.T) {
 }
 
 func TestIllegalMaterializationPayload(t *testing.T) {
-	svc, _, _ := newTestService(nil)
+	svc, _, _, _, _ := newTestService(nil)
 	bad := fixture.LaboratoryFlowCapability()
 	bad.Name = ""
 	_, _, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
@@ -826,7 +906,7 @@ func TestIllegalMaterializationPayload(t *testing.T) {
 }
 
 func TestSecretRejectionInPayloadAndAnalysis(t *testing.T) {
-	svc, _, _ := newTestService(nil)
+	svc, _, _, _, _ := newTestService(nil)
 	ok := fixture.LaboratoryFlowCapability()
 	ok.Name = "GetPasswordReset"
 	ok.Description = "password reset flow"
@@ -868,7 +948,7 @@ func TestSecretRejectionInPayloadAndAnalysis(t *testing.T) {
 
 func TestGeneratorErrorSanitized(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Err: errors.New("openai api_key leaked in stack")}
-	svc, _, _ := newTestService(gen)
+	svc, _, _, _, _ := newTestService(gen)
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "san", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
@@ -945,12 +1025,13 @@ func TestCorruptJSONFailClosed(t *testing.T) {
 }
 
 func TestDeprecateCreatesDecision(t *testing.T) {
-	svc, repo, _ := newTestService(nil)
+	svc, repo, _, bmPort, contractPort := newTestService(nil)
 	cap, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
 		TenantID: "t1", BusinessID: "biz", ActorID: testActor, CapabilityID: "cap-dep",
 		Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
+	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
 	forceStatusForTest(t, repo, "t1", rev.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
 	_, err = svc.Activate(context.Background(), "t1", rev.RevisionID, testActor, "on")
 	require.NoError(t, err)
@@ -1033,7 +1114,7 @@ func TestMaterializationBypassAttempts(t *testing.T) {
 }
 
 func TestAnalysisOpaqueIDRejection(t *testing.T) {
-	svc, _, _ := newTestService(&DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}})
+	svc, _, _, _, _ := newTestService(&DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}})
 	_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "oid", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{
@@ -1199,7 +1280,7 @@ func TestCorruptRequestJSONMarkFailedPropagates(t *testing.T) {
 
 func TestAnalysisAttemptAuditOnRetry(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Err: errors.New("boom")}
-	svc, repo, _ := newTestService(gen)
+	svc, repo, _, _, _ := newTestService(gen)
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "retry-aud", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
@@ -1234,7 +1315,7 @@ func TestAnalysisAttemptAuditOnRetry(t *testing.T) {
 
 func TestConfirmedReplayCapabilityMismatch(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
-	svc, repo, _ := newTestService(gen)
+	svc, repo, _, _, _ := newTestService(gen)
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "bind-term", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
@@ -1257,7 +1338,7 @@ func TestConfirmedReplayCapabilityMismatch(t *testing.T) {
 
 func TestEditConfirmedReplayCapabilityMismatch(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
-	svc, repo, _ := newTestService(gen)
+	svc, repo, _, _, _ := newTestService(gen)
 	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "bind-edit", ActorID: testActor,
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
@@ -1303,7 +1384,7 @@ func TestMapRepoErrorNeverLeaksDriver(t *testing.T) {
 }
 
 func TestAnalysisActorIDRequired(t *testing.T) {
-	svc, _, _ := newTestService(&DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}})
+	svc, _, _, _, _ := newTestService(&DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}})
 	_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
 		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "no-actor",
 		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
@@ -1313,7 +1394,7 @@ func TestAnalysisActorIDRequired(t *testing.T) {
 
 func TestAnalysisCredentialShapeRejection(t *testing.T) {
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
-	svc, _, _ := newTestService(gen)
+	svc, _, _, _, _ := newTestService(gen)
 
 	// Samples must pass ValidateOpaqueID first, then fail credential-shape (no '=' / spaces).
 	opaqueSecrets := []string{
@@ -1471,7 +1552,7 @@ func TestStructuralBindingAndPinVersions(t *testing.T) {
 	require.NoError(t, ValidateMaterializationPayload(svcPayload(1)))
 
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
-	svc, _, _ := newTestService(gen)
+	svc, _, _, _, _ := newTestService(gen)
 	for i, ver := range []int32{0, -3} {
 		before := gen.CallCount()
 		_, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{

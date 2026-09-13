@@ -53,6 +53,11 @@ type CapabilityRepository interface {
 	SupersedeAnalysisAttempt(ctx context.Context, tenantID, analysisRunID string, attempt int32) error
 	ListAnalysisAttempts(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityAnalysisAttempt, error)
 
+	CreateValidationResult(ctx context.Context, v *entity.CapabilityValidationResult) error
+	GetValidationByEvidence(ctx context.Context, tenantID, revisionID, evidenceDigest string) (*entity.CapabilityValidationResult, error)
+	ListValidationsByRevision(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error)
+	GetLatestPASSValidation(ctx context.Context, tenantID, revisionID string) (*entity.CapabilityValidationResult, error)
+
 	Transaction(ctx context.Context, fn func(txRepo CapabilityRepository) error) error
 }
 
@@ -157,6 +162,18 @@ func (r *gormCapabilityRepo) SupersedeAnalysisAttempt(ctx context.Context, tenan
 }
 func (r *gormCapabilityRepo) ListAnalysisAttempts(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityAnalysisAttempt, error) {
 	return r.dao.ListAnalysisAttempts(ctx, tenantID, analysisRunID)
+}
+func (r *gormCapabilityRepo) CreateValidationResult(ctx context.Context, v *entity.CapabilityValidationResult) error {
+	return r.dao.CreateValidationResult(ctx, v)
+}
+func (r *gormCapabilityRepo) GetValidationByEvidence(ctx context.Context, tenantID, revisionID, evidenceDigest string) (*entity.CapabilityValidationResult, error) {
+	return r.dao.GetValidationByEvidence(ctx, tenantID, revisionID, evidenceDigest)
+}
+func (r *gormCapabilityRepo) ListValidationsByRevision(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {
+	return r.dao.ListValidationsByRevision(ctx, tenantID, revisionID)
+}
+func (r *gormCapabilityRepo) GetLatestPASSValidation(ctx context.Context, tenantID, revisionID string) (*entity.CapabilityValidationResult, error) {
+	return r.dao.GetLatestPASSValidation(ctx, tenantID, revisionID)
 }
 func (r *gormCapabilityRepo) Transaction(ctx context.Context, fn func(txRepo CapabilityRepository) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

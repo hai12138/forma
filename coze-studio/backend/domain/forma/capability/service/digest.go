@@ -155,3 +155,66 @@ func MustCapabilityContentDigest(payload entity.SemanticPayload) string {
 	}
 	return d
 }
+
+// ContractEvidenceDigest digests sorted Active contract logical pins/descriptors used at validate time.
+func ContractEvidenceDigest(descriptors []*ContractLogicalDescriptor) (string, error) {
+	docs := make([]map[string]any, 0, len(descriptors))
+	sorted := append([]*ContractLogicalDescriptor(nil), descriptors...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].ContractID != sorted[j].ContractID {
+			return sorted[i].ContractID < sorted[j].ContractID
+		}
+		return sorted[i].RevisionID < sorted[j].RevisionID
+	})
+	for _, d := range sorted {
+		if d == nil {
+			continue
+		}
+		fields := append([]ContractLogicalField(nil), d.LogicalSchema...)
+		sort.Slice(fields, func(a, b int) bool { return fields[a].LogicalKey < fields[b].LogicalKey })
+		caps := append([]string(nil), d.QueryCapabilities...)
+		sort.Strings(caps)
+		filter := append([]ContractFilterFieldSpec(nil), d.FilterSchema...)
+		sort.Slice(filter, func(a, b int) bool { return filter[a].LogicalKey < filter[b].LogicalKey })
+		for i := range filter {
+			ops := append([]string(nil), filter[i].Operators...)
+			sort.Strings(ops)
+			filter[i].Operators = ops
+		}
+		docs = append(docs, map[string]any{
+			"tenant_id":               d.TenantID,
+			"business_id":             d.BusinessID,
+			"contract_id":             d.ContractID,
+			"revision_id":             d.RevisionID,
+			"version":                 d.Version,
+			"business_model_revision": d.BusinessModelRevision,
+			"status":                  d.Status,
+			"logical_schema":          fields,
+			"query_capabilities":      caps,
+			"filter_schema":           filter,
+			"pagination_policy":       d.PaginationPolicy,
+			"freshness_policy":        d.FreshnessPolicy,
+			"access_policy_ref":       d.AccessPolicyRef,
+		})
+	}
+	raw, err := json.Marshal(docs)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// ValidationEvidenceDigest covers BM pin + contract evidence for idempotency / Activate gate.
+func ValidationEvidenceDigest(bmRev int32, bmDigest, contractEvidenceDigest string) (string, error) {
+	raw, err := json.Marshal(map[string]any{
+		"business_model_revision":      bmRev,
+		"business_model_content_digest": bmDigest,
+		"contract_evidence_digest":     contractEvidenceDigest,
+	})
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}

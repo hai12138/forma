@@ -123,3 +123,24 @@ type analysisAttemptRow struct {
 }
 
 func (analysisAttemptRow) TableName() string { return "forma_capability_analysis_attempt" }
+
+type validationResultRow struct {
+	ID                         int64     `gorm:"column:id;primaryKey"`
+	ValidationID               string    `gorm:"column:validation_id"`
+	TenantID                   string    `gorm:"column:tenant_id"`
+	BusinessID                 string    `gorm:"column:business_id"`
+	CapabilityID               string    `gorm:"column:capability_id"`
+	RevisionID                 string    `gorm:"column:revision_id"`
+	RevisionContentDigest      string    `gorm:"column:revision_content_digest"`
+	BusinessModelRevision      int32     `gorm:"column:business_model_revision"`
+	BusinessModelContentDigest string    `gorm:"column:business_model_content_digest"`
+	ContractEvidenceDigest     string    `gorm:"column:contract_evidence_digest"`
+	EvidenceDigest             string    `gorm:"column:evidence_digest"`
+	Status                     string    `gorm:"column:status"`
+	IssueCodesJSON             string    `gorm:"column:issue_codes_json"`
+	ValidatedBy                string    `gorm:"column:validated_by"`
+	ValidatedAt                time.Time `gorm:"column:validated_at"`
+	CreatedAt                  time.Time `gorm:"column:created_at"`
+}
+
+func (validationResultRow) TableName() string { return "forma_capability_validation_result" }

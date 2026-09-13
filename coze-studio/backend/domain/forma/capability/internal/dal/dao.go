@@ -804,3 +804,102 @@ func toAnalysis(row *analysisRunRow) *entity.CapabilityAnalysisRun {
 		UpdatedAt:             row.UpdatedAt,
 	}
 }
+
+func validationFrom(v *entity.CapabilityValidationResult) *validationResultRow {
+	codes := v.IssueCodes
+	if codes == nil {
+		codes = []string{}
+	}
+	raw, _ := json.Marshal(codes)
+	return &validationResultRow{
+		ValidationID:               v.ValidationID,
+		TenantID:                   v.TenantID,
+		BusinessID:                 v.BusinessID,
+		CapabilityID:               v.CapabilityID,
+		RevisionID:                 v.RevisionID,
+		RevisionContentDigest:      v.RevisionContentDigest,
+		BusinessModelRevision:      v.BusinessModelRevision,
+		BusinessModelContentDigest: v.BusinessModelContentDigest,
+		ContractEvidenceDigest:     v.ContractEvidenceDigest,
+		EvidenceDigest:             v.EvidenceDigest,
+		Status:                     string(v.Status),
+		IssueCodesJSON:             string(raw),
+		ValidatedBy:                v.ValidatedBy,
+		ValidatedAt:                v.ValidatedAt,
+		CreatedAt:                  v.CreatedAt,
+	}
+}
+
+func toValidation(row *validationResultRow) *entity.CapabilityValidationResult {
+	var codes []string
+	_ = json.Unmarshal([]byte(row.IssueCodesJSON), &codes)
+	return &entity.CapabilityValidationResult{
+		ValidationID:               row.ValidationID,
+		TenantID:                   row.TenantID,
+		BusinessID:                 row.BusinessID,
+		CapabilityID:               row.CapabilityID,
+		RevisionID:                 row.RevisionID,
+		RevisionContentDigest:      row.RevisionContentDigest,
+		BusinessModelRevision:      row.BusinessModelRevision,
+		BusinessModelContentDigest: row.BusinessModelContentDigest,
+		ContractEvidenceDigest:     row.ContractEvidenceDigest,
+		EvidenceDigest:             row.EvidenceDigest,
+		Status:                     entity.ValidationStatus(row.Status),
+		IssueCodes:                 codes,
+		ValidatedBy:                row.ValidatedBy,
+		ValidatedAt:                row.ValidatedAt,
+		CreatedAt:                  row.CreatedAt,
+	}
+}
+
+func (d *CapabilityDAO) CreateValidationResult(ctx context.Context, v *entity.CapabilityValidationResult) error {
+	err := d.db.WithContext(ctx).Create(validationFrom(v)).Error
+	if isDup(err) {
+		return entity.ErrConflict
+	}
+	return err
+}
+
+func (d *CapabilityDAO) GetValidationByEvidence(ctx context.Context, tenantID, revisionID, evidenceDigest string) (*entity.CapabilityValidationResult, error) {
+	var row validationResultRow
+	err := d.db.WithContext(ctx).Where(
+		"tenant_id = ? AND revision_id = ? AND evidence_digest = ?",
+		tenantID, revisionID, evidenceDigest,
+	).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, entity.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toValidation(&row), nil
+}
+
+func (d *CapabilityDAO) ListValidationsByRevision(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {
+	var rows []validationResultRow
+	err := d.db.WithContext(ctx).Where("tenant_id = ? AND revision_id = ?", tenantID, revisionID).
+		Order("created_at ASC").Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*entity.CapabilityValidationResult, 0, len(rows))
+	for i := range rows {
+		out = append(out, toValidation(&rows[i]))
+	}
+	return out, nil
+}
+
+func (d *CapabilityDAO) GetLatestPASSValidation(ctx context.Context, tenantID, revisionID string) (*entity.CapabilityValidationResult, error) {
+	var row validationResultRow
+	err := d.db.WithContext(ctx).Where(
+		"tenant_id = ? AND revision_id = ? AND status = ?",
+		tenantID, revisionID, string(entity.ValidationPass),
+	).Order("validated_at DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, entity.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toValidation(&row), nil
+}

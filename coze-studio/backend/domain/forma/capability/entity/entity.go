@@ -77,6 +77,45 @@ const (
 	QueryOpFilter QueryOperation = "FILTER"
 )
 
+// ValidationStatus — CapabilityValidationResult outcome (S5-G3).
+type ValidationStatus string
+
+const (
+	ValidationPass ValidationStatus = "PASS"
+	ValidationFail ValidationStatus = "FAIL"
+)
+
+// Stable validation issue codes (no raw provider/DB text).
+const (
+	IssueBMRevisionMissing       = "FORMA_CAPABILITY_BM_REVISION_MISSING"
+	IssueBMNotFound              = "FORMA_CAPABILITY_BM_NOT_FOUND"
+	IssueBMTenantMismatch        = "FORMA_CAPABILITY_BM_TENANT_MISMATCH"
+	IssueBMBusinessMismatch      = "FORMA_CAPABILITY_BM_BUSINESS_MISMATCH"
+	IssueContractRequired        = "FORMA_CAPABILITY_CONTRACT_REQUIRED"
+	IssueContractNotFound        = "FORMA_CAPABILITY_CONTRACT_NOT_FOUND"
+	IssueContractNotActive       = "FORMA_CAPABILITY_CONTRACT_NOT_ACTIVE"
+	IssueContractPinMismatch     = "FORMA_CAPABILITY_CONTRACT_PIN_MISMATCH"
+	IssueContractTenantMismatch  = "FORMA_CAPABILITY_CONTRACT_TENANT_MISMATCH"
+	IssueContractBusinessMismatch = "FORMA_CAPABILITY_CONTRACT_BUSINESS_MISMATCH"
+	IssueContractDuplicatePin    = "FORMA_CAPABILITY_CONTRACT_DUPLICATE_PIN"
+	IssueMappingMissing          = "FORMA_CAPABILITY_MAPPING_MISSING"
+	IssueMappingUnknownCapKey    = "FORMA_CAPABILITY_MAPPING_UNKNOWN_CAPABILITY_KEY"
+	IssueMappingUnknownContractKey = "FORMA_CAPABILITY_MAPPING_UNKNOWN_CONTRACT_KEY"
+	IssueMappingDuplicateCapKey  = "FORMA_CAPABILITY_MAPPING_DUPLICATE_CAPABILITY_KEY"
+	IssueMappingTypeConflict     = "FORMA_CAPABILITY_MAPPING_TYPE_CONFLICT"
+	IssueTypeMismatch            = "FORMA_CAPABILITY_TYPE_MISMATCH"
+	IssueNullability             = "FORMA_CAPABILITY_NULLABILITY"
+	IssueQueryOpUnsupported      = "FORMA_CAPABILITY_QUERY_OP_UNSUPPORTED"
+	IssueQueryOpNotAllowed       = "FORMA_CAPABILITY_QUERY_OP_NOT_ALLOWED"
+	IssueQueryPairingInvalid     = "FORMA_CAPABILITY_QUERY_PAIRING_INVALID"
+	IssueQueryFilterRequiredInput = "FORMA_CAPABILITY_QUERY_FILTER_REQUIRED_INPUT"
+	IssueQueryFilterPredicate    = "FORMA_CAPABILITY_QUERY_FILTER_PREDICATE"
+	IssueQueryFilterOperator     = "FORMA_CAPABILITY_QUERY_FILTER_OPERATOR"
+	IssueQueryPreconditionKey    = "FORMA_CAPABILITY_QUERY_PRECONDITION_KEY"
+	IssueProvenance              = "FORMA_CAPABILITY_PROVENANCE"
+	IssueStructuralInvalid       = "FORMA_CAPABILITY_STRUCTURAL_INVALID"
+)
+
 // OutputCardinality — frozen V1 enum (§10.1.4).
 type OutputCardinality string
 
@@ -332,6 +371,26 @@ type CapabilityAnalysisAttempt struct {
 	ErrorCode        string
 	CreatedAt        time.Time
 	CompletedAt      *time.Time
+}
+
+// CapabilityValidationResult is immutable technical validation evidence (S5-G3).
+// Not Capability semantic SoT — issue_codes only; no raw errors or descriptors.
+type CapabilityValidationResult struct {
+	ValidationID                string
+	TenantID                    string
+	BusinessID                  string
+	CapabilityID                string
+	RevisionID                  string
+	RevisionContentDigest       string
+	BusinessModelRevision       int32
+	BusinessModelContentDigest  string
+	ContractEvidenceDigest      string
+	EvidenceDigest              string
+	Status                      ValidationStatus
+	IssueCodes                  []string
+	ValidatedBy                 string
+	ValidatedAt                 time.Time
+	CreatedAt                   time.Time
 }
 
 func cloneLogicalSchema(in LogicalSchema) LogicalSchema {

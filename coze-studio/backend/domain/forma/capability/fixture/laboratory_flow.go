@@ -29,7 +29,14 @@ func LaboratoryFlowCapability() entity.SemanticPayload {
 			{ID: "ef_read", Kind: entity.EffectReadOnly, Description: "No laboratory mutation"},
 		},
 		DataContractBindings: []entity.DataContractBinding{
-			{DataContractID: "dc_lab", DataContractRevisionID: "dcr_lab_1", DataContractVersion: 1},
+			{
+				DataContractID: "dc_lab", DataContractRevisionID: "dcr_lab_1", DataContractVersion: 1,
+				LogicalFieldMappings: []entity.LogicalFieldMapping{
+					{CapabilityLogicalKey: "work_cell_id", ContractLogicalKey: "work_cell_id"},
+					{CapabilityLogicalKey: "device_id", ContractLogicalKey: "device_id"},
+					{CapabilityLogicalKey: "device_status", ContractLogicalKey: "device_status"},
+				},
+			},
 		},
 		QueryOperation:    entity.QueryOpList,
 		OutputCardinality: entity.CardinalityMany,
