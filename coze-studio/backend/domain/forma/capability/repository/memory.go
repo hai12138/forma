@@ -961,3 +961,41 @@ func ReplaceProposalForTest(repo CapabilityRepository, p *entity.CapabilityPropo
 	r.proposals[id] = cloneProposal(p)
 	return nil
 }
+
+// ReplaceAnalysisRunForTest overwrites an existing analysis run row (negative provenance tests).
+func ReplaceAnalysisRunForTest(repo CapabilityRepository, run *entity.CapabilityAnalysisRun) error {
+	r, ok := repo.(*memRepo)
+	if !ok {
+		return errors.New("not memory repo")
+	}
+	if run == nil || run.AnalysisRunID == "" {
+		return entity.ErrInvalidPayload
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id := k(run.TenantID, run.AnalysisRunID)
+	if _, ok := r.runs[id]; !ok {
+		return entity.ErrAnalysisNotFound
+	}
+	r.runs[id] = cloneAnalysisRun(run)
+	return nil
+}
+
+// ReplaceRevisionForTest overwrites an existing revision row (negative provenance tests).
+func ReplaceRevisionForTest(repo CapabilityRepository, rev *entity.BusinessCapabilityRevision) error {
+	r, ok := repo.(*memRepo)
+	if !ok {
+		return errors.New("not memory repo")
+	}
+	if rev == nil || rev.RevisionID == "" {
+		return entity.ErrInvalidPayload
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id := k(rev.TenantID, rev.RevisionID)
+	if _, ok := r.revs[id]; !ok {
+		return entity.ErrRevisionNotFound
+	}
+	r.revs[id] = cloneRevision(rev)
+	return nil
+}

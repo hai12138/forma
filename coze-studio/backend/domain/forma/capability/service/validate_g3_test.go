@@ -423,7 +423,7 @@ func TestG3UnmappedCapabilityKeyFAIL(t *testing.T) {
 	}
 }
 
-func TestG3HistoricalBusinessModelRevisionAllowed(t *testing.T) {
+func TestG3HistoricalBusinessModelRevisionRejectedWhenNotCurrent(t *testing.T) {
 	svc, _, _, bm, contracts := newTestService(nil)
 	payload := fixture.LaboratoryCommandCapability()
 	payload.BusinessModelRevision = 3
@@ -431,12 +431,11 @@ func TestG3HistoricalBusinessModelRevisionAllowed(t *testing.T) {
 		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: payload,
 	})
 	require.NoError(t, err)
-	bm.Put(&BusinessModelRevisionEvidence{TenantID: "t1", BusinessID: "biz-lab", Revision: 3, ContentDigest: "hist-bm-3"})
-	bm.Put(&BusinessModelRevisionEvidence{TenantID: "t1", BusinessID: "biz-lab", Revision: 9, ContentDigest: "latest-bm-9"})
 	seedPortsForRevision(bm, contracts, rev)
+	// Master CurrentRevision advances past the Capability pin — fail closed (S5-G3-F2).
+	bm.Put(&BusinessModelRevisionEvidence{TenantID: "t1", BusinessID: "biz-lab", Revision: 9, ContentDigest: "latest-bm-9"})
 	out, result, err := svc.Validate(context.Background(), "t1", rev.RevisionID, testActor)
-	require.NoError(t, err)
-	require.Equal(t, entity.ValidationPass, result.Status)
-	require.Equal(t, int32(3), result.BusinessModelRevision)
-	require.Equal(t, entity.RevisionValidated, out.Status)
+	require.ErrorIs(t, err, entity.ErrValidationFailed)
+	require.Equal(t, entity.RevisionDraft, out.Status)
+	require.Contains(t, result.IssueCodes, entity.IssueBMNotFound)
 }

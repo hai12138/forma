@@ -946,6 +946,10 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 			existing, getErr := tx.Repo().GetValidationByEvidence(ctx, tenantID, revisionID, ev.evidenceDigest)
 			if getErr == nil && existing.Status == entity.ValidationPass &&
 				existing.RevisionContentDigest == ev.revDigest {
+				// Replay path: fence before returning so BM/Contract drift cannot silently reuse PASS.
+				if _, fenceErr := s.requireFinalEvidenceFence(ctx, rev, ev); fenceErr != nil {
+					return fenceErr
+				}
 				outRev = rev
 				outResult = existing
 				return nil
@@ -966,6 +970,12 @@ func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, 
 		}
 
 		issues := validateCompatibility(rev, ev.bmEvidence, ev.descriptors)
+		// Final fence before any ValidationResult create or revision status write.
+		// Capability locks do not cover Business/Contract aggregates.
+		ev, err = s.requireFinalEvidenceFence(ctx, rev, ev)
+		if err != nil {
+			return err
+		}
 		now := s.now()
 		result := &entity.CapabilityValidationResult{
 			ValidationID:               newID("cval"),
@@ -1085,6 +1095,33 @@ func (s *capabilityService) buildValidationEvidence(ctx context.Context, rev *en
 	}, nil
 }
 
+// requireFinalEvidenceFence re-reads BM/Contract evidence and requires byte-identical digests
+// before Create ValidationResult, revision status mutation, or Activate's first status write.
+// Capability row locks do not cover Business/Contract aggregates.
+func (s *capabilityService) requireFinalEvidenceFence(ctx context.Context, rev *entity.BusinessCapabilityRevision, first *evidenceBundle) (*evidenceBundle, error) {
+	if first == nil {
+		return nil, entity.ErrConsistency
+	}
+	second, err := s.buildValidationEvidence(ctx, rev)
+	if err != nil {
+		return nil, err
+	}
+	if !evidenceBundleDigestsEqual(first, second) {
+		return nil, entity.ErrConsistency
+	}
+	return second, nil
+}
+
+func evidenceBundleDigestsEqual(a, b *evidenceBundle) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return a.revDigest == b.revDigest &&
+		a.bmDigest == b.bmDigest &&
+		a.contractDigest == b.contractDigest &&
+		a.evidenceDigest == b.evidenceDigest
+}
+
 func (s *capabilityService) fetchValidationEvidence(ctx context.Context, rev *entity.BusinessCapabilityRevision) (*BusinessModelRevisionEvidence, map[string]*ContractLogicalDescriptor, error) {
 	bm, err := s.business.GetBusinessModelRevision(ctx, rev.TenantID, rev.BusinessID, rev.BusinessModelRevision)
 	if err != nil {
@@ -1179,6 +1216,15 @@ func (s *capabilityService) Activate(ctx context.Context, tenantID, revisionID, 
 		}
 		// Fresh digests under lock — old PASS must fail if descriptors drifted.
 		if pass.EvidenceDigest != ev.evidenceDigest || pass.ContractEvidenceDigest != ev.contractDigest {
+			return entity.ErrMissingValidationEvidence
+		}
+		// Final fence before first Activate status write (Capability lock ≠ BM/Contract lock).
+		ev, err = s.requireFinalEvidenceFence(ctx, rev, ev)
+		if err != nil {
+			return err
+		}
+		if pass.EvidenceDigest != ev.evidenceDigest || pass.ContractEvidenceDigest != ev.contractDigest ||
+			pass.RevisionContentDigest != ev.revDigest || pass.BusinessModelContentDigest != ev.bmDigest {
 			return entity.ErrMissingValidationEvidence
 		}
 		revs, err := tx.Repo().ListRevisions(ctx, tenantID, cap.CapabilityID)
@@ -1315,13 +1361,19 @@ func (s *capabilityService) requireValidateProvenance(ctx context.Context, tx Ca
 		if err != nil {
 			return entity.ErrMissingProvenance
 		}
-		if prop.AnalysisRunID != rev.AnalysisRunID {
+		if prop.TenantID != rev.TenantID || prop.BusinessID != rev.BusinessID {
 			return entity.ErrMissingProvenance
 		}
-		if prop.CapabilityID != "" && prop.CapabilityID != rev.CapabilityID {
+		if prop.Status != entity.ProposalConfirmed && prop.Status != entity.ProposalEditConfirmed {
 			return entity.ErrMissingProvenance
 		}
-		if prop.MaterializedRevisionID != "" && prop.MaterializedRevisionID != rev.RevisionID {
+		if prop.CapabilityID == "" || prop.CapabilityID != rev.CapabilityID {
+			return entity.ErrMissingProvenance
+		}
+		if prop.MaterializedRevisionID == "" || prop.MaterializedRevisionID != rev.RevisionID {
+			return entity.ErrMissingProvenance
+		}
+		if prop.AnalysisRunID == "" || prop.AnalysisRunID != rev.AnalysisRunID {
 			return entity.ErrMissingProvenance
 		}
 		dec, err := tx.Repo().GetDecisionByProposal(ctx, rev.TenantID, rev.ProposalID)
@@ -1331,10 +1383,16 @@ func (s *capabilityService) requireValidateProvenance(ctx context.Context, tx Ca
 		if dec.Action != entity.DecisionConfirm && dec.Action != entity.DecisionEditConfirm {
 			return entity.ErrMissingProvenance
 		}
-		if dec.TargetRevisionID != rev.RevisionID {
+		if dec.TenantID != rev.TenantID || dec.BusinessID != rev.BusinessID {
 			return entity.ErrMissingProvenance
 		}
-		if dec.CapabilityID != "" && dec.CapabilityID != rev.CapabilityID {
+		if dec.ProposalID != rev.ProposalID {
+			return entity.ErrMissingProvenance
+		}
+		if dec.CapabilityID == "" || dec.CapabilityID != rev.CapabilityID {
+			return entity.ErrMissingProvenance
+		}
+		if dec.TargetRevisionID == "" || dec.TargetRevisionID != rev.RevisionID {
 			return entity.ErrMissingProvenance
 		}
 		run, err := tx.Repo().GetAnalysisRun(ctx, rev.TenantID, rev.AnalysisRunID)
@@ -1344,6 +1402,12 @@ func (s *capabilityService) requireValidateProvenance(ctx context.Context, tx Ca
 		if run.TenantID != rev.TenantID || run.BusinessID != rev.BusinessID || run.AnalysisRunID != rev.AnalysisRunID {
 			return entity.ErrMissingProvenance
 		}
+		if run.BusinessModelRevision != rev.BusinessModelRevision {
+			return entity.ErrMissingProvenance
+		}
+		if run.Status != entity.AnalysisSucceeded {
+			return entity.ErrMissingProvenance
+		}
 		return nil
 	case entity.SourceManualCreated:
 		decs, err := tx.Repo().ListDecisionsByCapability(ctx, rev.TenantID, rev.CapabilityID)
@@ -1351,7 +1415,11 @@ func (s *capabilityService) requireValidateProvenance(ctx context.Context, tx Ca
 			return err
 		}
 		for _, d := range decs {
-			if d.Action == entity.DecisionCreate && d.TargetRevisionID == rev.RevisionID {
+			if d.Action == entity.DecisionCreate &&
+				d.TenantID == rev.TenantID &&
+				d.BusinessID == rev.BusinessID &&
+				d.CapabilityID == rev.CapabilityID &&
+				d.TargetRevisionID == rev.RevisionID {
 				return nil
 			}
 		}
@@ -1364,15 +1432,29 @@ func (s *capabilityService) requireValidateProvenance(ctx context.Context, tx Ca
 		if err != nil {
 			return err
 		}
+		matched := false
 		for _, d := range decs {
 			if (d.Action == entity.DecisionEdit || d.Action == entity.DecisionDerive) &&
-				d.TargetRevisionID == rev.RevisionID &&
+				d.TenantID == rev.TenantID &&
+				d.BusinessID == rev.BusinessID &&
+				d.CapabilityID == rev.CapabilityID &&
 				d.SourceRevisionID == rev.DerivedFromRevisionID &&
-				d.CapabilityID == rev.CapabilityID {
-				return nil
+				d.TargetRevisionID == rev.RevisionID {
+				matched = true
+				break
 			}
 		}
-		return entity.ErrMissingProvenance
+		if !matched {
+			return entity.ErrMissingProvenance
+		}
+		src, err := tx.Repo().GetRevision(ctx, rev.TenantID, rev.DerivedFromRevisionID)
+		if err != nil {
+			return entity.ErrMissingProvenance
+		}
+		if src.TenantID != rev.TenantID || src.BusinessID != rev.BusinessID || src.CapabilityID != rev.CapabilityID {
+			return entity.ErrMissingProvenance
+		}
+		return nil
 	default:
 		return entity.ErrMissingProvenance
 	}

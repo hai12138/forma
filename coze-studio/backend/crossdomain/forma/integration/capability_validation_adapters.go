@@ -30,12 +30,30 @@ func (a *BusinessModelValidationAdapter) GetBusinessModelRevision(ctx context.Co
 	if a == nil || a.Business == nil {
 		return nil, capentity.ErrPortsNotConfigured
 	}
+	// Fail-closed: Capability may only pin the Business master's *current* revision.
+	// Capability row locks do not cover the Business aggregate — re-read master each call.
+	master, err := a.Business.Get(ctx, tenantID, businessID)
+	if err != nil {
+		return nil, mapBusinessValidationError(err)
+	}
+	if master == nil {
+		return nil, capentity.ErrBusinessModelNotFound
+	}
+	if master.TenantID != tenantID || master.BusinessID != businessID {
+		return nil, capentity.ErrConsistency
+	}
+	if master.CurrentRevision != revision {
+		return nil, capentity.ErrBusinessModelNotFound
+	}
 	rev, _, err := a.Business.GetRevision(ctx, tenantID, businessID, revision)
 	if err != nil {
 		return nil, mapBusinessValidationError(err)
 	}
 	if rev == nil {
 		return nil, capentity.ErrBusinessModelNotFound
+	}
+	if rev.TenantID != tenantID || rev.BusinessID != businessID || rev.RevisionNo != revision {
+		return nil, capentity.ErrConsistency
 	}
 	return &capsvc.BusinessModelRevisionEvidence{
 		TenantID:      tenantID,

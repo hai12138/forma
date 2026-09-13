@@ -46,11 +46,13 @@ func (u *rootOverrideUoW) WithinTransaction(ctx context.Context, fn func(tx Capa
 }
 
 // seedPortsForRevision registers BM + Active contract descriptors matching the revision payload.
+// Pins FakeBusinessModelPort CurrentRevision to the revision pin (S5-G3-F2 current-only rule).
 func seedPortsForRevision(bm *FakeBusinessModelPort, contracts *FakeContractPort, rev *entity.BusinessCapabilityRevision) {
 	bm.Put(&BusinessModelRevisionEvidence{
 		TenantID: rev.TenantID, BusinessID: rev.BusinessID,
 		Revision: rev.BusinessModelRevision, ContentDigest: "bm-digest-" + rev.BusinessID,
 	})
+	bm.SetCurrentRevision(rev.TenantID, rev.BusinessID, rev.BusinessModelRevision)
 	for _, b := range rev.DataContractBindings {
 		fields := make([]ContractLogicalField, 0)
 		filters := make([]ContractFilterFieldSpec, 0)
