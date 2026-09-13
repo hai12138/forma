@@ -125,6 +125,7 @@ const (
 	CodeCapabilityIdempotencyConflict  int32 = 40982
 	CodeCapabilityActiveConflict       int32 = 40983
 	CodeCapabilityValidationFailed     int32 = 40984
+	CodeCapabilityAnalysisFailed       int32 = 40985
 	CodeCapabilityInvalidPayload       int32 = 40080
 	CodeCapabilityNotConfigured        int32 = 50080
 )
@@ -234,6 +235,7 @@ const (
 	KeyCapabilityIdempotencyConflict = "FORMA_CAPABILITY_IDEMPOTENCY_CONFLICT"
 	KeyCapabilityActiveConflict      = "FORMA_CAPABILITY_ACTIVE_CONFLICT"
 	KeyCapabilityValidationFailed    = "FORMA_CAPABILITY_VALIDATION_FAILED"
+	KeyCapabilityAnalysisFailed      = "FORMA_CAPABILITY_ANALYSIS_FAILED"
 	KeyCapabilityInvalidPayload      = "FORMA_CAPABILITY_INVALID_PAYLOAD"
 	KeyCapabilityNotConfigured       = "FORMA_CAPABILITY_NOT_CONFIGURED"
 )
@@ -716,6 +718,9 @@ func CapabilityActiveConflict(msg string) *FormaError {
 func CapabilityValidationFailed(msg string) *FormaError {
 	return capabilityError(CodeCapabilityValidationFailed, http.StatusConflict, KeyCapabilityValidationFailed, msg, "capability validation failed")
 }
+func CapabilityAnalysisFailed(msg string) *FormaError {
+	return capabilityError(CodeCapabilityAnalysisFailed, http.StatusConflict, KeyCapabilityAnalysisFailed, msg, "capability analysis failed")
+}
 func CapabilityInvalidPayload(msg string) *FormaError {
 	return capabilityError(CodeCapabilityInvalidPayload, http.StatusBadRequest, KeyCapabilityInvalidPayload, msg, "capability invalid payload")
 }
@@ -999,8 +1004,10 @@ func MapDomainError(err error) *FormaError {
 		return CapabilityIdempotencyConflict("")
 	case errors.Is(err, capentity.ErrActiveConflict):
 		return CapabilityActiveConflict("")
-	case errors.Is(err, capentity.ErrValidationFailed), errors.Is(err, capentity.ErrAnalysisFailed):
+	case errors.Is(err, capentity.ErrValidationFailed):
 		return CapabilityValidationFailed("")
+	case errors.Is(err, capentity.ErrAnalysisFailed):
+		return CapabilityAnalysisFailed("")
 	case errors.Is(err, capentity.ErrConflict), errors.Is(err, capentity.ErrConsistency),
 		errors.Is(err, capentity.ErrBusinessModelNotFound), errors.Is(err, capentity.ErrContractNotFound):
 		return CapabilityConflict("")

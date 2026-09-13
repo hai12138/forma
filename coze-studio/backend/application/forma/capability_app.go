@@ -470,48 +470,6 @@ func (s *ApplicationService) EditCapability(ctx context.Context, businessID, cap
 	return &DeriveCapabilityResponse{Revision: capabilityRevisionDTO(rev), Decision: capabilityDecisionDTO(dec)}, nil
 }
 
-func (s *ApplicationService) StartCapabilityAnalysis(ctx context.Context, businessID string, in *StartCapabilityAnalysisInput) (*StartCapabilityAnalysisResponse, error) {
-	tc, err := s.requireCapabilityAdmin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if in == nil {
-		return nil, formaerrors.CapabilityInvalidPayload("analysis input required")
-	}
-	if err := s.requireCapabilityBusiness(ctx, tc.TenantID, businessID); err != nil {
-		return nil, err
-	}
-	analysis := in.Analysis
-	if analysis.BusinessModelRevision == 0 {
-		analysis.BusinessModelRevision = in.BusinessModelRevision
-	}
-	res, err := s.CapabilitySVC.StartAnalysis(ctx, &capsvc.StartAnalysisInput{
-		TenantID:              tc.TenantID,
-		BusinessID:            businessID,
-		BusinessModelRevision: analysis.BusinessModelRevision,
-		ClientRequestID:       in.ClientRequestID,
-		ActorID:               capabilityActorID(tc),
-		Analysis:              analysis,
-	})
-	if err != nil {
-		return nil, formaerrors.MapDomainError(err)
-	}
-	s.recordCapabilityAudit(ctx, tc, "capability.analyze", res.Run.AnalysisRunID)
-	return toStartAnalysisResponse(res), nil
-}
-
-func (s *ApplicationService) GetCapabilityAnalysis(ctx context.Context, businessID, analysisRunID string) (*CapabilityAnalysisRunDTO, error) {
-	tc, err := s.requireCapabilityRead(ctx)
-	if err != nil {
-		return nil, err
-	}
-	run, err := s.requireCapabilityAnalysis(ctx, tc.TenantID, businessID, analysisRunID)
-	if err != nil {
-		return nil, err
-	}
-	return capabilityAnalysisDTO(run), nil
-}
-
 func (s *ApplicationService) ConfirmCapabilityProposal(ctx context.Context, businessID, proposalID string, in *ConfirmCapabilityProposalInput) (*CapabilityRevisionDTO, error) {
 	tc, err := s.requireCapabilityAdmin(ctx)
 	if err != nil {

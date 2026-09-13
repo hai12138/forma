@@ -33,6 +33,7 @@ func TestMapDomainError_CapabilityStableKeys(t *testing.T) {
 		{capentity.ErrIdempotencyConflict, formaerrors.CodeCapabilityIdempotencyConflict, formaerrors.KeyCapabilityIdempotencyConflict},
 		{capentity.ErrActiveConflict, formaerrors.CodeCapabilityActiveConflict, formaerrors.KeyCapabilityActiveConflict},
 		{capentity.ErrValidationFailed, formaerrors.CodeCapabilityValidationFailed, formaerrors.KeyCapabilityValidationFailed},
+		{capentity.ErrAnalysisFailed, formaerrors.CodeCapabilityAnalysisFailed, formaerrors.KeyCapabilityAnalysisFailed},
 		{capentity.ErrConflict, formaerrors.CodeCapabilityConflict, formaerrors.KeyCapabilityConflict},
 		{capentity.ErrConsistency, formaerrors.CodeCapabilityConflict, formaerrors.KeyCapabilityConflict},
 		{capentity.ErrNotConfigured, formaerrors.CodeCapabilityNotConfigured, formaerrors.KeyCapabilityNotConfigured},
