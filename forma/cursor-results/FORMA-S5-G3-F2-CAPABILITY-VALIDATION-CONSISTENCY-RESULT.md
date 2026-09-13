@@ -49,8 +49,8 @@ Local verification:
 
 | Field | Value |
 |-------|-------|
-| COMMIT_SHA | _(pending commit)_ |
-| CI_RUN | _(pending)_ |
+| COMMIT_SHA | `74db871d4a944a2bcd0957374c5d39a91381b319` |
+| CI_RUN | _(pending push)_ |
 | forma-backend | _(pending)_ |
 | forma-migration-apply | _(pending)_ |
 | forma-frontend | _(pending)_ |
