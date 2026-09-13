@@ -17,6 +17,7 @@ import (
 	assetsvc "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/service"
 	businessrepo "github.com/coze-dev/coze-studio/backend/domain/forma/business/repository"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
+	capsvc "github.com/coze-dev/coze-studio/backend/domain/forma/capability/service"
 	datarepo "github.com/coze-dev/coze-studio/backend/domain/forma/data/repository"
 	datasvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
 	"github.com/coze-dev/coze-studio/backend/domain/forma/meta"
@@ -42,6 +43,7 @@ type ApplicationService struct {
 	MappingSVC    datasvc.MappingService
 	ContractSVC   datasvc.ContractService
 	DatasourceSVC datasvc.DataSourceService
+	CapabilitySVC capsvc.CapabilityService
 	UserDomainSVC userservice.User
 }
 
@@ -103,6 +105,13 @@ func InitService(_ context.Context, components *ServiceComponents) *ApplicationS
 		Repo:     datarepo.NewDataSourceRepository(components.DB),
 		Secrets:  secretProvider,
 		Adapters: datasvc.NewDefaultAdapterRegistry(),
+	})
+	// REAL_MODEL_CALLS = 0 — wire DeterministicFakeGenerator only (no live model).
+	ApplicationSVC.CapabilitySVC = capsvc.NewCapabilityService(&capsvc.Components{
+		UoW:       capsvc.NewGormUnitOfWork(components.DB),
+		Generator: &capsvc.DeterministicFakeGenerator{},
+		Business:  integration.NewBusinessModelValidationAdapter(ApplicationSVC.BusinessSVC),
+		Contract:  integration.NewContractValidationAdapter(ApplicationSVC.ContractSVC),
 	})
 	return ApplicationSVC
 }

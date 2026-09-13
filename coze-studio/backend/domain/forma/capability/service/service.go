@@ -46,8 +46,12 @@ type CapabilityService interface {
 	EditConfirmProposal(ctx context.Context, in *EditConfirmInput) (*entity.BusinessCapabilityRevision, error)
 	RejectProposal(ctx context.Context, in *RejectInput) (*entity.CapabilityDecision, error)
 	GetCapability(ctx context.Context, tenantID, capabilityID string) (*entity.BusinessCapability, error)
+	ListCapabilities(ctx context.Context, tenantID, businessID string) ([]*entity.BusinessCapability, error)
 	GetRevision(ctx context.Context, tenantID, revisionID string) (*entity.BusinessCapabilityRevision, error)
 	ListRevisions(ctx context.Context, tenantID, capabilityID string) ([]*entity.BusinessCapabilityRevision, error)
+	GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.CapabilityProposal, error)
+	ListValidations(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error)
+	ListDecisions(ctx context.Context, tenantID, capabilityID string) ([]*entity.CapabilityDecision, error)
 	Validate(ctx context.Context, tenantID, revisionID, actorID string) (*entity.BusinessCapabilityRevision, *entity.CapabilityValidationResult, error)
 	Activate(ctx context.Context, tenantID, revisionID, actorID, reason string) (*entity.BusinessCapabilityRevision, error)
 	MarkStale(ctx context.Context, tenantID, revisionID, actorID, reason string) (*entity.BusinessCapabilityRevision, error)
@@ -893,6 +897,16 @@ func (s *capabilityService) GetCapability(ctx context.Context, tenantID, capabil
 	return s.root().GetCapability(ctx, tenantID, capabilityID)
 }
 
+func (s *capabilityService) ListCapabilities(ctx context.Context, tenantID, businessID string) ([]*entity.BusinessCapability, error) {
+	if !s.configured() {
+		return nil, entity.ErrNotConfigured
+	}
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(businessID) == "" {
+		return nil, entity.ErrInvalidPayload
+	}
+	return s.root().ListCapabilitiesByBusiness(ctx, tenantID, businessID)
+}
+
 func (s *capabilityService) GetRevision(ctx context.Context, tenantID, revisionID string) (*entity.BusinessCapabilityRevision, error) {
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
@@ -905,6 +919,27 @@ func (s *capabilityService) ListRevisions(ctx context.Context, tenantID, capabil
 		return nil, entity.ErrNotConfigured
 	}
 	return s.root().ListRevisions(ctx, tenantID, capabilityID)
+}
+
+func (s *capabilityService) GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.CapabilityProposal, error) {
+	if !s.configured() {
+		return nil, entity.ErrNotConfigured
+	}
+	return s.root().GetProposal(ctx, tenantID, proposalID)
+}
+
+func (s *capabilityService) ListValidations(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {
+	if !s.configured() {
+		return nil, entity.ErrNotConfigured
+	}
+	return s.root().ListValidationsByRevision(ctx, tenantID, revisionID)
+}
+
+func (s *capabilityService) ListDecisions(ctx context.Context, tenantID, capabilityID string) ([]*entity.CapabilityDecision, error) {
+	if !s.configured() {
+		return nil, entity.ErrNotConfigured
+	}
+	return s.root().ListDecisionsByCapability(ctx, tenantID, capabilityID)
 }
 
 func (s *capabilityService) Validate(ctx context.Context, tenantID, revisionID, actorID string) (*entity.BusinessCapabilityRevision, *entity.CapabilityValidationResult, error) {

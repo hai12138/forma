@@ -12,6 +12,7 @@ import (
 
 	analystentity "github.com/coze-dev/coze-studio/backend/domain/forma/analyst/entity"
 	businessentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
+	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	dataentity "github.com/coze-dev/coze-studio/backend/domain/forma/data/entity"
 	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
 )
@@ -111,6 +112,21 @@ const (
 	CodeAdminLastSuperAdmin    int32 = 40970 // HTTP 409
 	CodeAdminUserNotFound      int32 = 40471 // HTTP 404
 	CodePasswordChangeRequired int32 = 40371 // HTTP 403
+
+	// Capability — *80 range (*60 occupied by Data Contract).
+	CodeCapabilityForbidden            int32 = 40380
+	CodeCapabilityNotFound             int32 = 40480
+	CodeCapabilityRevisionNotFound     int32 = 40481
+	CodeCapabilityProposalNotFound     int32 = 40482
+	CodeCapabilityAnalysisNotFound     int32 = 40483
+	CodeCapabilityDecisionNotFound     int32 = 40484
+	CodeCapabilityConflict             int32 = 40980
+	CodeCapabilityIllegalTransition    int32 = 40981
+	CodeCapabilityIdempotencyConflict  int32 = 40982
+	CodeCapabilityActiveConflict       int32 = 40983
+	CodeCapabilityValidationFailed     int32 = 40984
+	CodeCapabilityInvalidPayload       int32 = 40080
+	CodeCapabilityNotConfigured        int32 = 50080
 )
 
 const (
@@ -206,6 +222,20 @@ const (
 	KeyAdminLastSuperAdmin    = "FORMA_ADMIN_LAST_SUPER_ADMIN"
 	KeyAdminUserNotFound      = "FORMA_ADMIN_USER_NOT_FOUND"
 	KeyPasswordChangeRequired = "FORMA_PASSWORD_CHANGE_REQUIRED"
+
+	KeyCapabilityForbidden           = "FORMA_CAPABILITY_FORBIDDEN"
+	KeyCapabilityNotFound            = "FORMA_CAPABILITY_NOT_FOUND"
+	KeyCapabilityRevisionNotFound    = "FORMA_CAPABILITY_REVISION_NOT_FOUND"
+	KeyCapabilityProposalNotFound    = "FORMA_CAPABILITY_PROPOSAL_NOT_FOUND"
+	KeyCapabilityAnalysisNotFound    = "FORMA_CAPABILITY_ANALYSIS_NOT_FOUND"
+	KeyCapabilityDecisionNotFound    = "FORMA_CAPABILITY_DECISION_NOT_FOUND"
+	KeyCapabilityConflict            = "FORMA_CAPABILITY_CONFLICT"
+	KeyCapabilityIllegalTransition   = "FORMA_CAPABILITY_ILLEGAL_TRANSITION"
+	KeyCapabilityIdempotencyConflict = "FORMA_CAPABILITY_IDEMPOTENCY_CONFLICT"
+	KeyCapabilityActiveConflict      = "FORMA_CAPABILITY_ACTIVE_CONFLICT"
+	KeyCapabilityValidationFailed    = "FORMA_CAPABILITY_VALIDATION_FAILED"
+	KeyCapabilityInvalidPayload      = "FORMA_CAPABILITY_INVALID_PAYLOAD"
+	KeyCapabilityNotConfigured       = "FORMA_CAPABILITY_NOT_CONFIGURED"
 )
 
 // FormaError is the typed API/domain error for Forma endpoints.
@@ -650,6 +680,49 @@ func PasswordChangeRequired(msg string) *FormaError {
 	return New(CodePasswordChangeRequired, http.StatusForbidden, KeyPasswordChangeRequired, defaultMessage(msg, "password change required"))
 }
 
+func capabilityError(code int32, status int, key, msg, fallback string) *FormaError {
+	return New(code, status, key, defaultMessage(msg, fallback))
+}
+func CapabilityForbidden(msg string) *FormaError {
+	return capabilityError(CodeCapabilityForbidden, http.StatusForbidden, KeyCapabilityForbidden, msg, "capability access forbidden")
+}
+func CapabilityNotFound(msg string) *FormaError {
+	return capabilityError(CodeCapabilityNotFound, http.StatusNotFound, KeyCapabilityNotFound, msg, "capability not found")
+}
+func CapabilityRevisionNotFound(msg string) *FormaError {
+	return capabilityError(CodeCapabilityRevisionNotFound, http.StatusNotFound, KeyCapabilityRevisionNotFound, msg, "capability revision not found")
+}
+func CapabilityProposalNotFound(msg string) *FormaError {
+	return capabilityError(CodeCapabilityProposalNotFound, http.StatusNotFound, KeyCapabilityProposalNotFound, msg, "capability proposal not found")
+}
+func CapabilityAnalysisNotFound(msg string) *FormaError {
+	return capabilityError(CodeCapabilityAnalysisNotFound, http.StatusNotFound, KeyCapabilityAnalysisNotFound, msg, "capability analysis run not found")
+}
+func CapabilityDecisionNotFound(msg string) *FormaError {
+	return capabilityError(CodeCapabilityDecisionNotFound, http.StatusNotFound, KeyCapabilityDecisionNotFound, msg, "capability decision not found")
+}
+func CapabilityConflict(msg string) *FormaError {
+	return capabilityError(CodeCapabilityConflict, http.StatusConflict, KeyCapabilityConflict, msg, "capability conflict")
+}
+func CapabilityIllegalTransition(msg string) *FormaError {
+	return capabilityError(CodeCapabilityIllegalTransition, http.StatusConflict, KeyCapabilityIllegalTransition, msg, "capability illegal transition")
+}
+func CapabilityIdempotencyConflict(msg string) *FormaError {
+	return capabilityError(CodeCapabilityIdempotencyConflict, http.StatusConflict, KeyCapabilityIdempotencyConflict, msg, "capability idempotency conflict")
+}
+func CapabilityActiveConflict(msg string) *FormaError {
+	return capabilityError(CodeCapabilityActiveConflict, http.StatusConflict, KeyCapabilityActiveConflict, msg, "capability active revision conflict")
+}
+func CapabilityValidationFailed(msg string) *FormaError {
+	return capabilityError(CodeCapabilityValidationFailed, http.StatusConflict, KeyCapabilityValidationFailed, msg, "capability validation failed")
+}
+func CapabilityInvalidPayload(msg string) *FormaError {
+	return capabilityError(CodeCapabilityInvalidPayload, http.StatusBadRequest, KeyCapabilityInvalidPayload, msg, "capability invalid payload")
+}
+func CapabilityNotConfigured(msg string) *FormaError {
+	return capabilityError(CodeCapabilityNotConfigured, http.StatusInternalServerError, KeyCapabilityNotConfigured, msg, "capability service not configured")
+}
+
 func BadRequest(msg string) *FormaError {
 	return New(CodeAdminBadRequest, http.StatusBadRequest, KeyAdminBadRequest, defaultMessage(msg, "bad request"))
 }
@@ -899,5 +972,42 @@ func MapDomainError(err error) *FormaError {
 	if errors.Is(err, dataentity.ErrDataContractNotAvailable) {
 		return DataContractNotAvailable("")
 	}
+
+	// Capability domain — prefer stable keys; do not surface unsanitized internals for conflict/consistency.
+	switch {
+	case errors.Is(err, capentity.ErrNotFound):
+		return CapabilityNotFound("")
+	case errors.Is(err, capentity.ErrRevisionNotFound):
+		return CapabilityRevisionNotFound("")
+	case errors.Is(err, capentity.ErrProposalNotFound):
+		return CapabilityProposalNotFound("")
+	case errors.Is(err, capentity.ErrAnalysisNotFound):
+		return CapabilityAnalysisNotFound("")
+	case errors.Is(err, capentity.ErrDecisionNotFound):
+		return CapabilityDecisionNotFound("")
+	case errors.Is(err, capentity.ErrForbidden), errors.Is(err, capentity.ErrCrossTenant):
+		return CapabilityForbidden("")
+	case errors.Is(err, capentity.ErrInvalidPayload), errors.Is(err, capentity.ErrConfirmRequired),
+		errors.Is(err, capentity.ErrMissingProvenance):
+		return CapabilityInvalidPayload("")
+	case errors.Is(err, capentity.ErrIllegalTransition), errors.Is(err, capentity.ErrInvalidState),
+		errors.Is(err, capentity.ErrRevisionImmutable), errors.Is(err, capentity.ErrAnalysisNotFailed),
+		errors.Is(err, capentity.ErrStaleGeneration), errors.Is(err, capentity.ErrMissingValidationEvidence),
+		errors.Is(err, capentity.ErrMissingImpactEvidence), errors.Is(err, capentity.ErrContractNotActive):
+		return CapabilityIllegalTransition("")
+	case errors.Is(err, capentity.ErrIdempotencyConflict):
+		return CapabilityIdempotencyConflict("")
+	case errors.Is(err, capentity.ErrActiveConflict):
+		return CapabilityActiveConflict("")
+	case errors.Is(err, capentity.ErrValidationFailed), errors.Is(err, capentity.ErrAnalysisFailed):
+		return CapabilityValidationFailed("")
+	case errors.Is(err, capentity.ErrConflict), errors.Is(err, capentity.ErrConsistency),
+		errors.Is(err, capentity.ErrBusinessModelNotFound), errors.Is(err, capentity.ErrContractNotFound):
+		return CapabilityConflict("")
+	case errors.Is(err, capentity.ErrNotConfigured), errors.Is(err, capentity.ErrPortsNotConfigured),
+		errors.Is(err, capentity.ErrUoWNotConfigured), errors.Is(err, capentity.ErrUoWCommitFailed):
+		return CapabilityNotConfigured("")
+	}
+
 	return Internal(err.Error())
 }

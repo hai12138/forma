@@ -134,6 +134,14 @@ func TestManualCreateLifecycle(t *testing.T) {
 	require.Equal(t, entity.SourceManualCreated, rev.Source)
 	require.Equal(t, int32(1), rev.Version)
 
+	listed, err := svc.ListCapabilities(context.Background(), "t1", "biz-lab")
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, cap.CapabilityID, listed[0].CapabilityID)
+	listedOther, err := svc.ListCapabilities(context.Background(), "t1", "other-biz")
+	require.NoError(t, err)
+	require.Empty(t, listedOther)
+
 	asset, err := assets.GetCapabilityAsset(context.Background(), "t1", cap.CapabilityID)
 	require.NoError(t, err)
 	require.Equal(t, assetentity.AssetKindCapability, asset.Kind)

@@ -148,6 +148,31 @@ func (t *memTx) GetCapabilityForUpdate(ctx context.Context, tenantID, capability
 	return t.r.getCapability(ctx, tenantID, capabilityID)
 }
 
+func (r *memRepo) ListCapabilitiesByBusiness(ctx context.Context, tenantID, businessID string) ([]*entity.BusinessCapability, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.listCapabilitiesByBusiness(ctx, tenantID, businessID)
+}
+func (t *memTx) ListCapabilitiesByBusiness(ctx context.Context, tenantID, businessID string) ([]*entity.BusinessCapability, error) {
+	return t.r.listCapabilitiesByBusiness(ctx, tenantID, businessID)
+}
+func (r *memRepo) listCapabilitiesByBusiness(_ context.Context, tenantID, businessID string) ([]*entity.BusinessCapability, error) {
+	out := make([]*entity.BusinessCapability, 0)
+	for _, c := range r.caps {
+		if c.TenantID == tenantID && c.BusinessID == businessID {
+			cp := *c
+			out = append(out, &cp)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CapabilityID < out[j].CapabilityID
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
 func (r *memRepo) UpdateActiveRevisionID(ctx context.Context, tenantID, capabilityID, activeRevisionID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -126,3 +126,7 @@ func (s *ApplicationService) resolveTenantContext(ctx context.Context, selectedT
 func roleAtLeastAdmin(role entity.MembershipRole) bool {
 	return role == entity.RoleOwner || role == entity.RoleAdmin
 }
+
+func roleIsOwner(role entity.MembershipRole) bool {
+	return role == entity.RoleOwner
+}

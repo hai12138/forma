@@ -86,6 +86,21 @@ func (d *CapabilityDAO) GetCapability(ctx context.Context, tenantID, capabilityI
 	return toCapability(&row), nil
 }
 
+func (d *CapabilityDAO) ListCapabilitiesByBusiness(ctx context.Context, tenantID, businessID string) ([]*entity.BusinessCapability, error) {
+	var rows []capabilityRow
+	if err := d.db.WithContext(ctx).
+		Where("tenant_id = ? AND business_id = ?", tenantID, businessID).
+		Order("created_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*entity.BusinessCapability, 0, len(rows))
+	for i := range rows {
+		out = append(out, toCapability(&rows[i]))
+	}
+	return out, nil
+}
+
 func (d *CapabilityDAO) GetCapabilityForUpdate(ctx context.Context, tenantID, capabilityID string) (*entity.BusinessCapability, error) {
 	var row capabilityRow
 	err := d.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
