@@ -6,10 +6,12 @@
 package forma
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	formaapp "github.com/coze-dev/coze-studio/backend/application/forma"
+	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
 )
 
 func ListCapabilities(ctx context.Context, c *app.RequestContext) {
@@ -113,9 +115,14 @@ func GetCapabilityAnalysis(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// ConfirmCapabilityProposal confirms a capability proposal.
+// Empty body is treated as empty optional input; non-empty malformed JSON fails closed with HTTP 400.
 func ConfirmCapabilityProposal(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.ConfirmCapabilityProposalInput
-	_ = c.BindAndValidate(&in)
+	if err := bindOptionalCapabilityJSON(c, &in); err != nil {
+		writeError(ctx, c, err)
+		return
+	}
 	v, err := formaapp.ApplicationSVC.ConfirmCapabilityProposal(ctx, c.Param("id"), c.Param("proposalId"), &in)
 	if err != nil {
 		writeError(ctx, c, err)
@@ -124,10 +131,11 @@ func ConfirmCapabilityProposal(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// EditConfirmCapabilityProposal edit-confirms a capability proposal with an effective payload.
 func EditConfirmCapabilityProposal(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.EditConfirmCapabilityProposalInput
 	if err := c.BindAndValidate(&in); err != nil {
-		writeError(ctx, c, err)
+		writeError(ctx, c, formaerrors.BadRequest("invalid request body"))
 		return
 	}
 	v, err := formaapp.ApplicationSVC.EditConfirmCapabilityProposal(ctx, c.Param("id"), c.Param("proposalId"), &in)
@@ -138,9 +146,14 @@ func EditConfirmCapabilityProposal(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// RejectCapabilityProposal rejects a capability proposal.
+// Empty body is treated as empty optional input; non-empty malformed JSON fails closed with HTTP 400.
 func RejectCapabilityProposal(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.RejectCapabilityProposalInput
-	_ = c.BindAndValidate(&in)
+	if err := bindOptionalCapabilityJSON(c, &in); err != nil {
+		writeError(ctx, c, err)
+		return
+	}
 	v, err := formaapp.ApplicationSVC.RejectCapabilityProposal(ctx, c.Param("id"), c.Param("proposalId"), &in)
 	if err != nil {
 		writeError(ctx, c, err)
@@ -158,9 +171,14 @@ func ValidateCapabilityRevision(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// ActivateCapabilityRevision activates a capability revision.
+// Empty body is treated as empty optional input; non-empty malformed JSON fails closed with HTTP 400.
 func ActivateCapabilityRevision(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.CapabilityReasonInput
-	_ = c.BindAndValidate(&in)
+	if err := bindOptionalCapabilityJSON(c, &in); err != nil {
+		writeError(ctx, c, err)
+		return
+	}
 	v, err := formaapp.ApplicationSVC.ActivateCapabilityRevision(ctx, c.Param("id"), c.Param("revisionId"), &in)
 	if err != nil {
 		writeError(ctx, c, err)
@@ -169,9 +187,14 @@ func ActivateCapabilityRevision(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// DeprecateCapabilityRevision deprecates a capability revision.
+// Empty body is treated as empty optional input; non-empty malformed JSON fails closed with HTTP 400.
 func DeprecateCapabilityRevision(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.CapabilityReasonInput
-	_ = c.BindAndValidate(&in)
+	if err := bindOptionalCapabilityJSON(c, &in); err != nil {
+		writeError(ctx, c, err)
+		return
+	}
 	v, err := formaapp.ApplicationSVC.DeprecateCapabilityRevision(ctx, c.Param("id"), c.Param("revisionId"), &in)
 	if err != nil {
 		writeError(ctx, c, err)
@@ -196,4 +219,17 @@ func ListCapabilityDecisions(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	writeOK(ctx, c, v)
+}
+
+// bindOptionalCapabilityJSON binds an optional JSON body.
+// Empty / whitespace-only bodies skip bind (zero-value input). Non-empty malformed JSON returns BadRequest.
+func bindOptionalCapabilityJSON(c *app.RequestContext, in any) error {
+	body := c.Request.Body()
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil
+	}
+	if err := c.BindAndValidate(in); err != nil {
+		return formaerrors.BadRequest("invalid request body")
+	}
+	return nil
 }

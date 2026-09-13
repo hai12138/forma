@@ -1,8 +1,8 @@
 # FORMA-S5-G4 — Capability API / Authorization / Audit / Concurrency Consistency
 # RESULT
 
-**Gate:** S5-G4  
-**Date:** 2026-09-14  
+**Gate:** S5-G4
+**Date:** 2026-09-14
 **Status:** **PASS** (Forma CI ALL GREEN)
 
 ---
