@@ -21,7 +21,7 @@ import (
 func TestG3F2BMCurrentRevisionAdvanceValidateFAIL(t *testing.T) {
 	svc, repo, _, bm, contracts := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -40,7 +40,7 @@ func TestG3F2BMCurrentRevisionAdvanceValidateFAIL(t *testing.T) {
 func TestG3F2BMAdvanceAfterValidateActivateMissingEvidence(t *testing.T) {
 	svc, repo, _, bm, contracts := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -66,7 +66,7 @@ func TestG3F2AIEmptyCapabilityIDFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-f2-empty-cap",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-f2-empty-cap",
 	})
 	require.NoError(t, err)
 	prop, err := repo.GetProposal(context.Background(), "t1", rev.ProposalID)
@@ -87,7 +87,7 @@ func TestG3F2AIEmptyMaterializedRevisionIDFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-f2-empty-mat",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-f2-empty-mat",
 	})
 	require.NoError(t, err)
 	prop, err := repo.GetProposal(context.Background(), "t1", rev.ProposalID)
@@ -108,7 +108,7 @@ func TestG3F2AIWrongProposalBusinessIDFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-f2-wrong-biz",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-f2-wrong-biz",
 	})
 	require.NoError(t, err)
 	prop, err := repo.GetProposal(context.Background(), "t1", rev.ProposalID)
@@ -129,7 +129,7 @@ func TestG3F2AIDecisionEmptyCapabilityIDFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-f2-dec-cap",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-f2-dec-cap",
 	})
 	require.NoError(t, err)
 	decs, err := repo.ListDecisionsByCapability(context.Background(), "t1", rev.CapabilityID)
@@ -159,7 +159,7 @@ func TestG3F2AnalysisRunBusinessIDMismatchFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-f2-run-biz",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-f2-run-biz",
 	})
 	require.NoError(t, err)
 	run, err := repo.GetAnalysisRun(context.Background(), "t1", rev.AnalysisRunID)
@@ -180,7 +180,7 @@ func TestG3F2AnalysisRunBMRevisionMismatchFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-f2-run-bm",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-f2-run-bm",
 	})
 	require.NoError(t, err)
 	run, err := repo.GetAnalysisRun(context.Background(), "t1", rev.AnalysisRunID)
@@ -195,7 +195,7 @@ func TestG3F2AnalysisRunBMRevisionMismatchFAIL(t *testing.T) {
 func TestG3F2DerivedSourceMissingFAIL(t *testing.T) {
 	svc, repo, _, bm, contracts := newTestService(nil)
 	_, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	payload2 := fixture.LaboratoryFlowCapability()
@@ -228,7 +228,7 @@ func TestG3F2DerivedSourceMissingFAIL(t *testing.T) {
 func TestG3F2DerivedSourceOtherBusinessFAIL(t *testing.T) {
 	svc, repo, _, bm, contracts := newTestService(nil)
 	_, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	payload2 := fixture.LaboratoryFlowCapability()
@@ -273,11 +273,11 @@ func TestG3F2DerivedSourceOtherBusinessFAIL(t *testing.T) {
 func TestG3F2DerivedSourceOtherCapabilityFAIL(t *testing.T) {
 	svc, repo, _, bm, contracts := newTestService(nil)
 	_, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	_, other, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, CapabilityID: "cap-other-src",
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-other-src",
 		Payload: fixture.LaboratoryCommandCapability(),
 	})
 	require.NoError(t, err)
@@ -335,7 +335,7 @@ func TestG3F2FinalEvidenceFenceValidateDetectsDrift(t *testing.T) {
 	flip := &flipAfterReadsContractPort{stable: stable, flipAt: 2}
 	svc := NewCapabilityService(&Components{UoW: uow, Business: bm, Contract: flip})
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, stable, rev)
@@ -366,7 +366,7 @@ func TestG3F2FinalEvidenceFenceActivateDetectsDrift(t *testing.T) {
 	stable := NewFakeContractPort()
 	svcPass := NewCapabilityService(&Components{UoW: uow, Business: bm, Contract: stable})
 	_, rev, err := svcPass.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, stable, rev)

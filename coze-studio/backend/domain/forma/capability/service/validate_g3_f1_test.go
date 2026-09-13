@@ -22,7 +22,7 @@ func TestG3F1FAILPersistedReadableAndDraft(t *testing.T) {
 	payload := fixture.LaboratoryFlowCapability()
 	payload.DataContractBindings[0].DataContractRevisionID = "dcr_wrong"
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: payload,
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: payload,
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -58,7 +58,7 @@ func TestG3F1FAILReplaySameValidationID(t *testing.T) {
 	payload := fixture.LaboratoryFlowCapability()
 	payload.DataContractBindings[0].DataContractRevisionID = "dcr_wrong"
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: payload,
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: payload,
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -87,7 +87,7 @@ func TestG3F1ConcurrentFAILReplaySameValidationID(t *testing.T) {
 	payload := fixture.LaboratoryFlowCapability()
 	payload.DataContractBindings[0].DataContractRevisionID = "dcr_wrong"
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: payload,
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: payload,
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -144,7 +144,7 @@ func TestG3F1MultiContractFieldSplitPASS(t *testing.T) {
 		},
 	}
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, CapabilityID: "cap-split", Payload: payload,
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-split", Payload: payload,
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -174,7 +174,7 @@ func TestG3F1CrossBindingDuplicateCapKeyFAIL(t *testing.T) {
 		},
 	}
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, CapabilityID: "cap-dup", Payload: payload,
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-dup", Payload: payload,
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -192,7 +192,7 @@ func TestG3F1AIProvenanceWrongTargetFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-ai-tgt",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-ai-tgt",
 	})
 	require.NoError(t, err)
 	decs, err := repo.ListDecisionsByCapability(context.Background(), "t1", rev.CapabilityID)
@@ -223,7 +223,7 @@ func TestG3F1AIProvenanceWrongProposalCapabilityFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-ai-cap",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-ai-cap",
 	})
 	require.NoError(t, err)
 	prop, err := repo.GetProposal(context.Background(), "t1", rev.ProposalID)
@@ -244,7 +244,7 @@ func TestG3F1AIProvenanceWrongAnalysisRunFAIL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
-		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, CapabilityID: "cap-ai-run",
+		TenantID: "t1", ProposalID: res.Proposals[0].ProposalID, ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-ai-run",
 	})
 	require.NoError(t, err)
 	prop, err := repo.GetProposal(context.Background(), "t1", rev.ProposalID)
@@ -259,7 +259,7 @@ func TestG3F1AIProvenanceWrongAnalysisRunFAIL(t *testing.T) {
 func TestG3F1DerivedWrongSourceTargetFAIL(t *testing.T) {
 	svc, repo, _, bm, contracts := newTestService(nil)
 	_, rev1, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	payload2 := fixture.LaboratoryFlowCapability()
@@ -296,7 +296,7 @@ func TestG3F1DerivedWrongSourceTargetFAIL(t *testing.T) {
 func TestG3F1DescriptorDriftValidateActivateFailClosed(t *testing.T) {
 	svc, _, _, bm, contracts := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -328,7 +328,7 @@ func TestG3F1OptionalInputUnsupportedFILTEROperatorFAIL(t *testing.T) {
 		entity.LogicalFieldMapping{CapabilityLogicalKey: "optional_tag", ContractLogicalKey: "optional_tag"},
 	)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-proc", ActorID: testActor, CapabilityID: "cap-opt-filter", Payload: payload,
+		TenantID: "t1", BusinessID: "biz-proc", ActorID: testActor, OwnerID: testOwnerID, CapabilityID: "cap-opt-filter", Payload: payload,
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -340,7 +340,7 @@ func TestG3F1OptionalInputUnsupportedFILTEROperatorFAIL(t *testing.T) {
 func TestG3F1SortSchemaClassificationDigestBlocksActivate(t *testing.T) {
 	svc, repo, _, bm, contracts := newTestService(nil)
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: fixture.LaboratoryFlowCapability(),
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
@@ -380,7 +380,7 @@ func TestG3F1CreateValidationFailInjectRollsBack(t *testing.T) {
 	payload := fixture.LaboratoryFlowCapability()
 	payload.DataContractBindings[0].DataContractRevisionID = "dcr_wrong"
 	_, rev, err := svc.ManualCreate(context.Background(), &ManualCreateInput{
-		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, Payload: payload,
+		TenantID: "t1", BusinessID: "biz-lab", ActorID: testActor, OwnerID: testOwnerID, Payload: payload,
 	})
 	require.NoError(t, err)
 	seedPortsForRevision(bm, contracts, rev)
