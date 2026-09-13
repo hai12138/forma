@@ -16,33 +16,34 @@ import (
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
 	tenantctx "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/context"
 	tenancyentity "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/entity"
+	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 )
 
 // --- Request DTOs ---
 
 type CreateCapabilityInput struct {
-	CapabilityID string                   `json:"capability_id,omitempty"`
+	CapabilityID string                    `json:"capability_id,omitempty"`
 	Payload      capentity.SemanticPayload `json:"payload"`
 }
 
 type DeriveCapabilityInput struct {
-	SourceRevisionID string                   `json:"source_revision_id"`
-	ClientRequestID  string                   `json:"client_request_id"`
-	Reason           string                   `json:"reason,omitempty"`
+	SourceRevisionID string                    `json:"source_revision_id"`
+	ClientRequestID  string                    `json:"client_request_id"`
+	Reason           string                    `json:"reason,omitempty"`
 	Payload          capentity.SemanticPayload `json:"payload"`
 }
 
 type EditCapabilityInput struct {
-	SourceRevisionID string                   `json:"source_revision_id"`
-	ClientRequestID  string                   `json:"client_request_id"`
-	Reason           string                   `json:"reason,omitempty"`
+	SourceRevisionID string                    `json:"source_revision_id"`
+	ClientRequestID  string                    `json:"client_request_id"`
+	Reason           string                    `json:"reason,omitempty"`
 	Payload          capentity.SemanticPayload `json:"payload"`
 }
 
 type StartCapabilityAnalysisInput struct {
-	BusinessModelRevision int32                      `json:"business_model_revision"`
-	ClientRequestID       string                     `json:"client_request_id"`
-	Analysis              capentity.AnalysisRequest  `json:"analysis"`
+	BusinessModelRevision int32                     `json:"business_model_revision"`
+	ClientRequestID       string                    `json:"client_request_id"`
+	Analysis              capentity.AnalysisRequest `json:"analysis"`
 }
 
 type ConfirmCapabilityProposalInput struct {
@@ -52,9 +53,9 @@ type ConfirmCapabilityProposalInput struct {
 }
 
 type EditConfirmCapabilityProposalInput struct {
-	Reason           string                   `json:"reason,omitempty"`
-	ClientRequestID  string                   `json:"client_request_id,omitempty"`
-	CapabilityID     string                   `json:"capability_id,omitempty"`
+	Reason           string                    `json:"reason,omitempty"`
+	ClientRequestID  string                    `json:"client_request_id,omitempty"`
+	CapabilityID     string                    `json:"capability_id,omitempty"`
 	EffectivePayload capentity.SemanticPayload `json:"effective_payload"`
 }
 
@@ -79,9 +80,9 @@ type CapabilityDTO struct {
 }
 
 type CapabilityDataContractBindingDTO struct {
-	DataContractID         string                         `json:"data_contract_id"`
-	DataContractRevisionID string                         `json:"data_contract_revision_id"`
-	DataContractVersion    int32                          `json:"data_contract_version,omitempty"`
+	DataContractID         string                          `json:"data_contract_id"`
+	DataContractRevisionID string                          `json:"data_contract_revision_id"`
+	DataContractVersion    int32                           `json:"data_contract_version,omitempty"`
 	LogicalFieldMappings   []capentity.LogicalFieldMapping `json:"logical_field_mappings,omitempty"`
 }
 
@@ -268,14 +269,18 @@ func (s *ApplicationService) recordCapabilityAudit(ctx context.Context, tc *tena
 	if s.TenancySVC == nil || tc == nil {
 		return
 	}
-	_ = s.TenancySVC.RecordAudit(ctx, &tenancyentity.AuditEvent{
+	if err := s.TenancySVC.RecordAudit(ctx, &tenancyentity.AuditEvent{
 		TenantID:    tc.TenantID,
 		PrincipalID: tc.PrincipalID,
 		Action:      action,
 		Resource:    resource,
 		RequestID:   tc.RequestID,
 		CreatedAt:   time.Now().UTC(),
-	})
+	}); err != nil {
+		// Best-effort tenancy audit: never fail the successful business mutation.
+		// Do not log raw err text (may contain sensitive internals).
+		logs.Warnf("capability tenancy audit failed action=%s", action)
+	}
 }
 
 // --- Scoped lookups (fail closed on business mismatch) ---

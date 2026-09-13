@@ -202,18 +202,16 @@ func TestCapabilityApp_RoleMatrixAndIsolation(t *testing.T) {
 	for _, item := range []struct {
 		principal string
 		role      tenantentity.MembershipRole
-		coze      int64
 	}{
-		{admin.PrincipalID, tenantentity.RoleAdmin, 8101},
-		{member.PrincipalID, tenantentity.RoleMember, 8102},
-		{viewer.PrincipalID, tenantentity.RoleViewer, 8103},
+		{admin.PrincipalID, tenantentity.RoleAdmin},
+		{member.PrincipalID, tenantentity.RoleMember},
+		{viewer.PrincipalID, tenantentity.RoleViewer},
 	} {
 		_, err = h.app.TenancySVC.AddMember(ownerSession, &tenancysvc.AddMemberRequest{
 			TenantID: boot.Tenant.TenantID, PrincipalID: item.principal, Role: item.role,
 			CreatedBy: boot.Principal.PrincipalID,
 		})
 		require.NoError(t, err)
-		_ = item.coze
 	}
 
 	tenantID := boot.Tenant.TenantID
