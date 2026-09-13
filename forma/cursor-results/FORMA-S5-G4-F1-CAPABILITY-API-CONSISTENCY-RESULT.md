@@ -3,7 +3,7 @@
 
 **Gate:** S5-G4-F1  
 **Date:** 2026-09-14  
-**Status:** **PASS (local)** — Forma CI pending / updating after green
+**Status:** **PASS** (Forma CI ALL GREEN)
 
 ---
 
@@ -62,7 +62,7 @@ Freeze: `forma/cursor-results/FORMA-S5-G4-F1-INTERFACE-FREEZE.md`
 ## 5. Gate checklist
 
 ```text
-S5_G4_F1_STATUS = PASS_LOCAL
+S5_G4_F1_STATUS = PASS
 PRINCIPAL_IDENTITY = PASS
 OWNER_ID_SEPARATION = PASS
 FAILED_RUN_VISIBILITY = PASS
@@ -75,8 +75,8 @@ PRODUCT_CODE_CHANGE = YES
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
 COMMIT_SHA = 14ab0af8f23d7b8974fce36cce12beaa35762e4a
-CI_RUN = pending
-CI = pending
+CI_RUN = 34775481357
+CI = ALL_GREEN
 S5_G5_READY = NO
 ```
 
@@ -102,10 +102,12 @@ S5_G5_READY = NO
 
 | Field | Value |
 |-------|-------|
-| CI_RUN | _pending after push_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
-| CI | _pending_ |
+| COMMIT_SHA (integrator product) | `14ab0af8f23d7b8974fce36cce12beaa35762e4a` |
+| RESULT tip (SHA record) | `afd10cb0e804f3287c6bb6de1f7d72e793a00260` |
+| CI_RUN | [34775481357](https://github.com/hai12138/forma/actions/runs/34775481357) |
+| forma-backend | **PASS** |
+| forma-migration-apply | **PASS** |
+| forma-frontend | **PASS** |
+| CI | **ALL GREEN** |
 
-**Stop:** Do not create `forma-s5-frozen`. Do not start S5-G5. Await human review after CI ALL GREEN.
+**Stop:** Do not create `forma-s5-frozen`. Do not start S5-G5. Await human review.
