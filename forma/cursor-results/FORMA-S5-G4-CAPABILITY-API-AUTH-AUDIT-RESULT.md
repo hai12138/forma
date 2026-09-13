@@ -128,12 +128,15 @@ Enforcement: `loadCapabilityTenant` re-reads **ACTIVE** membership from Tenancy 
 
 | Field | Value |
 |-------|-------|
-| CI_RUN (tip incl. RESULT) | [34773122233](https://github.com/hai12138/forma/actions/runs/34773122233) |
-| head_sha | `0f202d05580c1c4d5a1e3ddbedd217855397dd41` |
+| COMMIT_SHA (implementation) | `5c3d257ec88e0d0f6dd8467824cb511322449bd7` |
+| RESULT tip (pre-CI-green docs) | `0f202d05580c1c4d5a1e3ddbedd217855397dd41` |
+| CI_RUN (implementation + RESULT pending) | [34773122233](https://github.com/hai12138/forma/actions/runs/34773122233) |
 | forma-backend | **PASS** |
 | forma-migration-apply | **PASS** |
 | forma-frontend | **PASS** |
 | CI | **ALL GREEN** |
+| RESULT tip (CI ALL GREEN docs) | `73debc800ac851f511ca9e5ac859f28b212a834c` |
+| CI_RUN tip | [34773253974](https://github.com/hai12138/forma/actions/runs/34773253974) — three jobs **PASS** |
 
 ---
 
