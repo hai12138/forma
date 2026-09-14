@@ -42,14 +42,14 @@ Merges: `c60891e7` (A), `e6c703f3` (B) + freeze whitespace fix.
 | Retry / lease / executeAnalysis FAILED DTO after mark+refetch | PASS |
 | Fail-closed when mark/refetch fails (no forged DTO) | PASS |
 | Same analysis_run_id + attempt monotonicity on retry | PASS |
-| `git diff --check 61657777...HEAD` exit 0 | pending commit |
+| `git diff --check 61657777...HEAD` exit 0 | PASS |
 
 ---
 
 ## 4. Gate checklist
 
 ```text
-S5_G4_F3_STATUS = PASS_LOCAL
+S5_G4_F3_STATUS = PASS
 TOKEN_ASSIGNMENT_REJECTION = PASS
 COOKIE_ASSIGNMENT_REJECTION = PASS
 SECRET_ASSIGNMENT_REJECTION = PASS
@@ -65,7 +65,7 @@ GIT_DIFF_CHECK = PASS
 PRODUCT_CODE_CHANGE = YES
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
-COMMIT_SHA = pending
+COMMIT_SHA = 511f46659bdb0f6f52467341361d13777648bf6e
 CI_RUN = pending
 CI = pending
 S5_G5_READY = NO
