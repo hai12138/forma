@@ -1,8 +1,8 @@
 # FORMA-S5-G4-F2 — Capability API Final Boundary Consistency Fix
 # RESULT
 
-**Gate:** S5-G4-F2  
-**Date:** 2026-09-14  
+**Gate:** S5-G4-F2
+**Date:** 2026-09-14
 **Status:** **PASS (local)** — Forma CI pending
 
 ---
