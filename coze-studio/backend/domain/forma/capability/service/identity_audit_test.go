@@ -81,10 +81,98 @@ func TestConfirmFirstCreateMissingOwnerIDNoPartialWrite(t *testing.T) {
 	require.Equal(t, entity.ProposalProposed, prop.Status)
 }
 
-func TestValidateAuditMetadataRejectsSecretsAndControls(t *testing.T) {
+func TestConfirmFirstCreateIdentityPrincipalAndOwner(t *testing.T) {
+	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc, repo, assets, _, _ := newTestService(gen)
+	principal := "principal-confirm-alice"
+	owner := int64(7777) // CozeUserID
+
+	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "confirm-id-ok", ActorID: principal,
+		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err)
+	propID := res.Proposals[0].ProposalID
+
+	rev, err := svc.ConfirmProposal(context.Background(), &ConfirmInput{
+		TenantID: "t1", ProposalID: propID, ActorID: principal, OwnerID: owner,
+		CapabilityID: "cap-confirm-id", Reason: "review trade secret policy",
+	})
+	require.NoError(t, err)
+	require.Equal(t, principal, rev.CreatedBy)
+
+	cap, err := repo.GetCapability(context.Background(), "t1", "cap-confirm-id")
+	require.NoError(t, err)
+	require.Equal(t, principal, cap.CreatedBy)
+
+	asset, err := assets.GetCapabilityAsset(context.Background(), "t1", "cap-confirm-id")
+	require.NoError(t, err)
+	require.Equal(t, owner, asset.OwnerID)
+	require.Equal(t, owner, asset.CreatedBy)
+
+	decs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-confirm-id")
+	require.NoError(t, err)
+	require.NotEmpty(t, decs)
+	require.Equal(t, principal, decs[0].ActorPrincipalID)
+	require.Equal(t, entity.DecisionConfirm, decs[0].Action)
+}
+
+func TestEditConfirmFirstCreateIdentityPrincipalAndOwner(t *testing.T) {
+	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
+	svc, repo, assets, _, _ := newTestService(gen)
+	principal := "principal-editconfirm-bob"
+	owner := int64(8888) // CozeUserID
+
+	res, err := svc.StartAnalysis(context.Background(), &StartAnalysisInput{
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "editconfirm-id-ok", ActorID: principal,
+		Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err)
+	propID := res.Proposals[0].ProposalID
+
+	edited := fixture.LaboratoryFlowCapability()
+	edited.Name = "EditedLaboratoryFlow"
+	rev, err := svc.EditConfirmProposal(context.Background(), &EditConfirmInput{
+		TenantID: "t1", ProposalID: propID, ActorID: principal, OwnerID: owner,
+		CapabilityID: "cap-editconfirm-id", Reason: "password reset workflow approved",
+		EffectivePayload: edited,
+	})
+	require.NoError(t, err)
+	require.Equal(t, principal, rev.CreatedBy)
+	require.Equal(t, "EditedLaboratoryFlow", rev.Name)
+
+	cap, err := repo.GetCapability(context.Background(), "t1", "cap-editconfirm-id")
+	require.NoError(t, err)
+	require.Equal(t, principal, cap.CreatedBy)
+
+	asset, err := assets.GetCapabilityAsset(context.Background(), "t1", "cap-editconfirm-id")
+	require.NoError(t, err)
+	require.Equal(t, owner, asset.OwnerID)
+	require.Equal(t, owner, asset.CreatedBy)
+
+	decs, err := repo.ListDecisionsByCapability(context.Background(), "t1", "cap-editconfirm-id")
+	require.NoError(t, err)
+	require.NotEmpty(t, decs)
+	require.Equal(t, principal, decs[0].ActorPrincipalID)
+	require.Equal(t, entity.DecisionEditConfirm, decs[0].Action)
+}
+
+func TestValidateAuditMetadataAllowsBusinessFalsePositives(t *testing.T) {
 	require.NoError(t, ValidateAuditMetadata("", ""))
 	require.NoError(t, ValidateAuditMetadata("approved by owner", "req-123"))
 
+	for _, reason := range []string{
+		"review trade secret policy",
+		"tokenization completed",
+		"cookie policy approved",
+		"password reset workflow approved",
+	} {
+		require.NoError(t, ValidateAuditMetadata(reason, ""), reason)
+		require.NoError(t, ValidateAuditMetadata(reason, "client-req-ok"), reason)
+	}
+}
+
+func TestValidateAuditMetadataRejectsCredentialShapes(t *testing.T) {
 	require.ErrorIs(t, ValidateAuditMetadata("has\nnewline", ""), entity.ErrInvalidPayload)
 	require.ErrorIs(t, ValidateAuditMetadata("has\ttab", ""), entity.ErrInvalidPayload)
 	require.ErrorIs(t, ValidateAuditMetadata(string([]byte{0xff, 0xfe, 0xfd}), ""), entity.ErrInvalidPayload)
@@ -94,14 +182,44 @@ func TestValidateAuditMetadataRejectsSecretsAndControls(t *testing.T) {
 	longCRID := strings.Repeat("b", maxAuditClientRequestIDLen+1)
 	require.ErrorIs(t, ValidateAuditMetadata("", longCRID), entity.ErrInvalidPayload)
 
-	for _, secret := range []string{
-		"reset password now", "auth token", "session cookie", "Authorization header",
-		"Bearer xyz", "jwt payload", "api_key=1", "api-key", "private_key material",
-		"private-key", "keep secret", "-----BEGIN RSA",
-	} {
+	// Free-text reason: assignment forms + credential shapes (not bare keywords).
+	reasonSecrets := []string{
+		"Bearer abcdefghijklmnop",
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig",
+		"token ghp_abcdefghijklmnopqrstuvwxyz12",
+		"pat github_pat_abcdefghijklmnopqrstuvwxyz",
+		"key sk-abcdefghijklmnopqrstuvwxyz12",
+		"key sk-proj-abcdefghijklmnopQR",
+		"slack xoxb-1234567890-abcdefghij",
+		"-----BEGIN RSA PRIVATE KEY-----",
+		"password=hunter2",
+		"api_key=abc123",
+		"Authorization: Bearer abcdefghijklmnop",
+		strings.Repeat("A", 48),
+		strings.Repeat("A", 64) + "==",
+	}
+	for _, secret := range reasonSecrets {
 		require.ErrorIs(t, ValidateAuditMetadata(secret, ""), entity.ErrInvalidPayload, secret)
+	}
+
+	// client_request_id: opaque + credential-shape (no spaces / assignment forms that fail OpaqueID).
+	opaqueSecrets := []string{
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig",
+		"ghp_abcdefghijklmnopqrstuvwxyz12",
+		"github_pat_abcdefghijklmnopqrstuvwxyz",
+		"sk-abcdefghijklmnopqrstuvwxyz12",
+		"sk-proj-abcdefghijklmnopQR",
+		"xoxb-1234567890-abcdefghij",
+		strings.Repeat("A", 48),
+	}
+	for _, secret := range opaqueSecrets {
+		require.NoError(t, ValidateOpaqueID(secret), "sample %q must pass ValidateOpaqueID", secret)
+		require.True(t, containsCredentialShape(secret), "sample %q must hit credential-shape", secret)
 		require.ErrorIs(t, ValidateAuditMetadata("", secret), entity.ErrInvalidPayload, secret)
 	}
+
+	require.ErrorIs(t, ValidateAuditMetadata("", "has space"), entity.ErrInvalidPayload)
+	require.ErrorIs(t, ValidateAuditMetadata("", "password=x"), entity.ErrInvalidPayload)
 
 	require.True(t, utf8.ValidString("ok"))
 }
@@ -120,7 +238,7 @@ func TestAuditMetadataSecretRejectNoPartialWrites(t *testing.T) {
 
 	_, _, err = svc.DeriveRevision(context.Background(), &DeriveInput{
 		TenantID: "t1", CapabilityID: "cap-audit", SourceRevisionID: rev.RevisionID,
-		ClientRequestID: "derive-ok", ActorID: testActor, Reason: "contains password leak",
+		ClientRequestID: "derive-ok", ActorID: testActor, Reason: "password=leaked_value",
 		Action: entity.DecisionDerive, Payload: fixture.LaboratoryFlowCapability(),
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
@@ -134,8 +252,9 @@ func TestAuditMetadataSecretRejectNoPartialWrites(t *testing.T) {
 
 	gen := &DeterministicFakeGenerator{Proposals: []entity.SemanticPayload{fixture.LaboratoryFlowCapability()}}
 	svc2, _, _, _, _ := newTestService(gen)
+	badCRID := "ghp_abcdefghijklmnopqrstuvwxyz12"
 	_, err = svc2.StartAnalysis(context.Background(), &StartAnalysisInput{
-		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: "req-with-token",
+		TenantID: "t1", BusinessID: "biz", BusinessModelRevision: 1, ClientRequestID: badCRID,
 		ActorID: testActor, Analysis: entity.AnalysisRequest{BusinessModelRevision: 1},
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
@@ -143,7 +262,7 @@ func TestAuditMetadataSecretRejectNoPartialWrites(t *testing.T) {
 
 	seedPASSValidationForTest(t, repo, bmPort, contractPort, rev)
 	forceStatusForTest(t, repo, "t1", rev.RevisionID, entity.RevisionDraft, entity.RevisionValidated)
-	_, err = svc.Activate(context.Background(), "t1", rev.RevisionID, testActor, "Authorization: Bearer x")
+	_, err = svc.Activate(context.Background(), "t1", rev.RevisionID, testActor, "Authorization: Bearer abcdefghijklmnop")
 	require.ErrorIs(t, err, entity.ErrInvalidPayload)
 	got, err := repo.GetRevision(context.Background(), "t1", rev.RevisionID)
 	require.NoError(t, err)
