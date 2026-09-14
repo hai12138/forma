@@ -7,6 +7,7 @@ package forma
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
@@ -61,6 +62,10 @@ func (s *ApplicationService) GetCapability(ctx context.Context, businessID, capa
 	}
 	asset, err := s.CapabilitySVC.GetCapabilityAsset(ctx, tc.TenantID, capabilityID)
 	if err != nil {
+		// Missing AssetRef is projection inconsistency (409), not capability NotFound (404).
+		if errors.Is(err, capentity.ErrNotFound) {
+			return nil, formaerrors.MapDomainError(capentity.ErrConsistency)
+		}
 		return nil, formaerrors.MapDomainError(err)
 	}
 	dto := capabilityDTO(cap)

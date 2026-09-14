@@ -203,7 +203,7 @@ func TestF7_ListGet_FailClosedMissingAssetRef(t *testing.T) {
 	cap, err := svc.GetCapability(context.Background(), "t1", "cap-missing")
 	require.NoError(t, err)
 	got, err := svc.GetCapabilityAsset(context.Background(), "t1", "cap-missing")
-	require.Error(t, err)
+	require.ErrorIs(t, err, entity.ErrNotFound)
 	require.Nil(t, got)
 	requireConsistencyOrConflict(t, validateCapabilityAssetProjection("t1", cap, nil))
 

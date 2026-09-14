@@ -37,13 +37,13 @@ func (g *GormAssetProjection) CreateCapabilityAsset(ctx context.Context, asset *
 	if asset.SchemaVersion == "" {
 		asset.SchemaVersion = "1.0"
 	}
-	return g.repo.Create(ctx, asset)
+	return MapRepoError(g.repo.Create(ctx, asset))
 }
 
 func (g *GormAssetProjection) UpdateCapabilityProjection(ctx context.Context, tenantID, assetID, name, semanticVersion, contentDigest string, status assetentity.AssetStatus) error {
 	updated, err := g.repo.UpdateCapabilityProjection(ctx, tenantID, assetID, name, semanticVersion, contentDigest, status)
 	if err != nil {
-		return err
+		return MapRepoError(err)
 	}
 	if updated == nil {
 		return entity.ErrNotFound
@@ -54,7 +54,7 @@ func (g *GormAssetProjection) UpdateCapabilityProjection(ctx context.Context, te
 func (g *GormAssetProjection) GetCapabilityAsset(ctx context.Context, tenantID, assetID string) (*assetentity.AssetRef, error) {
 	a, err := g.repo.GetByTenantAssetRevision(ctx, tenantID, assetID, 1)
 	if err != nil {
-		return nil, err
+		return nil, MapRepoError(err)
 	}
 	if a == nil {
 		return nil, entity.ErrNotFound
@@ -65,7 +65,7 @@ func (g *GormAssetProjection) GetCapabilityAsset(ctx context.Context, tenantID, 
 func (g *GormAssetProjection) ListCapabilityAssetsByTenant(ctx context.Context, tenantID string) ([]*assetentity.AssetRef, error) {
 	all, err := g.repo.ListByTenant(ctx, tenantID)
 	if err != nil {
-		return nil, err
+		return nil, MapRepoError(err)
 	}
 	out := make([]*assetentity.AssetRef, 0, len(all))
 	for _, a := range all {

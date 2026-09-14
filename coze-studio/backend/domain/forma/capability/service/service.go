@@ -939,14 +939,16 @@ func (s *capabilityService) GetCapabilityAsset(ctx context.Context, tenantID, ca
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
 	}
-	return s.uow.Assets().GetCapabilityAsset(ctx, tenantID, capabilityID)
+	asset, err := s.uow.Assets().GetCapabilityAsset(ctx, tenantID, capabilityID)
+	return asset, MapRepoError(err)
 }
 
 func (s *capabilityService) ListCapabilityAssetsByTenant(ctx context.Context, tenantID string) ([]*assetentity.AssetRef, error) {
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
 	}
-	return s.uow.Assets().ListCapabilityAssetsByTenant(ctx, tenantID)
+	rows, err := s.uow.Assets().ListCapabilityAssetsByTenant(ctx, tenantID)
+	return rows, MapRepoError(err)
 }
 
 func (s *capabilityService) GetRevision(ctx context.Context, tenantID, revisionID string) (*entity.BusinessCapabilityRevision, error) {
@@ -967,14 +969,16 @@ func (s *capabilityService) GetProposal(ctx context.Context, tenantID, proposalI
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
 	}
-	return s.root().GetProposal(ctx, tenantID, proposalID)
+	prop, err := s.root().GetProposal(ctx, tenantID, proposalID)
+	return prop, MapRepoError(err)
 }
 
 func (s *capabilityService) ListProposalsByAnalysisRun(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityProposal, error) {
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
 	}
-	return s.root().ListProposalsByAnalysisRun(ctx, tenantID, analysisRunID)
+	props, err := s.root().ListProposalsByAnalysisRun(ctx, tenantID, analysisRunID)
+	return props, MapRepoError(err)
 }
 
 func (s *capabilityService) ListValidations(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {

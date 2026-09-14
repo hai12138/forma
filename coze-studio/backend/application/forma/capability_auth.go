@@ -7,6 +7,7 @@ package forma
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
@@ -105,11 +106,17 @@ func (s *ApplicationService) recordCapabilityAudit(ctx context.Context, tc *tena
 	}
 }
 
-// --- Scoped lookups (fail closed on business mismatch) ---
+// --- Scoped lookups (fail closed on business mismatch; preserve non-NotFound domain errors) ---
 
 func (s *ApplicationService) requireCapability(ctx context.Context, tenantID, businessID, capabilityID string) (*capentity.BusinessCapability, error) {
 	cap, err := s.CapabilitySVC.GetCapability(ctx, tenantID, capabilityID)
-	if err != nil || cap == nil || cap.BusinessID != businessID {
+	if err != nil {
+		if errors.Is(err, capentity.ErrNotFound) {
+			return nil, formaerrors.MapDomainError(capentity.ErrNotFound)
+		}
+		return nil, formaerrors.MapDomainError(err)
+	}
+	if cap == nil || cap.BusinessID != businessID {
 		return nil, formaerrors.MapDomainError(capentity.ErrNotFound)
 	}
 	return cap, nil
@@ -117,7 +124,13 @@ func (s *ApplicationService) requireCapability(ctx context.Context, tenantID, bu
 
 func (s *ApplicationService) requireCapabilityRevision(ctx context.Context, tenantID, businessID, revisionID string) (*capentity.BusinessCapabilityRevision, error) {
 	rev, err := s.CapabilitySVC.GetRevision(ctx, tenantID, revisionID)
-	if err != nil || rev == nil || rev.BusinessID != businessID {
+	if err != nil {
+		if errors.Is(err, capentity.ErrRevisionNotFound) || errors.Is(err, capentity.ErrNotFound) {
+			return nil, formaerrors.MapDomainError(capentity.ErrRevisionNotFound)
+		}
+		return nil, formaerrors.MapDomainError(err)
+	}
+	if rev == nil || rev.BusinessID != businessID {
 		return nil, formaerrors.MapDomainError(capentity.ErrRevisionNotFound)
 	}
 	return rev, nil
@@ -125,7 +138,13 @@ func (s *ApplicationService) requireCapabilityRevision(ctx context.Context, tena
 
 func (s *ApplicationService) requireCapabilityProposal(ctx context.Context, tenantID, businessID, proposalID string) (*capentity.CapabilityProposal, error) {
 	prop, err := s.CapabilitySVC.GetProposal(ctx, tenantID, proposalID)
-	if err != nil || prop == nil || prop.BusinessID != businessID {
+	if err != nil {
+		if errors.Is(err, capentity.ErrProposalNotFound) || errors.Is(err, capentity.ErrNotFound) {
+			return nil, formaerrors.MapDomainError(capentity.ErrProposalNotFound)
+		}
+		return nil, formaerrors.MapDomainError(err)
+	}
+	if prop == nil || prop.BusinessID != businessID {
 		return nil, formaerrors.MapDomainError(capentity.ErrProposalNotFound)
 	}
 	return prop, nil
@@ -133,7 +152,13 @@ func (s *ApplicationService) requireCapabilityProposal(ctx context.Context, tena
 
 func (s *ApplicationService) requireCapabilityAnalysis(ctx context.Context, tenantID, businessID, analysisRunID string) (*capentity.CapabilityAnalysisRun, error) {
 	run, err := s.CapabilitySVC.GetAnalysisRun(ctx, tenantID, analysisRunID)
-	if err != nil || run == nil || run.BusinessID != businessID {
+	if err != nil {
+		if errors.Is(err, capentity.ErrAnalysisNotFound) || errors.Is(err, capentity.ErrNotFound) {
+			return nil, formaerrors.MapDomainError(capentity.ErrAnalysisNotFound)
+		}
+		return nil, formaerrors.MapDomainError(err)
+	}
+	if run == nil || run.BusinessID != businessID {
 		return nil, formaerrors.MapDomainError(capentity.ErrAnalysisNotFound)
 	}
 	return run, nil

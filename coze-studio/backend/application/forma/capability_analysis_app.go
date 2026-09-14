@@ -78,8 +78,11 @@ func (s *ApplicationService) ListCapabilityProposalsByAnalysis(ctx context.Conte
 	}
 	out := make([]*CapabilityProposalDTO, 0, len(props))
 	for _, p := range props {
-		if p == nil || p.TenantID != tc.TenantID || p.BusinessID != businessID || p.AnalysisRunID != analysisRunID {
+		if p == nil {
 			continue
+		}
+		if p.TenantID != tc.TenantID || p.BusinessID != businessID || p.AnalysisRunID != analysisRunID {
+			return nil, formaerrors.MapDomainError(capentity.ErrConsistency)
 		}
 		out = append(out, capabilityProposalDTO(p))
 	}
