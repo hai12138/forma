@@ -1,7 +1,7 @@
 # S5-G4-F3 — Frozen Ownership & Contracts
 
-**Baseline main:** `61657777005d84f0b7a91e99a57209769e18fa56`  
-**F2 implementation:** `37c7c1fc36e32e12c4b4cc7d261ee78144d2aab4`  
+**Baseline main:** `61657777005d84f0b7a91e99a57209769e18fa56`
+**F2 implementation:** `37c7c1fc36e32e12c4b4cc7d261ee78144d2aab4`
 **Status:** FROZEN — candidates only; do NOT declare PASS; do NOT push main.
 
 ---
