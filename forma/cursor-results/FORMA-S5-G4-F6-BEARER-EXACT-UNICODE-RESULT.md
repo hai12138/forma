@@ -3,7 +3,7 @@
 
 **Gate:** S5-G4-F6
 **Date:** 2026-09-14
-**Status:** **PASS (local)** — Forma CI pending
+**Status:** **PASS / CI ALL GREEN**
 
 ---
 
@@ -61,8 +61,8 @@ MIGRATION_CHANGE = NONE
 G5_CHANGE = NONE
 REAL_MODEL_CALLS = 0
 COMMIT_SHA = 8880d8584fe26a2ef9a57900a103f4deb7d60f8a
-CI_RUN = pending
-CI = pending
+CI_RUN = https://github.com/hai12138/forma/actions/runs/34848485559
+CI = ALL GREEN
 S5_G5_READY = NO
 ```
 
@@ -85,9 +85,10 @@ S5_G5_READY = NO
 
 | Field | Value |
 |-------|-------|
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
+| CI_RUN | https://github.com/hai12138/forma/actions/runs/34848485559 |
+| tip SHA checked | `e4d87d76a1a858eb05e79baf5f22532c07ff468b` |
+| forma-backend | success |
+| forma-migration-apply | success |
+| forma-frontend | success |
 
-**Stop:** No `forma-s5-frozen`. No G5 / Runtime / Agent-Workflow projection. `S5_G5_READY = NO`. Await human review after CI ALL GREEN.
+**Stop:** No `forma-s5-frozen`. No G5 / Runtime / Agent-Workflow projection. Await human review. `S5_G5_READY = NO`.
