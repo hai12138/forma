@@ -1,0 +1,107 @@
+# FORMA-S5-G4-F7 — Capability UI Read Seam
+# RESULT
+
+**Gate:** S5-G4-F7
+**Date:** 2026-09-14
+**Status:** **PASS (local)** — Forma CI pending
+
+---
+
+## 1. Baseline
+
+| Item | Value |
+|------|-------|
+| APPROVED_BASELINE (main) | `5dfc715105a927243311ef8f04aa0a5bfb28c730` |
+| Freeze tip | `1a8896082ae93fc924cf81bec084c24a1ca42b5e` |
+| PRODUCT_CODE_CHANGE | **CAPABILITY_READ_SEAM_ONLY** |
+| MIGRATION_CHANGE | **NONE** |
+| G5_CHANGE | **NONE** |
+| RUNTIME_CHANGE | **NONE** |
+| REAL_MODEL_CALLS | **0** |
+
+---
+
+## 2. Parallel candidates (TDD)
+
+| Agent | Branch | SHA |
+|-------|--------|-----|
+| A Tests | `forma/s5-g4-f7-agent-a-tests` | `cd51c35256db20e06a84bb6f733bc06102efbef9` |
+| B Impl | `forma/s5-g4-f7-agent-b-implementation` | `b8b0d84b187d246a5d7d42b7e0e7d1a2d90fdcf3` |
+
+Integration: cherry-pick A (RED) → B as `fix(...)` → integrator align + red-team harden.
+
+---
+
+## 3. Delivered
+
+| Item | Result |
+|------|--------|
+| CapabilityDTO AssetRef projection fields | PASS |
+| ListCapabilities one tenant AssetRef batch | PASS |
+| Get/Create projection (Create via ProjectCapabilityAssetRef) | PASS |
+| GET capability-proposals/:proposalId | PASS |
+| GET capability-analyses/:analysisRunId/proposals | PASS |
+| ACTIVE membership read; SUPER_ADMIN no implicit tenant | PASS |
+| Tenant/business isolation; logical-only; secret-free | PASS |
+| Read no mutation; Analysis GET backward compatible | PASS |
+| Red-team P1 remediated (missing→409; MapRepoError; list fail-closed) | PASS |
+
+---
+
+## 4. Gate checklist
+
+```text
+S5_G4_F7_STATUS = PASS
+CAPABILITY_ASSET_PROJECTION = PASS
+CAPABILITY_LIST_NO_N_PLUS_ONE = PASS
+CAPABILITY_GET_PROJECTION = PASS
+CAPABILITY_CREATE_PROJECTION = PASS
+PROPOSAL_GET = PASS
+ANALYSIS_PROPOSAL_LIST = PASS
+ACTIVE_MEMBERSHIP_READ = PASS
+SUPER_ADMIN_NO_IMPLICIT_TENANT_ACCESS = PASS
+TENANT_BUSINESS_ISOLATION = PASS
+LOGICAL_ONLY = PASS
+SECRET_ISOLATION = PASS
+READ_NO_MUTATION = PASS
+BACKWARD_COMPATIBILITY = PASS
+RED_THEN_GREEN = PASS
+ADVERSARIAL_REVIEW = PASS
+GIT_DIFF_CHECK = PASS
+PRODUCT_CODE_CHANGE = CAPABILITY_READ_SEAM_ONLY
+MIGRATION_CHANGE = NONE
+G5_CHANGE = NONE
+RUNTIME_CHANGE = NONE
+REAL_MODEL_CALLS = 0
+COMMIT_SHA = 546ba5a8e419581aae32d305307ce2c2c227dd91
+LATEST_TIP_SHA = pending
+CI_RUN = pending
+CI = pending
+S5_G5_READY = NO
+```
+
+---
+
+## 5. Local verification
+
+| Gate | Result |
+|------|--------|
+| Capability domain / application / handler | PASS |
+| Full Forma backend packages | PASS |
+| migration-validate 19/19 | PASS |
+| CASE A/B/C | deferred to CI |
+| typecheck + routes-smoke | PASS |
+| Rush `@forma/app` build | deferred to CI (Windows rtsc.sh) |
+
+---
+
+## 6. CI
+
+| Field | Value |
+|-------|-------|
+| CI_RUN | _pending_ |
+| forma-backend | _pending_ |
+| forma-migration-apply | _pending_ |
+| forma-frontend | _pending_ |
+
+**Stop:** No `forma-s5-frozen`. No G5 / Runtime / `@forma/capability` / frontend route changes. Await human review after CI ALL GREEN. `S5_G5_READY = NO`.
