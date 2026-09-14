@@ -128,6 +128,16 @@ func GetCapabilityAnalysis(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// GetCapabilityProposal returns a capability proposal by id.
+func GetCapabilityProposal(ctx context.Context, c *app.RequestContext) {
+	v, err := formaapp.ApplicationSVC.GetCapabilityProposal(ctx, c.Param("id"), c.Param("proposalId"))
+	if err != nil {
+		writeError(ctx, c, err)
+		return
+	}
+	writeOK(ctx, c, v)
+}
+
 // ConfirmCapabilityProposal confirms a capability proposal.
 // Empty body is treated as empty optional input; non-empty malformed JSON fails closed with HTTP 400.
 func ConfirmCapabilityProposal(ctx context.Context, c *app.RequestContext) {

@@ -24,6 +24,8 @@ type AssetProjection interface {
 	CreateCapabilityAsset(ctx context.Context, asset *assetentity.AssetRef) error
 	UpdateCapabilityProjection(ctx context.Context, tenantID, assetID, name, semanticVersion, contentDigest string, status assetentity.AssetStatus) error
 	GetCapabilityAsset(ctx context.Context, tenantID, assetID string) (*assetentity.AssetRef, error)
+	// ListCapabilityAssetsByTenant returns CAPABILITY-kind AssetRefs for the tenant only.
+	ListCapabilityAssetsByTenant(ctx context.Context, tenantID string) ([]*assetentity.AssetRef, error)
 }
 
 // Clock abstracts time for tests.
@@ -47,9 +49,12 @@ type CapabilityService interface {
 	RejectProposal(ctx context.Context, in *RejectInput) (*entity.CapabilityDecision, error)
 	GetCapability(ctx context.Context, tenantID, capabilityID string) (*entity.BusinessCapability, error)
 	ListCapabilities(ctx context.Context, tenantID, businessID string) ([]*entity.BusinessCapability, error)
+	GetCapabilityAsset(ctx context.Context, tenantID, capabilityID string) (*assetentity.AssetRef, error)
+	ListCapabilityAssetsByTenant(ctx context.Context, tenantID string) ([]*assetentity.AssetRef, error)
 	GetRevision(ctx context.Context, tenantID, revisionID string) (*entity.BusinessCapabilityRevision, error)
 	ListRevisions(ctx context.Context, tenantID, capabilityID string) ([]*entity.BusinessCapabilityRevision, error)
 	GetProposal(ctx context.Context, tenantID, proposalID string) (*entity.CapabilityProposal, error)
+	ListProposalsByAnalysisRun(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityProposal, error)
 	ListValidations(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error)
 	ListDecisions(ctx context.Context, tenantID, capabilityID string) ([]*entity.CapabilityDecision, error)
 	Validate(ctx context.Context, tenantID, revisionID, actorID string) (*entity.BusinessCapabilityRevision, *entity.CapabilityValidationResult, error)
@@ -930,6 +935,20 @@ func (s *capabilityService) ListCapabilities(ctx context.Context, tenantID, busi
 	return s.root().ListCapabilitiesByBusiness(ctx, tenantID, businessID)
 }
 
+func (s *capabilityService) GetCapabilityAsset(ctx context.Context, tenantID, capabilityID string) (*assetentity.AssetRef, error) {
+	if !s.configured() {
+		return nil, entity.ErrNotConfigured
+	}
+	return s.uow.Assets().GetCapabilityAsset(ctx, tenantID, capabilityID)
+}
+
+func (s *capabilityService) ListCapabilityAssetsByTenant(ctx context.Context, tenantID string) ([]*assetentity.AssetRef, error) {
+	if !s.configured() {
+		return nil, entity.ErrNotConfigured
+	}
+	return s.uow.Assets().ListCapabilityAssetsByTenant(ctx, tenantID)
+}
+
 func (s *capabilityService) GetRevision(ctx context.Context, tenantID, revisionID string) (*entity.BusinessCapabilityRevision, error) {
 	if !s.configured() {
 		return nil, entity.ErrNotConfigured
@@ -949,6 +968,13 @@ func (s *capabilityService) GetProposal(ctx context.Context, tenantID, proposalI
 		return nil, entity.ErrNotConfigured
 	}
 	return s.root().GetProposal(ctx, tenantID, proposalID)
+}
+
+func (s *capabilityService) ListProposalsByAnalysisRun(ctx context.Context, tenantID, analysisRunID string) ([]*entity.CapabilityProposal, error) {
+	if !s.configured() {
+		return nil, entity.ErrNotConfigured
+	}
+	return s.root().ListProposalsByAnalysisRun(ctx, tenantID, analysisRunID)
 }
 
 func (s *capabilityService) ListValidations(ctx context.Context, tenantID, revisionID string) ([]*entity.CapabilityValidationResult, error) {

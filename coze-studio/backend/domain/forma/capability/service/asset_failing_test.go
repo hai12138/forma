@@ -45,4 +45,8 @@ func (f *FailingAssetProjection) GetCapabilityAsset(ctx context.Context, tenantI
 	return f.Inner.GetCapabilityAsset(ctx, tenantID, assetID)
 }
 
+func (f *FailingAssetProjection) ListCapabilityAssetsByTenant(ctx context.Context, tenantID string) ([]*assetentity.AssetRef, error) {
+	return f.Inner.ListCapabilityAssetsByTenant(ctx, tenantID)
+}
+
 var _ AssetProjection = (*FailingAssetProjection)(nil)

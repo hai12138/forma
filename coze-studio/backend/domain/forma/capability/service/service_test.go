@@ -44,6 +44,7 @@ type rootOverrideUoW struct {
 }
 
 func (u *rootOverrideUoW) Root() repository.CapabilityRepository { return u.root }
+func (u *rootOverrideUoW) Assets() AssetProjection               { return u.inner.Assets() }
 func (u *rootOverrideUoW) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
 	return u.inner.WithinTransaction(ctx, fn)
 }

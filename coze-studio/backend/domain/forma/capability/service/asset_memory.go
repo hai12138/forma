@@ -66,6 +66,20 @@ func (m *MemoryAssetProjection) GetCapabilityAsset(_ context.Context, tenantID, 
 	return &cp, nil
 }
 
+func (m *MemoryAssetProjection) ListCapabilityAssetsByTenant(_ context.Context, tenantID string) ([]*assetentity.AssetRef, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*assetentity.AssetRef, 0)
+	for _, a := range m.assets {
+		if a == nil || a.TenantID != tenantID || a.Kind != assetentity.AssetKindCapability {
+			continue
+		}
+		cp := *a
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
 type assetSnap map[string]*assetentity.AssetRef
 
 func (m *MemoryAssetProjection) snapshot() assetSnap {

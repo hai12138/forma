@@ -27,3 +27,13 @@ func RetryCapabilityAnalysis(ctx context.Context, c *app.RequestContext) {
 	}
 	writeOK(ctx, c, v)
 }
+
+// ListCapabilityProposalsByAnalysis lists proposals for a capability analysis run.
+func ListCapabilityProposalsByAnalysis(ctx context.Context, c *app.RequestContext) {
+	v, err := formaapp.ApplicationSVC.ListCapabilityProposalsByAnalysis(ctx, c.Param("id"), c.Param("analysisRunId"))
+	if err != nil {
+		writeError(ctx, c, err)
+		return
+	}
+	writeOK(ctx, c, v)
+}

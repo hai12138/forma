@@ -19,6 +19,7 @@ import (
 
 	formaRouter "github.com/coze-dev/coze-studio/backend/api/router/forma"
 	formaapp "github.com/coze-dev/coze-studio/backend/application/forma"
+	assetentity "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/entity"
 	bizentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
 	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
@@ -236,6 +237,12 @@ func (s *countingCapabilitySVC) GetCapability(context.Context, string, string) (
 func (s *countingCapabilitySVC) ListCapabilities(context.Context, string, string) ([]*capentity.BusinessCapability, error) {
 	return nil, nil
 }
+func (s *countingCapabilitySVC) GetCapabilityAsset(context.Context, string, string) (*assetentity.AssetRef, error) {
+	return nil, capentity.ErrNotFound
+}
+func (s *countingCapabilitySVC) ListCapabilityAssetsByTenant(context.Context, string) ([]*assetentity.AssetRef, error) {
+	return nil, nil
+}
 func (s *countingCapabilitySVC) GetRevision(context.Context, string, string) (*capentity.BusinessCapabilityRevision, error) {
 	return nil, capentity.ErrRevisionNotFound
 }
@@ -244,6 +251,9 @@ func (s *countingCapabilitySVC) ListRevisions(context.Context, string, string) (
 }
 func (s *countingCapabilitySVC) GetProposal(context.Context, string, string) (*capentity.CapabilityProposal, error) {
 	return nil, capentity.ErrNotFound
+}
+func (s *countingCapabilitySVC) ListProposalsByAnalysisRun(context.Context, string, string) ([]*capentity.CapabilityProposal, error) {
+	return nil, nil
 }
 func (s *countingCapabilitySVC) ListValidations(context.Context, string, string) ([]*capentity.CapabilityValidationResult, error) {
 	return nil, nil
@@ -478,6 +488,14 @@ func (s panicOnInvokeCapabilitySVC) ListCapabilities(context.Context, string, st
 	s.fail("ListCapabilities")
 	return nil, nil
 }
+func (s panicOnInvokeCapabilitySVC) GetCapabilityAsset(context.Context, string, string) (*assetentity.AssetRef, error) {
+	s.fail("GetCapabilityAsset")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) ListCapabilityAssetsByTenant(context.Context, string) ([]*assetentity.AssetRef, error) {
+	s.fail("ListCapabilityAssetsByTenant")
+	return nil, nil
+}
 func (s panicOnInvokeCapabilitySVC) GetRevision(context.Context, string, string) (*capentity.BusinessCapabilityRevision, error) {
 	s.fail("GetRevision")
 	return nil, nil
@@ -488,6 +506,10 @@ func (s panicOnInvokeCapabilitySVC) ListRevisions(context.Context, string, strin
 }
 func (s panicOnInvokeCapabilitySVC) GetProposal(context.Context, string, string) (*capentity.CapabilityProposal, error) {
 	s.fail("GetProposal")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) ListProposalsByAnalysisRun(context.Context, string, string) ([]*capentity.CapabilityProposal, error) {
+	s.fail("ListProposalsByAnalysisRun")
 	return nil, nil
 }
 func (s panicOnInvokeCapabilitySVC) ListValidations(context.Context, string, string) ([]*capentity.CapabilityValidationResult, error) {

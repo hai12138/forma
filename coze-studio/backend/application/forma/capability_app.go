@@ -28,9 +28,21 @@ func (s *ApplicationService) ListCapabilities(ctx context.Context, businessID st
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
+	assets, err := s.CapabilitySVC.ListCapabilityAssetsByTenant(ctx, tc.TenantID)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	byID, err := capabilityAssetMapByID(assets)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
 	out := make([]*CapabilityDTO, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, capabilityDTO(r))
+		dto := capabilityDTO(r)
+		if err := attachCapabilityAssetRef(dto, r, byID[r.CapabilityID], tc.TenantID); err != nil {
+			return nil, formaerrors.MapDomainError(err)
+		}
+		out = append(out, dto)
 	}
 	return out, nil
 }
@@ -47,7 +59,15 @@ func (s *ApplicationService) GetCapability(ctx context.Context, businessID, capa
 	if err != nil {
 		return nil, err
 	}
-	return capabilityDTO(cap), nil
+	asset, err := s.CapabilitySVC.GetCapabilityAsset(ctx, tc.TenantID, capabilityID)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	dto := capabilityDTO(cap)
+	if err := attachCapabilityAssetRef(dto, cap, asset, tc.TenantID); err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	return dto, nil
 }
 
 func (s *ApplicationService) CreateCapability(ctx context.Context, businessID string, in *CreateCapabilityInput) (*CreateCapabilityResponse, error) {
@@ -73,7 +93,15 @@ func (s *ApplicationService) CreateCapability(ctx context.Context, businessID st
 		return nil, formaerrors.MapDomainError(err)
 	}
 	s.recordCapabilityAudit(ctx, tc, "capability.create", cap.CapabilityID)
-	return &CreateCapabilityResponse{Capability: capabilityDTO(cap), Revision: capabilityRevisionDTO(rev)}, nil
+	dto := capabilityDTO(cap)
+	proj, projErr := capsvc.ProjectCapabilityAssetRef(cap, []*capentity.BusinessCapabilityRevision{rev})
+	if projErr != nil {
+		return nil, formaerrors.MapDomainError(projErr)
+	}
+	if err := attachCapabilityProjectionResult(dto, proj); err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	return &CreateCapabilityResponse{Capability: dto, Revision: capabilityRevisionDTO(rev)}, nil
 }
 
 func (s *ApplicationService) ListCapabilityRevisions(ctx context.Context, businessID, capabilityID string) ([]*CapabilityRevisionDTO, error) {
@@ -342,4 +370,17 @@ func (s *ApplicationService) ListCapabilityDecisions(ctx context.Context, busine
 		out = append(out, capabilityDecisionDTO(r))
 	}
 	return out, nil
+}
+
+// GetCapabilityProposal returns a proposal scoped to tenant+business (all statuses readable).
+func (s *ApplicationService) GetCapabilityProposal(ctx context.Context, businessID, proposalID string) (*CapabilityProposalDTO, error) {
+	tc, err := s.requireCapabilityRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prop, err := s.requireCapabilityProposal(ctx, tc.TenantID, businessID, proposalID)
+	if err != nil {
+		return nil, err
+	}
+	return capabilityProposalDTO(prop), nil
 }
