@@ -51,21 +51,27 @@ var (
 		regexp.MustCompile(`(?i)\bsk-[A-Za-z0-9]{20,}\b`),                         // sk- prefix token
 		regexp.MustCompile(`(?i)\bxox[baprs]-[A-Za-z0-9-]{10,}\b`),                // xox* prefix token
 		regexp.MustCompile(`(?i)\bxapp-[A-Za-z0-9-]{10,}\b`),                      // xapp- prefix token
-		regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._\-]{8,}`),                    // Bearer token
 		regexp.MustCompile(`(?i)-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----`), // PEM private key
 		regexp.MustCompile(`^[A-Za-z0-9]{48,}$`),                                  // long separator-free random token
 		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`),                          // long base64 (free-text)
 	}
+	// Bearer <non-empty> (any length). Handled separately so "bearer of …" stays allowed
+	// (Go regexp has no negative lookahead).
+	bearerCredentialPattern = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._\-]+`)
+	bearerOfPhrasePattern   = regexp.MustCompile(`(?i)\bbearer\s+of\b`)
 	// Assignment / delimiter forms — contain '=' or spaces, cannot pass ValidateOpaqueID.
+	// Require non-empty RHS. Do NOT ban bare keywords (trade secret, cookie policy, tokenization).
 	freeTextAssignmentPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(api[_-]?key|authorization)\s*[:=]`),
+		regexp.MustCompile(`(?i)(api[_-]?key|authorization)\s*[:=]\s*\S+`),
 		regexp.MustCompile(`(?i)password\s*[:=]\s*\S+`),
-		regexp.MustCompile(`(?i)authorization\s*:`),
+		regexp.MustCompile(`(?i)\btoken\s*=\s*\S+`),
+		regexp.MustCompile(`(?i)\bcookie\s*=\s*\S+`),
+		regexp.MustCompile(`(?i)\bsecret\s*=\s*\S+`),
 		regexp.MustCompile(`(?i)(session|sid|jsessionid)\s*=\s*\S+`),
-		regexp.MustCompile(`(?i)client_secret\s*=`),
-		regexp.MustCompile(`(?i)access_token\s*=`),
-		regexp.MustCompile(`(?i)refresh_token\s*=`),
-		regexp.MustCompile(`(?i)api_key\s*=`),
+		regexp.MustCompile(`(?i)client_secret\s*=\s*\S+`),
+		regexp.MustCompile(`(?i)access_token\s*=\s*\S+`),
+		regexp.MustCompile(`(?i)refresh_token\s*=\s*\S+`),
+		regexp.MustCompile(`(?i)api_key\s*=\s*\S+`),
 	}
 	credentialKeyName = regexp.MustCompile(`(?i)^(api[_-]?key|token|password|authorization|secret|cookie|bearer|access_token|refresh_token)$`)
 	opaqueIDPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$`)
@@ -427,9 +433,25 @@ func containsExecutable(s string) bool {
 	return executablePattern.MatchString(s)
 }
 
+// containsBearerCredential rejects Authorization-style Bearer tokens of any non-empty length.
+// Allows English "bearer of …" (e.g. "bearer of responsibility") by stripping that phrase first.
+func containsBearerCredential(s string) bool {
+	if !bearerCredentialPattern.MatchString(s) {
+		return false
+	}
+	if !bearerOfPhrasePattern.MatchString(s) {
+		return true
+	}
+	cleaned := bearerOfPhrasePattern.ReplaceAllString(s, " ")
+	return bearerCredentialPattern.MatchString(cleaned)
+}
+
 func containsSecret(s string) bool {
 	if strings.TrimSpace(s) == "" {
 		return false
+	}
+	if containsBearerCredential(s) {
+		return true
 	}
 	for _, re := range sharedCredentialShapePatterns {
 		if re.MatchString(s) {
@@ -445,11 +467,14 @@ func containsSecret(s string) bool {
 }
 
 // containsCredentialShape blocks credential-like tokens in opaque analysis IDs.
-// Uses the shared pattern set only (no assignment forms that cannot pass ValidateOpaqueID).
+// Uses the shared pattern set + Bearer (no assignment forms that cannot pass ValidateOpaqueID).
 // Does NOT reject the bare word "secret" alone.
 func containsCredentialShape(s string) bool {
 	if strings.TrimSpace(s) == "" {
 		return false
+	}
+	if containsBearerCredential(s) {
+		return true
 	}
 	for _, re := range sharedCredentialShapePatterns {
 		if re.MatchString(s) {

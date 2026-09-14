@@ -19,8 +19,9 @@ const (
 // ValidateAuditMetadata rejects unsafe reason / client_request_id values.
 // Empty strings are allowed. Failures return entity.ErrInvalidPayload (reject, never redact).
 //
-// reason uses containsSecret (credential shapes + assignment forms), not bare keyword substrings.
-// client_request_id (when non-empty) requires ValidateOpaqueID + containsCredentialShape + length ≤128.
+// reason uses containsSecret (shared credential shapes + freeTextAssignmentPatterns), not bare keyword substrings.
+// client_request_id (when non-empty) requires ValidateOpaqueID + containsCredentialShape + length ≤128
+// (assignment forms cannot pass ValidateOpaqueID; keep this split — do not run freeTextAssignmentPatterns here).
 func ValidateAuditMetadata(reason, clientRequestID string) error {
 	if err := validateAuditReason(reason); err != nil {
 		return err
