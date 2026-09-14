@@ -8,6 +8,7 @@ package service
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	datasvc "github.com/coze-dev/coze-studio/backend/domain/forma/data/service"
@@ -55,13 +56,6 @@ var (
 		regexp.MustCompile(`^[A-Za-z0-9]{48,}$`),                                  // long separator-free random token
 		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`),                          // long base64 (free-text)
 	}
-	// Bearer <non-empty token> — any non-whitespace after Bearer (punctuation included).
-	// Handled separately so the exact approved phrase "bearer of responsibility"
-	// stays allowed (Go regexp has no negative lookahead). Bare "Bearer of" alone is a credential.
-	bearerCredentialPattern = regexp.MustCompile(`(?i)\bbearer\s+\S+`)
-	// Exact allowlisted business phrase only; word boundary after responsibility
-	// so trailing tokens are not swallowed into the exemption.
-	bearerOfPhrasePattern = regexp.MustCompile(`(?i)\bbearer\s+of\s+responsibility\b`)
 	// Assignment / delimiter forms — contain '=' or spaces, cannot pass ValidateOpaqueID.
 	// Require non-empty RHS. Do NOT ban bare keywords (trade secret, cookie policy, tokenization).
 	freeTextAssignmentPatterns = []*regexp.Regexp{
@@ -437,12 +431,53 @@ func containsExecutable(s string) bool {
 }
 
 // containsBearerCredential rejects Authorization-style Bearer tokens (any non-whitespace token).
-// Allows only the exact approved phrase "bearer of responsibility" (case-insensitive) by
-// stripping those matches first; other "bearer of …" forms and bare "Bearer of" remain credentials.
-// If the safe phrase and another Bearer credential both appear, still rejects.
+// Allows ONLY when the entire trimmed input equals "bearer of responsibility" (case-insensitive).
+// Mid-string occurrences of that phrase are NOT exempted. Whitespace after Bearer is detected via
+// unicode.IsSpace (not regexp \s), so NBSP and other Unicode spaces count.
 func containsBearerCredential(s string) bool {
-	cleaned := bearerOfPhrasePattern.ReplaceAllString(s, " ")
-	return bearerCredentialPattern.MatchString(cleaned)
+	if strings.EqualFold(strings.TrimSpace(s), "bearer of responsibility") {
+		return false
+	}
+	const keyword = "bearer"
+	runes := []rune(s)
+	n := len(runes)
+	kwLen := len(keyword)
+	for i := 0; i <= n-kwLen; i++ {
+		if i > 0 && isASCIIWordChar(runes[i-1]) {
+			continue
+		}
+		matched := true
+		for j := 0; j < kwLen; j++ {
+			if unicode.ToLower(runes[i+j]) != rune(keyword[j]) {
+				matched = false
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		end := i + kwLen
+		if end < n && isASCIIWordChar(runes[end]) {
+			continue
+		}
+		j := end
+		spaces := 0
+		for j < n && unicode.IsSpace(runes[j]) {
+			spaces++
+			j++
+		}
+		if spaces == 0 {
+			continue
+		}
+		if j < n {
+			return true
+		}
+	}
+	return false
+}
+
+func isASCIIWordChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
 }
 
 func containsSecret(s string) bool {
