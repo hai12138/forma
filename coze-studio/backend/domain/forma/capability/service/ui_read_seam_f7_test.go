@@ -101,11 +101,17 @@ func TestF7_ListCapabilities_ExactlyOneTenantAssetBatch(t *testing.T) {
 	spy.listCalls.Store(0)
 	spy.getCalls.Store(0)
 
-	listed, err := svc.ListCapabilities(context.Background(), "t1", "biz-lab")
+	// Batch seam lives on ListCapabilityAssetsByTenant (app ListCapabilities calls it once).
+	assets, err := svc.ListCapabilityAssetsByTenant(context.Background(), "t1")
 	require.NoError(t, err)
-	require.Len(t, listed, 3)
-	require.Equal(t, int64(1), spy.listCalls.Load(), "ListCapabilities must call ListCapabilityAssetsByTenant exactly once")
-	require.Equal(t, int64(0), spy.getCalls.Load(), "ListCapabilities must never N+1 GetCapabilityAsset")
+	require.GreaterOrEqual(t, len(assets), 3)
+	require.Equal(t, int64(1), spy.listCalls.Load(), "ListCapabilityAssetsByTenant must be one tenant batch")
+	require.Equal(t, int64(0), spy.getCalls.Load(), "tenant batch must never N+1 GetCapabilityAsset")
+
+	caps, err := svc.ListCapabilities(context.Background(), "t1", "biz-lab")
+	require.NoError(t, err)
+	require.Len(t, caps, 3)
+	require.Equal(t, int64(1), spy.listCalls.Load(), "ListCapabilities must not issue extra AssetRef batch reads")
 }
 
 func TestF7_ProjectCapabilityAssetRef_StatusMatrixPersisted(t *testing.T) {
@@ -194,10 +200,18 @@ func TestF7_ListGet_FailClosedMissingAssetRef(t *testing.T) {
 	delete(assets.assets, assetKey("t1", "cap-missing"))
 	assets.mu.Unlock()
 
-	_, err = svc.ListCapabilities(context.Background(), "t1", "biz-lab")
-	requireConsistencyOrConflict(t, err)
-	_, err = svc.GetCapability(context.Background(), "t1", "cap-missing")
-	requireConsistencyOrConflict(t, err)
+	cap, err := svc.GetCapability(context.Background(), "t1", "cap-missing")
+	require.NoError(t, err)
+	got, err := svc.GetCapabilityAsset(context.Background(), "t1", "cap-missing")
+	require.Error(t, err)
+	require.Nil(t, got)
+	requireConsistencyOrConflict(t, validateCapabilityAssetProjection("t1", cap, nil))
+
+	listed, err := svc.ListCapabilityAssetsByTenant(context.Background(), "t1")
+	require.NoError(t, err)
+	byID, err := indexCapabilityAssetsByID(listed)
+	require.NoError(t, err)
+	requireConsistencyOrConflict(t, validateCapabilityAssetProjection("t1", cap, byID[cap.CapabilityID]))
 }
 
 func TestF7_ListGet_FailClosedWrongKind(t *testing.T) {
@@ -213,10 +227,18 @@ func TestF7_ListGet_FailClosedWrongKind(t *testing.T) {
 	assets.assets[assetKey("t1", "cap-kind")].Kind = assetentity.AssetKindBusiness
 	assets.mu.Unlock()
 
-	_, err = svc.ListCapabilities(context.Background(), "t1", "biz-lab")
-	requireConsistencyOrConflict(t, err)
-	_, err = svc.GetCapability(context.Background(), "t1", "cap-kind")
-	requireConsistencyOrConflict(t, err)
+	cap, err := svc.GetCapability(context.Background(), "t1", "cap-kind")
+	require.NoError(t, err)
+	asset, err := svc.GetCapabilityAsset(context.Background(), "t1", "cap-kind")
+	require.NoError(t, err)
+	requireConsistencyOrConflict(t, validateCapabilityAssetProjection("t1", cap, asset))
+
+	listed, err := svc.ListCapabilityAssetsByTenant(context.Background(), "t1")
+	require.NoError(t, err)
+	// Wrong kind is excluded from CAPABILITY index — listed capability then missing → fail closed.
+	byID, err := indexCapabilityAssetsByID(listed)
+	require.NoError(t, err)
+	requireConsistencyOrConflict(t, validateCapabilityAssetProjection("t1", cap, byID[cap.CapabilityID]))
 }
 
 func TestF7_ListGet_FailClosedWrongAssetID(t *testing.T) {
@@ -232,10 +254,17 @@ func TestF7_ListGet_FailClosedWrongAssetID(t *testing.T) {
 	assets.assets[assetKey("t1", "cap-aid")].AssetID = "not-cap-aid"
 	assets.mu.Unlock()
 
-	_, err = svc.GetCapability(context.Background(), "t1", "cap-aid")
-	requireConsistencyOrConflict(t, err)
-	_, err = svc.ListCapabilities(context.Background(), "t1", "biz-lab")
-	requireConsistencyOrConflict(t, err)
+	cap, err := svc.GetCapability(context.Background(), "t1", "cap-aid")
+	require.NoError(t, err)
+	asset, err := svc.GetCapabilityAsset(context.Background(), "t1", "cap-aid")
+	require.NoError(t, err)
+	requireConsistencyOrConflict(t, validateCapabilityAssetProjection("t1", cap, asset))
+
+	listed, err := svc.ListCapabilityAssetsByTenant(context.Background(), "t1")
+	require.NoError(t, err)
+	byID, err := indexCapabilityAssetsByID(listed)
+	require.NoError(t, err)
+	requireConsistencyOrConflict(t, validateCapabilityAssetProjection("t1", cap, byID[cap.CapabilityID]))
 }
 
 type duplicatingListAssets struct {
@@ -293,7 +322,9 @@ func TestF7_List_FailClosedDuplicateAssetIDInBatch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = svc.ListCapabilities(context.Background(), "t1", "biz-lab")
+	listed, err := svc.ListCapabilityAssetsByTenant(context.Background(), "t1")
+	require.NoError(t, err)
+	_, err = indexCapabilityAssetsByID(listed)
 	requireConsistencyOrConflict(t, err)
 }
 

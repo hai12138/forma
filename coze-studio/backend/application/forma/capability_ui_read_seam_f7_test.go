@@ -212,11 +212,20 @@ func (s *f7ConsistencyCapSVC) EditConfirmProposal(ctx context.Context, in *capsv
 func (s *f7ConsistencyCapSVC) RejectProposal(ctx context.Context, in *capsvc.RejectInput) (*capentity.CapabilityDecision, error) {
 	return s.inner.RejectProposal(ctx, in)
 }
-func (s *f7ConsistencyCapSVC) GetCapability(context.Context, string, string) (*capentity.BusinessCapability, error) {
+func (s *f7ConsistencyCapSVC) GetCapability(ctx context.Context, tenantID, capabilityID string) (*capentity.BusinessCapability, error) {
+	return s.inner.GetCapability(ctx, tenantID, capabilityID)
+}
+func (s *f7ConsistencyCapSVC) ListCapabilities(ctx context.Context, tenantID, businessID string) ([]*capentity.BusinessCapability, error) {
+	return s.inner.ListCapabilities(ctx, tenantID, businessID)
+}
+func (s *f7ConsistencyCapSVC) GetCapabilityAsset(context.Context, string, string) (*assetentity.AssetRef, error) {
 	return nil, capentity.ErrConsistency
 }
-func (s *f7ConsistencyCapSVC) ListCapabilities(context.Context, string, string) ([]*capentity.BusinessCapability, error) {
+func (s *f7ConsistencyCapSVC) ListCapabilityAssetsByTenant(context.Context, string) ([]*assetentity.AssetRef, error) {
 	return nil, capentity.ErrConsistency
+}
+func (s *f7ConsistencyCapSVC) ListProposalsByAnalysisRun(ctx context.Context, tenantID, analysisRunID string) ([]*capentity.CapabilityProposal, error) {
+	return s.inner.ListProposalsByAnalysisRun(ctx, tenantID, analysisRunID)
 }
 func (s *f7ConsistencyCapSVC) GetRevision(ctx context.Context, tenantID, revisionID string) (*capentity.BusinessCapabilityRevision, error) {
 	return s.inner.GetRevision(ctx, tenantID, revisionID)

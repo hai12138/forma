@@ -227,20 +227,11 @@ func capabilityDTO(v *capentity.BusinessCapability) *CapabilityDTO {
 // attachCapabilityAssetRef fills AssetRef projection fields onto a CapabilityDTO.
 // Fail closed on missing / wrong kind / asset_id mismatch / tenant mismatch.
 func attachCapabilityAssetRef(dto *CapabilityDTO, cap *capentity.BusinessCapability, asset *assetentity.AssetRef, tenantID string) error {
-	if dto == nil || cap == nil {
+	if dto == nil {
 		return capentity.ErrConsistency
 	}
-	if asset == nil {
-		return capentity.ErrConsistency
-	}
-	if asset.Kind != assetentity.AssetKindCapability {
-		return capentity.ErrConsistency
-	}
-	if asset.AssetID != cap.CapabilityID {
-		return capentity.ErrConsistency
-	}
-	if asset.TenantID != tenantID || (cap.TenantID != "" && asset.TenantID != cap.TenantID) {
-		return capentity.ErrConsistency
+	if err := capsvc.ValidateCapabilityAssetProjection(tenantID, cap, asset); err != nil {
+		return err
 	}
 	dto.Name = asset.Name
 	dto.SemanticVersion = asset.SemanticVersion
@@ -263,20 +254,7 @@ func attachCapabilityProjectionResult(dto *CapabilityDTO, proj *capsvc.Projectio
 
 // capabilityAssetMapByID indexes CAPABILITY assets by asset_id; duplicate asset_id → ErrConflict.
 func capabilityAssetMapByID(assets []*assetentity.AssetRef) (map[string]*assetentity.AssetRef, error) {
-	byID := make(map[string]*assetentity.AssetRef, len(assets))
-	for _, a := range assets {
-		if a == nil {
-			continue
-		}
-		if a.Kind != assetentity.AssetKindCapability {
-			continue
-		}
-		if _, dup := byID[a.AssetID]; dup {
-			return nil, capentity.ErrConflict
-		}
-		byID[a.AssetID] = a
-	}
-	return byID, nil
+	return capsvc.IndexCapabilityAssetsByID(assets)
 }
 
 func capabilitySemanticDTO(p capentity.SemanticPayload) CapabilitySemanticPayloadDTO {

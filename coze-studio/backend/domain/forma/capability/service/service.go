@@ -1561,6 +1561,54 @@ func projectAndUpdateAssets(ctx context.Context, assets AssetProjection, cap *en
 	return assets.UpdateCapabilityProjection(ctx, cap.TenantID, cap.CapabilityID, proj.Name, proj.SemanticVersion, proj.ContentDigest, proj.Status)
 }
 
+// IndexCapabilityAssetsByID indexes CAPABILITY AssetRefs by asset_id.
+// Duplicate asset_id → ErrConflict. Non-CAPABILITY rows are skipped.
+func IndexCapabilityAssetsByID(assets []*assetentity.AssetRef) (map[string]*assetentity.AssetRef, error) {
+	return indexCapabilityAssetsByID(assets)
+}
+
+func indexCapabilityAssetsByID(assets []*assetentity.AssetRef) (map[string]*assetentity.AssetRef, error) {
+	byID := make(map[string]*assetentity.AssetRef, len(assets))
+	for _, a := range assets {
+		if a == nil {
+			continue
+		}
+		if a.Kind != assetentity.AssetKindCapability {
+			continue
+		}
+		if _, dup := byID[a.AssetID]; dup {
+			return nil, entity.ErrConflict
+		}
+		byID[a.AssetID] = a
+	}
+	return byID, nil
+}
+
+// ValidateCapabilityAssetProjection fail-closes when AssetRef is missing or inconsistent
+// with the capability identity (kind / asset_id / tenant).
+func ValidateCapabilityAssetProjection(tenantID string, cap *entity.BusinessCapability, asset *assetentity.AssetRef) error {
+	return validateCapabilityAssetProjection(tenantID, cap, asset)
+}
+
+func validateCapabilityAssetProjection(tenantID string, cap *entity.BusinessCapability, asset *assetentity.AssetRef) error {
+	if cap == nil {
+		return entity.ErrConsistency
+	}
+	if asset == nil {
+		return entity.ErrConsistency
+	}
+	if asset.Kind != assetentity.AssetKindCapability {
+		return entity.ErrConsistency
+	}
+	if asset.AssetID != cap.CapabilityID {
+		return entity.ErrConsistency
+	}
+	if asset.TenantID != tenantID || (cap.TenantID != "" && asset.TenantID != cap.TenantID) {
+		return entity.ErrConsistency
+	}
+	return nil
+}
+
 func revisionFromPayload(tenantID, businessID, capID, revID string, version int32, source entity.Source, p entity.SemanticPayload, actor string, now time.Time) *entity.BusinessCapabilityRevision {
 	return &entity.BusinessCapabilityRevision{
 		RevisionID: revID, CapabilityID: capID, TenantID: tenantID, BusinessID: businessID,
