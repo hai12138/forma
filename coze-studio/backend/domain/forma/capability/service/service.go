@@ -436,7 +436,8 @@ func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing
 		if owned {
 			persisted, loadErr := s.loadValidatedPersistedAnalysisRequest(ctx, claimed)
 			if loadErr != nil {
-				return nil, loadErr
+				// load already attempted mark-failed; surface FAILED DTO when mark stuck.
+				return s.returnPersistedFailedAnalysis(ctx, claimed.TenantID, claimed.AnalysisRunID, loadErr)
 			}
 			return s.executeAnalysis(ctx, claimed, persisted) // NOT caller analysis
 		}
@@ -453,7 +454,8 @@ func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing
 }
 
 // loadValidatedPersistedAnalysisRequest unmarshals and validates RequestJSON; marks failed on any error.
-// Never calls the generator.
+// Never calls the generator. On validation failure callers must use returnPersistedFailedAnalysis
+// so a successfully marked FAILED run is still visible (nil result would drop the DTO).
 func (s *capabilityService) loadValidatedPersistedAnalysisRequest(ctx context.Context, run *entity.CapabilityAnalysisRun) (entity.AnalysisRequest, error) {
 	var empty entity.AnalysisRequest
 	if run == nil {
@@ -488,6 +490,22 @@ func (s *capabilityService) loadValidatedPersistedAnalysisRequest(ctx context.Co
 	return req, nil
 }
 
+// returnPersistedFailedAnalysis re-fetches a run after mark-failed. Only when Status==FAILED does it
+// return a result DTO (OwnedExecute=true) with a sanitized domain error. Mark/refetch failure fails closed.
+func (s *capabilityService) returnPersistedFailedAnalysis(ctx context.Context, tenantID, analysisRunID string, domainErr error) (*AnalysisResult, error) {
+	failed, getErr := s.root().GetAnalysisRun(ctx, tenantID, analysisRunID)
+	if getErr != nil {
+		return nil, SanitizeAnalysisError(getErr)
+	}
+	if failed == nil || failed.Status != entity.AnalysisFailed {
+		if domainErr != nil {
+			return nil, SanitizeAnalysisError(domainErr)
+		}
+		return nil, entity.ErrConsistency
+	}
+	return &AnalysisResult{Run: failed, OwnedExecute: true}, SanitizeAnalysisError(domainErr)
+}
+
 func (s *capabilityService) executeAnalysis(ctx context.Context, run *entity.CapabilityAnalysisRun, analysis entity.AnalysisRequest) (*AnalysisResult, error) {
 	if run == nil {
 		return nil, entity.ErrConsistency
@@ -502,11 +520,7 @@ func (s *capabilityService) executeAnalysis(ctx context.Context, run *entity.Cap
 		if markErr := s.markAnalysisFailedWithAttempt(ctx, run.TenantID, run.AnalysisRunID, code, attempt); markErr != nil {
 			return nil, SanitizeAnalysisError(markErr)
 		}
-		failed, getErr := s.root().GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
-		if getErr != nil {
-			return nil, SanitizeAnalysisError(getErr)
-		}
-		return &AnalysisResult{Run: failed, OwnedExecute: true}, entity.ErrAnalysisFailed
+		return s.returnPersistedFailedAnalysis(ctx, run.TenantID, run.AnalysisRunID, entity.ErrAnalysisFailed)
 	}
 	now := s.now()
 	var created []*entity.CapabilityProposal
@@ -546,11 +560,7 @@ func (s *capabilityService) executeAnalysis(ctx context.Context, run *entity.Cap
 		if markErr := s.markAnalysisFailedWithAttempt(ctx, run.TenantID, run.AnalysisRunID, code, attempt); markErr != nil {
 			return nil, SanitizeAnalysisError(markErr)
 		}
-		failed, getErr := s.root().GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
-		if getErr != nil {
-			return nil, SanitizeAnalysisError(getErr)
-		}
-		return &AnalysisResult{Run: failed, OwnedExecute: true}, SanitizeAnalysisError(err)
+		return s.returnPersistedFailedAnalysis(ctx, run.TenantID, run.AnalysisRunID, err)
 	}
 	final, getErr := s.root().GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
 	if getErr != nil {
@@ -622,7 +632,8 @@ func (s *capabilityService) RetryFailedAnalysis(ctx context.Context, tenantID, a
 	run.Attempt = attempt
 	analysis, loadErr := s.loadValidatedPersistedAnalysisRequest(ctx, run)
 	if loadErr != nil {
-		return nil, loadErr
+		// load already attempted mark-failed; surface FAILED DTO when mark stuck.
+		return s.returnPersistedFailedAnalysis(ctx, tenantID, analysisRunID, loadErr)
 	}
 	return s.executeAnalysis(ctx, run, analysis)
 }
