@@ -3,7 +3,7 @@
 
 **Gate:** S5-G4-F2
 **Date:** 2026-09-14
-**Status:** **PASS (local)** — Forma CI pending
+**Status:** **PASS** (Forma CI ALL GREEN)
 
 ---
 
@@ -68,8 +68,8 @@ PRODUCT_CODE_CHANGE = YES
 MIGRATION_CHANGE = NONE
 REAL_MODEL_CALLS = 0
 COMMIT_SHA = 37c7c1fc36e32e12c4b4cc7d261ee78144d2aab4
-CI_RUN = pending
-CI = pending
+CI_RUN = 34794185572
+CI = ALL_GREEN
 S5_G5_READY = NO
 ```
 
@@ -82,10 +82,10 @@ S5_G5_READY = NO
 | Capability domain / application / handler tests | PASS |
 | Forma backend `./domain/forma/... ./application/forma/... ./api/handler/forma/... ./crossdomain/forma/...` | PASS |
 | migration-validate 19/19 | PASS |
-| CASE A/B/C | deferred to CI |
+| CASE A/B/C | covered by CI forma-migration-apply |
 | typecheck + routes-smoke | PASS |
-| Rush full FE build | deferred to CI |
-| `git diff --check 042f1520...` | **exit 0** |
+| Rush full FE build | covered by CI forma-frontend |
+| `git diff --check 042f1520...HEAD` | **exit 0** |
 
 ---
 
@@ -93,9 +93,12 @@ S5_G5_READY = NO
 
 | Field | Value |
 |-------|-------|
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
+| COMMIT_SHA (integrator product) | `37c7c1fc36e32e12c4b4cc7d261ee78144d2aab4` |
+| RESULT tip | `7d485d25e028c3f31c5cf2a5a4a9d0756bd51767` |
+| CI_RUN | [34794185572](https://github.com/hai12138/forma/actions/runs/34794185572) |
+| forma-backend | **PASS** |
+| forma-migration-apply | **PASS** |
+| forma-frontend | **PASS** |
+| CI | **ALL GREEN** |
 
-**Stop:** No `forma-s5-frozen`. No G5. Await human review after CI ALL GREEN.
+**Stop:** No `forma-s5-frozen`. No G5. Await human review.
