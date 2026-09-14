@@ -1,7 +1,7 @@
 # S5-G4-F2 — Frozen Interface & File Ownership
 
-**Baseline main:** `042f1520ef307ae2f71ca5f2d8352f44185b641f`  
-**F1 integrated:** `14ab0af8f23d7b8974fce36cce12beaa35762e4a`  
+**Baseline main:** `042f1520ef307ae2f71ca5f2d8352f44185b641f`
+**F1 integrated:** `14ab0af8f23d7b8974fce36cce12beaa35762e4a`
 **Status:** FROZEN — candidates only; do NOT declare PASS; do NOT push main.
 
 ---

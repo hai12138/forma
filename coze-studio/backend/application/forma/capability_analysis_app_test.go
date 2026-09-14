@@ -420,7 +420,7 @@ func TestCapabilityAnalysisApp_RetryReasonSecretRejected(t *testing.T) {
 	gen.Err = nil
 	gen.Proposals = []capentity.SemanticPayload{fixture.LaboratoryCommandCapability()}
 	_, err = h.app.RetryCapabilityAnalysis(ownerCtx, "lab", failed.AnalysisRun.AnalysisRunID, &formaapp.RetryCapabilityAnalysisInput{
-		Reason: "contains api_key material",
+		Reason: "api_key=sk-abcdefghijklmnopqrstuvwxyz12",
 	})
 	fe, ok := formaerrors.AsFormaError(err)
 	require.True(t, ok)

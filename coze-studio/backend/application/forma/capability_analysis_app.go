@@ -11,6 +11,7 @@ import (
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	capsvc "github.com/coze-dev/coze-studio/backend/domain/forma/capability/service"
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
+	tenantctx "github.com/coze-dev/coze-studio/backend/domain/forma/tenancy/context"
 )
 
 // RetryCapabilityAnalysisInput is the optional body for explicit analysis retry.
@@ -44,15 +45,7 @@ func (s *ApplicationService) StartCapabilityAnalysis(ctx context.Context, busine
 		ActorID:               tc.PrincipalID,
 		Analysis:              analysis,
 	})
-	if err != nil {
-		if keepFailedAnalysisDTO(res) {
-			s.recordCapabilityAudit(ctx, tc, "capability.analyze", res.Run.AnalysisRunID)
-			return toStartAnalysisResponse(res), nil
-		}
-		return nil, formaerrors.MapDomainError(err)
-	}
-	s.recordCapabilityAudit(ctx, tc, "capability.analyze", res.Run.AnalysisRunID)
-	return toStartAnalysisResponse(res), nil
+	return s.capabilityAnalysisResultDTO(ctx, tc, "capability.analyze", res, err)
 }
 
 // GetCapabilityAnalysis returns an analysis run scoped to tenant+business.
@@ -86,17 +79,8 @@ func (s *ApplicationService) RetryCapabilityAnalysis(ctx context.Context, busine
 			return nil, err
 		}
 	}
-	// Domain RetryFailedAnalysis takes actor PrincipalID; optional reason is validated here for early reject.
 	res, err := s.CapabilitySVC.RetryFailedAnalysis(ctx, tc.TenantID, analysisRunID, tc.PrincipalID)
-	if err != nil {
-		if keepFailedAnalysisDTO(res) {
-			s.recordCapabilityAudit(ctx, tc, "capability.analyze.retry", res.Run.AnalysisRunID)
-			return toStartAnalysisResponse(res), nil
-		}
-		return nil, formaerrors.MapDomainError(err)
-	}
-	s.recordCapabilityAudit(ctx, tc, "capability.analyze.retry", res.Run.AnalysisRunID)
-	return toStartAnalysisResponse(res), nil
+	return s.capabilityAnalysisResultDTO(ctx, tc, "capability.analyze.retry", res, err)
 }
 
 func validateCapabilityRetryReason(reason string) error {
@@ -111,4 +95,18 @@ func validateCapabilityRetryReason(reason string) error {
 // because invalid proposals return ErrInvalidPayload after the run is marked FAILED.
 func keepFailedAnalysisDTO(res *capsvc.AnalysisResult) bool {
 	return res != nil && res.Run != nil && res.Run.Status == capentity.AnalysisFailed
+}
+
+// capabilityAnalysisResultDTO is the shared Start/Retry post-domain conversion: FAILED runs with a
+// persisted run become HTTP-200 DTOs; hard failures without a FAILED run map to error envelopes.
+func (s *ApplicationService) capabilityAnalysisResultDTO(ctx context.Context, tc *tenantctx.TenantContext, auditAction string, res *capsvc.AnalysisResult, err error) (*StartCapabilityAnalysisResponse, error) {
+	if err != nil {
+		if keepFailedAnalysisDTO(res) {
+			s.recordCapabilityAudit(ctx, tc, auditAction, res.Run.AnalysisRunID)
+			return toStartAnalysisResponse(res), nil
+		}
+		return nil, formaerrors.MapDomainError(err)
+	}
+	s.recordCapabilityAudit(ctx, tc, auditAction, res.Run.AnalysisRunID)
+	return toStartAnalysisResponse(res), nil
 }
