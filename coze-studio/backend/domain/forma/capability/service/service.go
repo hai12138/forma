@@ -436,8 +436,9 @@ func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing
 		if owned {
 			persisted, loadErr := s.loadValidatedPersistedAnalysisRequest(ctx, claimed)
 			if loadErr != nil {
-				// load already attempted mark-failed; surface FAILED DTO when mark stuck.
-				return s.returnPersistedFailedAnalysis(ctx, claimed.TenantID, claimed.AnalysisRunID, loadErr)
+				// load already attempted mark-failed; re-fetch and return FAILED DTO only if
+				// Status==FAILED and Attempt matches the owned lease-takeover attempt.
+				return s.returnPersistedFailedAnalysis(ctx, claimed.TenantID, claimed.AnalysisRunID, claimed.Attempt, loadErr)
 			}
 			return s.executeAnalysis(ctx, claimed, persisted) // NOT caller analysis
 		}
@@ -455,7 +456,7 @@ func (s *capabilityService) handleExistingAnalysis(ctx context.Context, existing
 
 // loadValidatedPersistedAnalysisRequest unmarshals and validates RequestJSON; marks failed on any error.
 // Never calls the generator. On validation failure callers must use returnPersistedFailedAnalysis
-// so a successfully marked FAILED run is still visible (nil result would drop the DTO).
+// with the owned attempt so a matching persisted FAILED mark can surface as a DTO (attempt mismatch fails closed).
 func (s *capabilityService) loadValidatedPersistedAnalysisRequest(ctx context.Context, run *entity.CapabilityAnalysisRun) (entity.AnalysisRequest, error) {
 	var empty entity.AnalysisRequest
 	if run == nil {
@@ -490,18 +491,16 @@ func (s *capabilityService) loadValidatedPersistedAnalysisRequest(ctx context.Co
 	return req, nil
 }
 
-// returnPersistedFailedAnalysis re-fetches a run after mark-failed. Only when Status==FAILED does it
-// return a result DTO (OwnedExecute=true) with a sanitized domain error. Mark/refetch failure fails closed.
-func (s *capabilityService) returnPersistedFailedAnalysis(ctx context.Context, tenantID, analysisRunID string, domainErr error) (*AnalysisResult, error) {
+// returnPersistedFailedAnalysis re-fetches a run after mark-failed and returns a FAILED DTO only when
+// Status==FAILED and Attempt equals the caller's owned expectedAttempt. Status/attempt mismatch or
+// refetch failure fails closed (nil result); never forges a DTO from a newer/wrong attempt.
+func (s *capabilityService) returnPersistedFailedAnalysis(ctx context.Context, tenantID, analysisRunID string, expectedAttempt int32, domainErr error) (*AnalysisResult, error) {
 	failed, getErr := s.root().GetAnalysisRun(ctx, tenantID, analysisRunID)
 	if getErr != nil {
 		return nil, SanitizeAnalysisError(getErr)
 	}
-	if failed == nil || failed.Status != entity.AnalysisFailed {
-		if domainErr != nil {
-			return nil, SanitizeAnalysisError(domainErr)
-		}
-		return nil, entity.ErrConsistency
+	if failed == nil || failed.Status != entity.AnalysisFailed || failed.Attempt != expectedAttempt {
+		return nil, SanitizeAnalysisError(entity.ErrConsistency)
 	}
 	return &AnalysisResult{Run: failed, OwnedExecute: true}, SanitizeAnalysisError(domainErr)
 }
@@ -520,7 +519,7 @@ func (s *capabilityService) executeAnalysis(ctx context.Context, run *entity.Cap
 		if markErr := s.markAnalysisFailedWithAttempt(ctx, run.TenantID, run.AnalysisRunID, code, attempt); markErr != nil {
 			return nil, SanitizeAnalysisError(markErr)
 		}
-		return s.returnPersistedFailedAnalysis(ctx, run.TenantID, run.AnalysisRunID, entity.ErrAnalysisFailed)
+		return s.returnPersistedFailedAnalysis(ctx, run.TenantID, run.AnalysisRunID, attempt, entity.ErrAnalysisFailed)
 	}
 	now := s.now()
 	var created []*entity.CapabilityProposal
@@ -560,7 +559,7 @@ func (s *capabilityService) executeAnalysis(ctx context.Context, run *entity.Cap
 		if markErr := s.markAnalysisFailedWithAttempt(ctx, run.TenantID, run.AnalysisRunID, code, attempt); markErr != nil {
 			return nil, SanitizeAnalysisError(markErr)
 		}
-		return s.returnPersistedFailedAnalysis(ctx, run.TenantID, run.AnalysisRunID, err)
+		return s.returnPersistedFailedAnalysis(ctx, run.TenantID, run.AnalysisRunID, attempt, err)
 	}
 	final, getErr := s.root().GetAnalysisRun(ctx, run.TenantID, run.AnalysisRunID)
 	if getErr != nil {
@@ -632,8 +631,9 @@ func (s *capabilityService) RetryFailedAnalysis(ctx context.Context, tenantID, a
 	run.Attempt = attempt
 	analysis, loadErr := s.loadValidatedPersistedAnalysisRequest(ctx, run)
 	if loadErr != nil {
-		// load already attempted mark-failed; surface FAILED DTO when mark stuck.
-		return s.returnPersistedFailedAnalysis(ctx, tenantID, analysisRunID, loadErr)
+		// load already attempted mark-failed; re-fetch and return FAILED DTO only if
+		// Status==FAILED and Attempt matches the claimed retry attempt.
+		return s.returnPersistedFailedAnalysis(ctx, tenantID, analysisRunID, attempt, loadErr)
 	}
 	return s.executeAnalysis(ctx, run, analysis)
 }
