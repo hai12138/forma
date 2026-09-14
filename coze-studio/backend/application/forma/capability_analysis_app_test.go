@@ -61,6 +61,19 @@ func (h *analysisAppHarness) seedBiz(tenantID, businessID string) {
 	h.biz.put(tenantID, businessID)
 }
 
+func assertFailedAnalysisDTO(t *testing.T, resp *formaapp.StartCapabilityAnalysisResponse, wantRunID string, wantAttempt int32, wantErrorCode string) {
+	t.Helper()
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.AnalysisRun)
+	require.Equal(t, string(capentity.AnalysisFailed), resp.AnalysisRun.Status)
+	require.Equal(t, wantErrorCode, resp.AnalysisRun.ErrorCode)
+	require.NotEmpty(t, resp.AnalysisRun.AnalysisRunID)
+	if wantRunID != "" {
+		require.Equal(t, wantRunID, resp.AnalysisRun.AnalysisRunID)
+	}
+	require.Equal(t, wantAttempt, resp.AnalysisRun.Attempt)
+}
+
 func TestCapabilityAnalysisApp_FailedFirstAttemptVisible(t *testing.T) {
 	gen := &capsvc.DeterministicFakeGenerator{Err: errors.New("boom secret password=xyz")}
 	h := newAnalysisAppHarness(gen)
@@ -76,18 +89,39 @@ func TestCapabilityAnalysisApp_FailedFirstAttemptVisible(t *testing.T) {
 		Analysis: capentity.AnalysisRequest{BusinessModelRevision: 1},
 	})
 	require.NoError(t, err, "FAILED first attempt must surface as usable DTO (HTTP 200 path)")
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.AnalysisRun)
-	require.Equal(t, string(capentity.AnalysisFailed), resp.AnalysisRun.Status)
-	require.Equal(t, "FORMA_CAPABILITY_ANALYSIS_FAILED", resp.AnalysisRun.ErrorCode)
-	require.NotEmpty(t, resp.AnalysisRun.AnalysisRunID)
-	require.Equal(t, int32(1), resp.AnalysisRun.Attempt)
+	assertFailedAnalysisDTO(t, resp, "", 1, "FORMA_CAPABILITY_ANALYSIS_FAILED")
 	require.Equal(t, boot.Principal.PrincipalID, resp.AnalysisRun.CreatedBy)
 
 	got, err := h.app.GetCapabilityAnalysis(ownerCtx, "lab", resp.AnalysisRun.AnalysisRunID)
 	require.NoError(t, err)
 	require.Equal(t, resp.AnalysisRun.AnalysisRunID, got.AnalysisRunID)
 	require.Equal(t, string(capentity.AnalysisFailed), got.Status)
+}
+
+func TestCapabilityAnalysisApp_FailedInvalidProposalVisible(t *testing.T) {
+	bad := fixture.LaboratoryCommandCapability()
+	bad.Name = ""
+	gen := &capsvc.DeterministicFakeGenerator{Proposals: []capentity.SemanticPayload{bad}}
+	h := newAnalysisAppHarness(gen)
+	ownerSession := withSession(9101, "cap-invprop@example.com")
+	boot, err := h.app.TenancySVC.Bootstrap(ownerSession, 9101, "cap-invprop@example.com", 0)
+	require.NoError(t, err)
+	tenantID := boot.Tenant.TenantID
+	h.seedBiz(tenantID, "lab")
+	ownerCtx := ctxCapability(ownerSession, tenantID, boot.Principal.PrincipalID, tenantentity.RoleOwner, 9101)
+
+	resp, err := h.app.StartCapabilityAnalysis(ownerCtx, "lab", &formaapp.StartCapabilityAnalysisInput{
+		BusinessModelRevision: 1, ClientRequestID: "fail-invalid-proposal",
+		Analysis: capentity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err, "invalid proposal must still surface FAILED DTO (nil app error); status is authoritative")
+	assertFailedAnalysisDTO(t, resp, "", 1, "FORMA_CAPABILITY_INVALID_REQUEST")
+
+	got, err := h.app.GetCapabilityAnalysis(ownerCtx, "lab", resp.AnalysisRun.AnalysisRunID)
+	require.NoError(t, err)
+	require.Equal(t, resp.AnalysisRun.AnalysisRunID, got.AnalysisRunID)
+	require.Equal(t, string(capentity.AnalysisFailed), got.Status)
+	require.Equal(t, "FORMA_CAPABILITY_INVALID_REQUEST", got.ErrorCode)
 }
 
 func TestCapabilityAnalysisApp_ExplicitRetryIncrementsAttempt(t *testing.T) {
@@ -120,6 +154,64 @@ func TestCapabilityAnalysisApp_ExplicitRetryIncrementsAttempt(t *testing.T) {
 	require.NotEmpty(t, retried.Proposals)
 }
 
+func TestCapabilityAnalysisApp_RetryAgainFailedVisible(t *testing.T) {
+	gen := &capsvc.DeterministicFakeGenerator{Err: errors.New("boom again")}
+	h := newAnalysisAppHarness(gen)
+	ownerSession := withSession(9111, "cap-retry-fail@example.com")
+	boot, err := h.app.TenancySVC.Bootstrap(ownerSession, 9111, "cap-retry-fail@example.com", 0)
+	require.NoError(t, err)
+	tenantID := boot.Tenant.TenantID
+	h.seedBiz(tenantID, "lab")
+	ownerCtx := ctxCapability(ownerSession, tenantID, boot.Principal.PrincipalID, tenantentity.RoleOwner, 9111)
+
+	first, err := h.app.StartCapabilityAnalysis(ownerCtx, "lab", &formaapp.StartCapabilityAnalysisInput{
+		BusinessModelRevision: 1, ClientRequestID: "retry-again-fail",
+		Analysis: capentity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err)
+	assertFailedAnalysisDTO(t, first, "", 1, "FORMA_CAPABILITY_ANALYSIS_FAILED")
+	runID := first.AnalysisRun.AnalysisRunID
+
+	again, err := h.app.RetryCapabilityAnalysis(ownerCtx, "lab", runID, &formaapp.RetryCapabilityAnalysisInput{
+		Reason: "retry still failing",
+	})
+	require.NoError(t, err, "retry that fails again must return FAILED DTO with nil app error")
+	assertFailedAnalysisDTO(t, again, runID, 2, "FORMA_CAPABILITY_ANALYSIS_FAILED")
+}
+
+func TestCapabilityAnalysisApp_HardFailureWithoutPersistedRun(t *testing.T) {
+	h := newAnalysisAppHarness(nil)
+	ownerSession := withSession(9112, "cap-hardfail@example.com")
+	boot, err := h.app.TenancySVC.Bootstrap(ownerSession, 9112, "cap-hardfail@example.com", 0)
+	require.NoError(t, err)
+	tenantID := boot.Tenant.TenantID
+	h.seedBiz(tenantID, "lab")
+	ownerCtx := ctxCapability(ownerSession, tenantID, boot.Principal.PrincipalID, tenantentity.RoleOwner, 9112)
+
+	resp, err := h.app.StartCapabilityAnalysis(ownerCtx, "lab", &formaapp.StartCapabilityAnalysisInput{
+		BusinessModelRevision: 1, ClientRequestID: "password=hunter2",
+		Analysis: capentity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.Error(t, err, "hard failure without persisted FAILED run must not be DTO-as-success")
+	require.Nil(t, resp)
+	fe, ok := formaerrors.AsFormaError(err)
+	require.True(t, ok)
+	require.NotNil(t, fe)
+	require.Equal(t, formaerrors.CodeCapabilityInvalidPayload, fe.Code)
+
+	// Nil CapabilitySVC: auth fails closed before any run is persisted.
+	h.app.CapabilitySVC = nil
+	resp, err = h.app.StartCapabilityAnalysis(ownerCtx, "lab", &formaapp.StartCapabilityAnalysisInput{
+		BusinessModelRevision: 1, ClientRequestID: "no-svc",
+		Analysis: capentity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.Error(t, err)
+	require.Nil(t, resp)
+	fe, ok = formaerrors.AsFormaError(err)
+	require.True(t, ok)
+	require.Equal(t, formaerrors.CodeCapabilityNotConfigured, fe.Code)
+}
+
 func TestCapabilityAnalysisApp_ConcurrentRetryAtMostOneSuccess(t *testing.T) {
 	gen := &capsvc.DeterministicFakeGenerator{Err: errors.New("boom")}
 	h := newAnalysisAppHarness(gen)
@@ -136,6 +228,7 @@ func TestCapabilityAnalysisApp_ConcurrentRetryAtMostOneSuccess(t *testing.T) {
 	})
 	require.NoError(t, err)
 	runID := failed.AnalysisRun.AnalysisRunID
+	callsBeforeRetry := gen.CallCount()
 
 	gen.Err = nil
 	gen.GenerateFn = func(context.Context, capsvc.GenerateRequest) (*capsvc.GenerateResult, error) {
@@ -163,6 +256,7 @@ func TestCapabilityAnalysisApp_ConcurrentRetryAtMostOneSuccess(t *testing.T) {
 	}
 	wg.Wait()
 	require.Equal(t, 1, successes, "ClaimAnalysisRetry must admit at most one executor success path")
+	require.Equal(t, callsBeforeRetry+1, gen.CallCount(), "concurrent retry must invoke generator exactly once")
 }
 
 func TestCapabilityAnalysisApp_ReplayFailedDoesNotAutoRetry(t *testing.T) {
@@ -244,6 +338,43 @@ func TestCapabilityAnalysisApp_RetryAuthAndIsolation(t *testing.T) {
 
 	_, err = h.app.RetryCapabilityAnalysis(ownerCtx, "other", runID, nil)
 	fe, ok = formaerrors.AsFormaError(err)
+	require.True(t, ok)
+	require.Equal(t, formaerrors.CodeCapabilityAnalysisNotFound, fe.Code)
+}
+
+func TestCapabilityAnalysisApp_RetryCrossTenantIsolation(t *testing.T) {
+	gen := &capsvc.DeterministicFakeGenerator{Err: errors.New("boom")}
+	h := newAnalysisAppHarness(gen)
+
+	ownerSessionA := withSession(9142, "cap-tenant-a@example.com")
+	bootA, err := h.app.TenancySVC.Bootstrap(ownerSessionA, 9142, "cap-tenant-a@example.com", 0)
+	require.NoError(t, err)
+	tenantA := bootA.Tenant.TenantID
+	h.seedBiz(tenantA, "lab")
+	ownerCtxA := ctxCapability(ownerSessionA, tenantA, bootA.Principal.PrincipalID, tenantentity.RoleOwner, 9142)
+
+	failed, err := h.app.StartCapabilityAnalysis(ownerCtxA, "lab", &formaapp.StartCapabilityAnalysisInput{
+		BusinessModelRevision: 1, ClientRequestID: "cross-tenant-run",
+		Analysis: capentity.AnalysisRequest{BusinessModelRevision: 1},
+	})
+	require.NoError(t, err)
+	runID := failed.AnalysisRun.AnalysisRunID
+
+	ownerSessionB := withSession(9143, "cap-tenant-b@example.com")
+	bootB, err := h.app.TenancySVC.Bootstrap(ownerSessionB, 9143, "cap-tenant-b@example.com", 0)
+	require.NoError(t, err)
+	tenantB := bootB.Tenant.TenantID
+	require.NotEqual(t, tenantA, tenantB)
+	h.seedBiz(tenantB, "lab")
+	ownerCtxB := ctxCapability(ownerSessionB, tenantB, bootB.Principal.PrincipalID, tenantentity.RoleOwner, 9143)
+
+	gen.Err = nil
+	gen.Proposals = []capentity.SemanticPayload{fixture.LaboratoryCommandCapability()}
+
+	resp, err := h.app.RetryCapabilityAnalysis(ownerCtxB, "lab", runID, nil)
+	require.Error(t, err, "foreign analysisRunId must be denied for second tenant")
+	require.Nil(t, resp)
+	fe, ok := formaerrors.AsFormaError(err)
 	require.True(t, ok)
 	require.Equal(t, formaerrors.CodeCapabilityAnalysisNotFound, fe.Code)
 }

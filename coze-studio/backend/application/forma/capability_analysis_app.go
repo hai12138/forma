@@ -7,7 +7,6 @@ package forma
 
 import (
 	"context"
-	"errors"
 
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	capsvc "github.com/coze-dev/coze-studio/backend/domain/forma/capability/service"
@@ -20,7 +19,7 @@ type RetryCapabilityAnalysisInput struct {
 }
 
 // StartCapabilityAnalysis starts (or replays) a capability analysis run.
-// When the domain persists a FAILED run and returns ErrAnalysisFailed with a non-nil result,
+// When the domain persists a FAILED run (any domain error with status FAILED),
 // this method returns the FAILED DTO with a nil error so the handler can respond HTTP 200.
 func (s *ApplicationService) StartCapabilityAnalysis(ctx context.Context, businessID string, in *StartCapabilityAnalysisInput) (*StartCapabilityAnalysisResponse, error) {
 	tc, err := s.requireCapabilityAdmin(ctx)
@@ -46,7 +45,7 @@ func (s *ApplicationService) StartCapabilityAnalysis(ctx context.Context, busine
 		Analysis:              analysis,
 	})
 	if err != nil {
-		if res != nil && res.Run != nil && errors.Is(err, capentity.ErrAnalysisFailed) {
+		if keepFailedAnalysisDTO(res) {
 			s.recordCapabilityAudit(ctx, tc, "capability.analyze", res.Run.AnalysisRunID)
 			return toStartAnalysisResponse(res), nil
 		}
@@ -90,7 +89,7 @@ func (s *ApplicationService) RetryCapabilityAnalysis(ctx context.Context, busine
 	// Domain RetryFailedAnalysis takes actor PrincipalID; optional reason is validated here for early reject.
 	res, err := s.CapabilitySVC.RetryFailedAnalysis(ctx, tc.TenantID, analysisRunID, tc.PrincipalID)
 	if err != nil {
-		if res != nil && res.Run != nil && errors.Is(err, capentity.ErrAnalysisFailed) {
+		if keepFailedAnalysisDTO(res) {
 			s.recordCapabilityAudit(ctx, tc, "capability.analyze.retry", res.Run.AnalysisRunID)
 			return toStartAnalysisResponse(res), nil
 		}
@@ -105,4 +104,11 @@ func validateCapabilityRetryReason(reason string) error {
 		return formaerrors.MapDomainError(err)
 	}
 	return nil
+}
+
+// keepFailedAnalysisDTO is true when the domain persisted a FAILED run that must surface as a success DTO
+// (nil app error / HTTP 200 path). Status is authoritative — do not require errors.Is(ErrAnalysisFailed),
+// because invalid proposals return ErrInvalidPayload after the run is marked FAILED.
+func keepFailedAnalysisDTO(res *capsvc.AnalysisResult) bool {
+	return res != nil && res.Run != nil && res.Run.Status == capentity.AnalysisFailed
 }
