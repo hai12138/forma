@@ -14,6 +14,7 @@ import (
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
 )
 
+// ListCapabilities lists capabilities for a business.
 func ListCapabilities(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.ListCapabilities(ctx, c.Param("id"))
 	if err != nil {
@@ -23,10 +24,12 @@ func ListCapabilities(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// CreateCapability creates a capability from a required JSON body.
+// Malformed JSON maps to stable BadRequest; raw bind errors are never returned.
 func CreateCapability(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.CreateCapabilityInput
 	if err := c.BindAndValidate(&in); err != nil {
-		writeError(ctx, c, err)
+		writeError(ctx, c, formaerrors.BadRequest("invalid request body"))
 		return
 	}
 	v, err := formaapp.ApplicationSVC.CreateCapability(ctx, c.Param("id"), &in)
@@ -37,6 +40,7 @@ func CreateCapability(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// GetCapability returns a capability by id.
 func GetCapability(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.GetCapability(ctx, c.Param("id"), c.Param("capabilityId"))
 	if err != nil {
@@ -46,6 +50,7 @@ func GetCapability(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// ListCapabilityRevisions lists revisions for a capability.
 func ListCapabilityRevisions(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.ListCapabilityRevisions(ctx, c.Param("id"), c.Param("capabilityId"))
 	if err != nil {
@@ -55,6 +60,7 @@ func ListCapabilityRevisions(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// GetCapabilityRevision returns a capability revision by id.
 func GetCapabilityRevision(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.GetCapabilityRevision(ctx, c.Param("id"), c.Param("capabilityId"), c.Param("revisionId"))
 	if err != nil {
@@ -64,10 +70,12 @@ func GetCapabilityRevision(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// DeriveCapability derives a new revision from a required JSON body.
+// Malformed JSON maps to stable BadRequest; raw bind errors are never returned.
 func DeriveCapability(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.DeriveCapabilityInput
 	if err := c.BindAndValidate(&in); err != nil {
-		writeError(ctx, c, err)
+		writeError(ctx, c, formaerrors.BadRequest("invalid request body"))
 		return
 	}
 	v, err := formaapp.ApplicationSVC.DeriveCapability(ctx, c.Param("id"), c.Param("capabilityId"), &in)
@@ -78,10 +86,12 @@ func DeriveCapability(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// EditCapability edits a capability via a required JSON body.
+// Malformed JSON maps to stable BadRequest; raw bind errors are never returned.
 func EditCapability(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.EditCapabilityInput
 	if err := c.BindAndValidate(&in); err != nil {
-		writeError(ctx, c, err)
+		writeError(ctx, c, formaerrors.BadRequest("invalid request body"))
 		return
 	}
 	v, err := formaapp.ApplicationSVC.EditCapability(ctx, c.Param("id"), c.Param("capabilityId"), &in)
@@ -92,10 +102,12 @@ func EditCapability(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// StartCapabilityAnalysis starts analysis from a required JSON body.
+// Malformed JSON maps to stable BadRequest; raw bind errors are never returned.
 func StartCapabilityAnalysis(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.StartCapabilityAnalysisInput
 	if err := c.BindAndValidate(&in); err != nil {
-		writeError(ctx, c, err)
+		writeError(ctx, c, formaerrors.BadRequest("invalid request body"))
 		return
 	}
 	v, err := formaapp.ApplicationSVC.StartCapabilityAnalysis(ctx, c.Param("id"), &in)
@@ -106,6 +118,7 @@ func StartCapabilityAnalysis(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// GetCapabilityAnalysis returns an analysis run by id.
 func GetCapabilityAnalysis(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.GetCapabilityAnalysis(ctx, c.Param("id"), c.Param("analysisRunId"))
 	if err != nil {
@@ -162,6 +175,7 @@ func RejectCapabilityProposal(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// ValidateCapabilityRevision validates a capability revision.
 func ValidateCapabilityRevision(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.ValidateCapabilityRevision(ctx, c.Param("id"), c.Param("revisionId"))
 	if err != nil {
@@ -203,6 +217,7 @@ func DeprecateCapabilityRevision(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// ListCapabilityValidations lists validation results for a revision.
 func ListCapabilityValidations(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.ListCapabilityValidations(ctx, c.Param("id"), c.Param("revisionId"))
 	if err != nil {
@@ -212,6 +227,7 @@ func ListCapabilityValidations(ctx context.Context, c *app.RequestContext) {
 	writeOK(ctx, c, v)
 }
 
+// ListCapabilityDecisions lists decisions for a capability.
 func ListCapabilityDecisions(ctx context.Context, c *app.RequestContext) {
 	v, err := formaapp.ApplicationSVC.ListCapabilityDecisions(ctx, c.Param("id"), c.Param("capabilityId"))
 	if err != nil {

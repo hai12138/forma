@@ -19,6 +19,8 @@ import (
 
 	formaRouter "github.com/coze-dev/coze-studio/backend/api/router/forma"
 	formaapp "github.com/coze-dev/coze-studio/backend/application/forma"
+	bizentity "github.com/coze-dev/coze-studio/backend/domain/forma/business/entity"
+	businesssvc "github.com/coze-dev/coze-studio/backend/domain/forma/business/service"
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	capsvc "github.com/coze-dev/coze-studio/backend/domain/forma/capability/service"
 	formaerrors "github.com/coze-dev/coze-studio/backend/domain/forma/errors"
@@ -49,6 +51,7 @@ func TestCapabilityRoutesAreRegistered(t *testing.T) {
 		{"POST", "/api/forma/v1/businesses/biz_test/capabilities/cap_1/edit", []byte(`{"source_revision_id":"rev_1","client_request_id":"e1","payload":{"name":"x","capability_kind":"COMMAND","business_model_revision":1}}`)},
 		{"GET", "/api/forma/v1/businesses/biz_test/capabilities/cap_1/decisions", nil},
 		{"GET", "/api/forma/v1/businesses/biz_test/capability-analyses/run_1", nil},
+		{"POST", "/api/forma/v1/businesses/biz_test/capability-analyses/run_1/retry", []byte(`{}`)},
 		{"POST", "/api/forma/v1/businesses/biz_test/capability-proposals/prop_1/confirm", []byte(`{}`)},
 		{"POST", "/api/forma/v1/businesses/biz_test/capability-proposals/prop_1/edit-confirm", []byte(`{"effective_payload":{"name":"x","capability_kind":"COMMAND","business_model_revision":1}}`)},
 		{"POST", "/api/forma/v1/businesses/biz_test/capability-proposals/prop_1/reject", []byte(`{}`)},
@@ -424,5 +427,227 @@ func TestCapabilityHandler_WriteErrorEnvelopeMapping(t *testing.T) {
 	}
 	if env.RequestID != rid {
 		t.Fatalf("request_id=%q want %q", env.RequestID, rid)
+	}
+}
+
+// panicOnInvokeCapabilitySVC fails the test if any domain capability method is reached.
+// Used to prove malformed Retry never enters ApplicationSVC.RetryCapabilityAnalysis.
+type panicOnInvokeCapabilitySVC struct{}
+
+func (panicOnInvokeCapabilitySVC) fail(op string) {
+	panic("ApplicationSVC must not be invoked for malformed JSON; reached CapabilitySVC." + op)
+}
+
+func (s panicOnInvokeCapabilitySVC) ManualCreate(context.Context, *capsvc.ManualCreateInput) (*capentity.BusinessCapability, *capentity.BusinessCapabilityRevision, error) {
+	s.fail("ManualCreate")
+	return nil, nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) DeriveRevision(context.Context, *capsvc.DeriveInput) (*capentity.BusinessCapabilityRevision, *capentity.CapabilityDecision, error) {
+	s.fail("DeriveRevision")
+	return nil, nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) StartAnalysis(context.Context, *capsvc.StartAnalysisInput) (*capsvc.AnalysisResult, error) {
+	s.fail("StartAnalysis")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) GetAnalysisRun(context.Context, string, string) (*capentity.CapabilityAnalysisRun, error) {
+	s.fail("GetAnalysisRun")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) RetryFailedAnalysis(context.Context, string, string, string) (*capsvc.AnalysisResult, error) {
+	s.fail("RetryFailedAnalysis")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) ConfirmProposal(context.Context, *capsvc.ConfirmInput) (*capentity.BusinessCapabilityRevision, error) {
+	s.fail("ConfirmProposal")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) EditConfirmProposal(context.Context, *capsvc.EditConfirmInput) (*capentity.BusinessCapabilityRevision, error) {
+	s.fail("EditConfirmProposal")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) RejectProposal(context.Context, *capsvc.RejectInput) (*capentity.CapabilityDecision, error) {
+	s.fail("RejectProposal")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) GetCapability(context.Context, string, string) (*capentity.BusinessCapability, error) {
+	s.fail("GetCapability")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) ListCapabilities(context.Context, string, string) ([]*capentity.BusinessCapability, error) {
+	s.fail("ListCapabilities")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) GetRevision(context.Context, string, string) (*capentity.BusinessCapabilityRevision, error) {
+	s.fail("GetRevision")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) ListRevisions(context.Context, string, string) ([]*capentity.BusinessCapabilityRevision, error) {
+	s.fail("ListRevisions")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) GetProposal(context.Context, string, string) (*capentity.CapabilityProposal, error) {
+	s.fail("GetProposal")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) ListValidations(context.Context, string, string) ([]*capentity.CapabilityValidationResult, error) {
+	s.fail("ListValidations")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) ListDecisions(context.Context, string, string) ([]*capentity.CapabilityDecision, error) {
+	s.fail("ListDecisions")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) Validate(context.Context, string, string, string) (*capentity.BusinessCapabilityRevision, *capentity.CapabilityValidationResult, error) {
+	s.fail("Validate")
+	return nil, nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) Activate(context.Context, string, string, string, string) (*capentity.BusinessCapabilityRevision, error) {
+	s.fail("Activate")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) MarkStale(context.Context, string, string, string, string) (*capentity.BusinessCapabilityRevision, error) {
+	s.fail("MarkStale")
+	return nil, nil
+}
+func (s panicOnInvokeCapabilitySVC) Deprecate(context.Context, string, string, string, string) (*capentity.BusinessCapabilityRevision, error) {
+	s.fail("Deprecate")
+	return nil, nil
+}
+
+var _ capsvc.CapabilityService = panicOnInvokeCapabilitySVC{}
+
+// panicOnInvokeBusinessSVC fails if ApplicationSVC reaches business resolution (Retry/Create path).
+type panicOnInvokeBusinessSVC struct{}
+
+func (panicOnInvokeBusinessSVC) fail(op string) {
+	panic("ApplicationSVC must not be invoked for malformed JSON; reached BusinessSVC." + op)
+}
+
+func (s panicOnInvokeBusinessSVC) InitBusiness(context.Context, string, string, string, string, *bizentity.SemanticModel, string) (*bizentity.BusinessModel, *bizentity.BusinessModelRevision, *bizentity.BusinessModelLayout, error) {
+	s.fail("InitBusiness")
+	return nil, nil, nil, nil
+}
+func (s panicOnInvokeBusinessSVC) Get(context.Context, string, string) (*bizentity.BusinessModel, error) {
+	s.fail("Get")
+	return nil, nil
+}
+func (s panicOnInvokeBusinessSVC) List(context.Context, string) ([]*bizentity.BusinessModel, error) {
+	s.fail("List")
+	return nil, nil
+}
+func (s panicOnInvokeBusinessSVC) GetModel(context.Context, string, string) (*bizentity.BusinessModel, *bizentity.SemanticModel, *bizentity.BusinessModelRevision, error) {
+	s.fail("GetModel")
+	return nil, nil, nil, nil
+}
+func (s panicOnInvokeBusinessSVC) SaveModel(context.Context, string, string, string, int32, *bizentity.SemanticModel, string) (*bizentity.BusinessModelRevision, bool, error) {
+	s.fail("SaveModel")
+	return nil, false, nil
+}
+func (s panicOnInvokeBusinessSVC) ListRevisions(context.Context, string, string) ([]*bizentity.BusinessModelRevision, error) {
+	s.fail("ListRevisions")
+	return nil, nil
+}
+func (s panicOnInvokeBusinessSVC) GetRevision(context.Context, string, string, int32) (*bizentity.BusinessModelRevision, *bizentity.SemanticModel, error) {
+	s.fail("GetRevision")
+	return nil, nil, nil
+}
+func (s panicOnInvokeBusinessSVC) Diff(context.Context, string, string, int32, int32) (*bizentity.BusinessModelDiff, *bizentity.BusinessImpactSummary, error) {
+	s.fail("Diff")
+	return nil, nil, nil
+}
+func (s panicOnInvokeBusinessSVC) GetLayout(context.Context, string, string) (*bizentity.BusinessModelLayout, *bizentity.ViewLayout, error) {
+	s.fail("GetLayout")
+	return nil, nil, nil
+}
+func (s panicOnInvokeBusinessSVC) SaveLayout(context.Context, string, string, string, int32, int32, *bizentity.ViewLayout) (*bizentity.BusinessModelLayout, error) {
+	s.fail("SaveLayout")
+	return nil, nil
+}
+
+var _ businesssvc.BusinessService = panicOnInvokeBusinessSVC{}
+
+func assertStableBadRequestEnvelope(t *testing.T, status int, env capabilityEnvelope, wantRequestID string) {
+	t.Helper()
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400 env=%+v", status, env)
+	}
+	if env.Code != formaerrors.CodeAdminBadRequest {
+		t.Fatalf("code=%d want %d", env.Code, formaerrors.CodeAdminBadRequest)
+	}
+	if env.ErrorKey != formaerrors.KeyAdminBadRequest {
+		t.Fatalf("error_key=%q want %q", env.ErrorKey, formaerrors.KeyAdminBadRequest)
+	}
+	if env.ErrorKey == "" {
+		t.Fatalf("error_key must be present")
+	}
+	if env.RequestID != wantRequestID {
+		t.Fatalf("request_id=%q want %q", env.RequestID, wantRequestID)
+	}
+	if env.RequestID == "" {
+		t.Fatalf("request_id must be present")
+	}
+}
+
+func TestCapabilityRetry_MalformedJSONDoesNotInvokeApplicationSVC(t *testing.T) {
+	h, _, tenantID := newCapabilityHandlerEnv(t)
+	// Panic stubs: if bind fails closed, ApplicationSVC.RetryCapabilityAnalysis is never entered
+	// (BusinessSVC.Get / CapabilitySVC.* would panic if the app layer ran).
+	formaapp.ApplicationSVC.CapabilitySVC = panicOnInvokeCapabilitySVC{}
+	formaapp.ApplicationSVC.BusinessSVC = panicOnInvokeBusinessSVC{}
+
+	rid := "req-malformed-retry"
+	status, env := performCapabilityJSON(t, h, http.MethodPost,
+		"/api/forma/v1/businesses/biz_test/capability-analyses/run_1/retry",
+		tenantID, rid, []byte(`{"reason":`))
+	assertStableBadRequestEnvelope(t, status, env, rid)
+}
+
+func TestCapabilityCreate_MalformedJSONStableBadRequest(t *testing.T) {
+	h, _, tenantID := newCapabilityHandlerEnv(t)
+	formaapp.ApplicationSVC.CapabilitySVC = panicOnInvokeCapabilitySVC{}
+	formaapp.ApplicationSVC.BusinessSVC = panicOnInvokeBusinessSVC{}
+
+	rid := "req-malformed-create"
+	status, env := performCapabilityJSON(t, h, http.MethodPost,
+		"/api/forma/v1/businesses/biz_test/capabilities",
+		tenantID, rid, []byte(`{"payload":`))
+	assertStableBadRequestEnvelope(t, status, env, rid)
+}
+
+func TestCapabilityRetry_EmptyBodyOKPathMapping(t *testing.T) {
+	h, _, tenantID := newCapabilityHandlerEnv(t)
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{"nil", nil},
+		{"empty", []byte{}},
+		{"ws", []byte("   \n")},
+		{"empty-object", []byte(`{}`)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rid := "req-retry-empty-" + tc.name
+			status, env := performCapabilityJSON(t, h, http.MethodPost,
+				"/api/forma/v1/businesses/biz_test/capability-analyses/run_1/retry",
+				tenantID, rid, tc.body)
+			if env.ErrorKey == formaerrors.KeyAdminBadRequest {
+				t.Fatalf("empty optional retry body must not map to BadRequest; status=%d env=%+v", status, env)
+			}
+			if env.RequestID != rid {
+				t.Fatalf("request_id=%q want %q", env.RequestID, rid)
+			}
+			if env.RequestID == "" {
+				t.Fatalf("request_id must be present")
+			}
+			// Past bind: stub path → business not configured / analysis not found / mapped error.
+			if status == http.StatusOK {
+				t.Fatalf("unexpected OK with stub svc: %+v", env)
+			}
+			if env.ErrorKey == "" {
+				t.Fatalf("expected stable error_key for app-layer failure; status=%d env=%+v", status, env)
+			}
+		})
 	}
 }
