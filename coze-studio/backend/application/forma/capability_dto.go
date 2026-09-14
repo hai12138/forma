@@ -14,11 +14,13 @@ import (
 
 // --- Request DTOs ---
 
+// CreateCapabilityInput is the required JSON body for creating a capability.
 type CreateCapabilityInput struct {
 	CapabilityID string                    `json:"capability_id,omitempty"`
 	Payload      capentity.SemanticPayload `json:"payload"`
 }
 
+// DeriveCapabilityInput is the required JSON body for deriving a capability revision.
 type DeriveCapabilityInput struct {
 	SourceRevisionID string                    `json:"source_revision_id"`
 	ClientRequestID  string                    `json:"client_request_id"`
@@ -26,6 +28,7 @@ type DeriveCapabilityInput struct {
 	Payload          capentity.SemanticPayload `json:"payload"`
 }
 
+// EditCapabilityInput is the required JSON body for editing a capability.
 type EditCapabilityInput struct {
 	SourceRevisionID string                    `json:"source_revision_id"`
 	ClientRequestID  string                    `json:"client_request_id"`
@@ -33,18 +36,21 @@ type EditCapabilityInput struct {
 	Payload          capentity.SemanticPayload `json:"payload"`
 }
 
+// StartCapabilityAnalysisInput is the required JSON body for starting capability analysis.
 type StartCapabilityAnalysisInput struct {
 	BusinessModelRevision int32                     `json:"business_model_revision"`
 	ClientRequestID       string                    `json:"client_request_id"`
 	Analysis              capentity.AnalysisRequest `json:"analysis"`
 }
 
+// ConfirmCapabilityProposalInput is the optional JSON body for confirming a proposal.
 type ConfirmCapabilityProposalInput struct {
 	Reason          string `json:"reason,omitempty"`
 	ClientRequestID string `json:"client_request_id,omitempty"`
 	CapabilityID    string `json:"capability_id,omitempty"`
 }
 
+// EditConfirmCapabilityProposalInput is the required JSON body for edit-confirming a proposal.
 type EditConfirmCapabilityProposalInput struct {
 	Reason           string                    `json:"reason,omitempty"`
 	ClientRequestID  string                    `json:"client_request_id,omitempty"`
@@ -52,17 +58,20 @@ type EditConfirmCapabilityProposalInput struct {
 	EffectivePayload capentity.SemanticPayload `json:"effective_payload"`
 }
 
+// RejectCapabilityProposalInput is the optional JSON body for rejecting a proposal.
 type RejectCapabilityProposalInput struct {
 	Reason          string `json:"reason,omitempty"`
 	ClientRequestID string `json:"client_request_id,omitempty"`
 }
 
+// CapabilityReasonInput is the optional JSON body for activate/deprecate reason.
 type CapabilityReasonInput struct {
 	Reason string `json:"reason,omitempty"`
 }
 
 // --- Response DTOs (logical bindings only; no physical/secret fields) ---
 
+// CapabilityDTO is the API representation of a business capability.
 type CapabilityDTO struct {
 	CapabilityID     string `json:"capability_id"`
 	BusinessID       string `json:"business_id"`
@@ -72,6 +81,7 @@ type CapabilityDTO struct {
 	UpdatedAt        string `json:"updated_at"`
 }
 
+// CapabilityDataContractBindingDTO is a logical data-contract binding on a capability payload.
 type CapabilityDataContractBindingDTO struct {
 	DataContractID         string                          `json:"data_contract_id"`
 	DataContractRevisionID string                          `json:"data_contract_revision_id"`
@@ -79,6 +89,7 @@ type CapabilityDataContractBindingDTO struct {
 	LogicalFieldMappings   []capentity.LogicalFieldMapping `json:"logical_field_mappings,omitempty"`
 }
 
+// CapabilitySemanticPayloadDTO is the API representation of a capability semantic payload.
 type CapabilitySemanticPayloadDTO struct {
 	Name                  string                             `json:"name"`
 	Description           string                             `json:"description"`
@@ -93,6 +104,7 @@ type CapabilitySemanticPayloadDTO struct {
 	OutputCardinality     string                             `json:"output_cardinality,omitempty"`
 }
 
+// CapabilityRevisionDTO is the API representation of a capability revision.
 type CapabilityRevisionDTO struct {
 	RevisionID            string                       `json:"revision_id"`
 	CapabilityID          string                       `json:"capability_id"`
@@ -108,16 +120,19 @@ type CapabilityRevisionDTO struct {
 	CreatedAt             string                       `json:"created_at"`
 }
 
+// CreateCapabilityResponse is returned after creating a capability and its first revision.
 type CreateCapabilityResponse struct {
 	Capability *CapabilityDTO         `json:"capability"`
 	Revision   *CapabilityRevisionDTO `json:"revision"`
 }
 
+// DeriveCapabilityResponse is returned after deriving a new capability revision.
 type DeriveCapabilityResponse struct {
 	Revision *CapabilityRevisionDTO `json:"revision"`
 	Decision *CapabilityDecisionDTO `json:"decision"`
 }
 
+// CapabilityProposalDTO is the API representation of a capability proposal.
 type CapabilityProposalDTO struct {
 	ProposalID             string                       `json:"proposal_id"`
 	BusinessID             string                       `json:"business_id"`
@@ -129,6 +144,7 @@ type CapabilityProposalDTO struct {
 	CreatedAt              string                       `json:"created_at"`
 }
 
+// CapabilityAnalysisRunDTO is the API representation of a capability analysis run.
 type CapabilityAnalysisRunDTO struct {
 	AnalysisRunID         string `json:"analysis_run_id"`
 	BusinessID            string `json:"business_id"`
@@ -143,12 +159,14 @@ type CapabilityAnalysisRunDTO struct {
 	UpdatedAt             string `json:"updated_at"`
 }
 
+// StartCapabilityAnalysisResponse is returned after starting or retrying capability analysis.
 type StartCapabilityAnalysisResponse struct {
 	AnalysisRun  *CapabilityAnalysisRunDTO `json:"analysis_run"`
 	Proposals    []*CapabilityProposalDTO  `json:"proposals"`
 	OwnedExecute bool                      `json:"owned_execute"`
 }
 
+// CapabilityDecisionDTO is the API representation of a capability decision.
 type CapabilityDecisionDTO struct {
 	DecisionID       string `json:"decision_id"`
 	BusinessID       string `json:"business_id"`
@@ -164,6 +182,7 @@ type CapabilityDecisionDTO struct {
 	CreatedAt        string `json:"created_at"`
 }
 
+// CapabilityValidationResultDTO is the API representation of a capability validation result.
 type CapabilityValidationResultDTO struct {
 	ValidationID               string   `json:"validation_id"`
 	BusinessID                 string   `json:"business_id"`
@@ -180,6 +199,7 @@ type CapabilityValidationResultDTO struct {
 	ValidatedAt                string   `json:"validated_at"`
 }
 
+// ValidateCapabilityResponse is returned after validating a capability revision.
 type ValidateCapabilityResponse struct {
 	Revision *CapabilityRevisionDTO         `json:"revision"`
 	Result   *CapabilityValidationResultDTO `json:"result"`

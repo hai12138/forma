@@ -13,10 +13,13 @@ import (
 )
 
 // RetryCapabilityAnalysis retries a FAILED capability analysis run.
-// Empty body is treated as empty optional input; non-empty malformed JSON is handled by BindAndValidate.
+// Empty body is treated as empty optional input; non-empty malformed JSON fails closed with HTTP 400.
 func RetryCapabilityAnalysis(ctx context.Context, c *app.RequestContext) {
 	var in formaapp.RetryCapabilityAnalysisInput
-	_ = c.BindAndValidate(&in)
+	if err := bindOptionalCapabilityJSON(c, &in); err != nil {
+		writeError(ctx, c, err)
+		return
+	}
 	v, err := formaapp.ApplicationSVC.RetryCapabilityAnalysis(ctx, c.Param("id"), c.Param("analysisRunId"), &in)
 	if err != nil {
 		writeError(ctx, c, err)
