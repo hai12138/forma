@@ -19,6 +19,8 @@ import (
 type CapabilityUnitOfWork interface {
 	WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error
 	Root() repository.CapabilityRepository
+	// Assets returns the non-transactional root AssetProjection view.
+	Assets() AssetProjection
 }
 
 // CapabilityTx is the transactional view of Cap repo + assets sharing one logical txn.
@@ -47,6 +49,8 @@ func NewGormUnitOfWork(db *gorm.DB) CapabilityUnitOfWork {
 }
 
 func (u *gormUoW) Root() repository.CapabilityRepository { return u.root }
+
+func (u *gormUoW) Assets() AssetProjection { return NewGormAssetProjection(u.db) }
 
 func (u *gormUoW) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
 	return u.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -91,6 +95,8 @@ func NewMemoryUnitOfWorkWithOptions(opts MemoryUoWOptions) *MemoryUnitOfWork {
 }
 
 func (u *MemoryUnitOfWork) Root() repository.CapabilityRepository { return u.repo }
+
+func (u *MemoryUnitOfWork) Assets() AssetProjection { return u.memAssets }
 
 // AssetsView exposes the owned asset projection for test inspection.
 func (u *MemoryUnitOfWork) AssetsView() *MemoryAssetProjection { return u.memAssets }
@@ -199,6 +205,10 @@ func (f *txnFailingAssets) UpdateCapabilityProjection(ctx context.Context, tenan
 
 func (f *txnFailingAssets) GetCapabilityAsset(ctx context.Context, tenantID, assetID string) (*assetentity.AssetRef, error) {
 	return f.inner.GetCapabilityAsset(ctx, tenantID, assetID)
+}
+
+func (f *txnFailingAssets) ListCapabilityAssetsByTenant(ctx context.Context, tenantID string) ([]*assetentity.AssetRef, error) {
+	return f.inner.ListCapabilityAssetsByTenant(ctx, tenantID)
 }
 
 var _ CapabilityUnitOfWork = (*MemoryUnitOfWork)(nil)

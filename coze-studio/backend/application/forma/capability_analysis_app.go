@@ -7,6 +7,7 @@ package forma
 
 import (
 	"context"
+	"sort"
 
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	capsvc "github.com/coze-dev/coze-studio/backend/domain/forma/capability/service"
@@ -59,6 +60,33 @@ func (s *ApplicationService) GetCapabilityAnalysis(ctx context.Context, business
 		return nil, err
 	}
 	return capabilityAnalysisDTO(run), nil
+}
+
+// ListCapabilityProposalsByAnalysis lists proposals for an analysis run (stable proposal_id order).
+// Does not change GetCapabilityAnalysis response shape.
+func (s *ApplicationService) ListCapabilityProposalsByAnalysis(ctx context.Context, businessID, analysisRunID string) ([]*CapabilityProposalDTO, error) {
+	tc, err := s.requireCapabilityRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.requireCapabilityAnalysis(ctx, tc.TenantID, businessID, analysisRunID); err != nil {
+		return nil, err
+	}
+	props, err := s.CapabilitySVC.ListProposalsByAnalysisRun(ctx, tc.TenantID, analysisRunID)
+	if err != nil {
+		return nil, formaerrors.MapDomainError(err)
+	}
+	out := make([]*CapabilityProposalDTO, 0, len(props))
+	for _, p := range props {
+		if p == nil || p.TenantID != tc.TenantID || p.BusinessID != businessID || p.AnalysisRunID != analysisRunID {
+			continue
+		}
+		out = append(out, capabilityProposalDTO(p))
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ProposalID < out[j].ProposalID
+	})
+	return out, nil
 }
 
 // RetryCapabilityAnalysis explicitly retries a FAILED analysis run (no auto-retry on Start replay).

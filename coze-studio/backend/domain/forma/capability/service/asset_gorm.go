@@ -62,4 +62,19 @@ func (g *GormAssetProjection) GetCapabilityAsset(ctx context.Context, tenantID, 
 	return a, nil
 }
 
+func (g *GormAssetProjection) ListCapabilityAssetsByTenant(ctx context.Context, tenantID string) ([]*assetentity.AssetRef, error) {
+	all, err := g.repo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*assetentity.AssetRef, 0, len(all))
+	for _, a := range all {
+		if a == nil || a.Kind != assetentity.AssetKindCapability {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
 var _ AssetProjection = (*GormAssetProjection)(nil)

@@ -8,6 +8,7 @@ package forma
 import (
 	"time"
 
+	assetentity "github.com/coze-dev/coze-studio/backend/domain/forma/asset_registry/entity"
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	capsvc "github.com/coze-dev/coze-studio/backend/domain/forma/capability/service"
 )
@@ -75,6 +76,10 @@ type CapabilityReasonInput struct {
 type CapabilityDTO struct {
 	CapabilityID     string `json:"capability_id"`
 	BusinessID       string `json:"business_id"`
+	Name             string `json:"name"`
+	SemanticVersion  string `json:"semantic_version"`
+	AssetStatus      string `json:"asset_status"`
+	ContentDigest    string `json:"content_digest"`
 	ActiveRevisionID string `json:"active_revision_id,omitempty"`
 	CreatedBy        string `json:"created_by"`
 	CreatedAt        string `json:"created_at"`
@@ -217,6 +222,61 @@ func capabilityDTO(v *capentity.BusinessCapability) *CapabilityDTO {
 		CreatedAt: v.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt: v.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
+}
+
+// attachCapabilityAssetRef fills AssetRef projection fields onto a CapabilityDTO.
+// Fail closed on missing / wrong kind / asset_id mismatch / tenant mismatch.
+func attachCapabilityAssetRef(dto *CapabilityDTO, cap *capentity.BusinessCapability, asset *assetentity.AssetRef, tenantID string) error {
+	if dto == nil || cap == nil {
+		return capentity.ErrConsistency
+	}
+	if asset == nil {
+		return capentity.ErrConsistency
+	}
+	if asset.Kind != assetentity.AssetKindCapability {
+		return capentity.ErrConsistency
+	}
+	if asset.AssetID != cap.CapabilityID {
+		return capentity.ErrConsistency
+	}
+	if asset.TenantID != tenantID || (cap.TenantID != "" && asset.TenantID != cap.TenantID) {
+		return capentity.ErrConsistency
+	}
+	dto.Name = asset.Name
+	dto.SemanticVersion = asset.SemanticVersion
+	dto.AssetStatus = string(asset.Status)
+	dto.ContentDigest = asset.ContentDigest
+	return nil
+}
+
+// attachCapabilityProjectionResult fills summary fields from ProjectCapabilityAssetRef (Create path).
+func attachCapabilityProjectionResult(dto *CapabilityDTO, proj *capsvc.ProjectionResult) error {
+	if dto == nil || proj == nil {
+		return capentity.ErrConsistency
+	}
+	dto.Name = proj.Name
+	dto.SemanticVersion = proj.SemanticVersion
+	dto.AssetStatus = string(proj.Status)
+	dto.ContentDigest = proj.ContentDigest
+	return nil
+}
+
+// capabilityAssetMapByID indexes CAPABILITY assets by asset_id; duplicate asset_id → ErrConflict.
+func capabilityAssetMapByID(assets []*assetentity.AssetRef) (map[string]*assetentity.AssetRef, error) {
+	byID := make(map[string]*assetentity.AssetRef, len(assets))
+	for _, a := range assets {
+		if a == nil {
+			continue
+		}
+		if a.Kind != assetentity.AssetKindCapability {
+			continue
+		}
+		if _, dup := byID[a.AssetID]; dup {
+			return nil, capentity.ErrConflict
+		}
+		byID[a.AssetID] = a
+	}
+	return byID, nil
 }
 
 func capabilitySemanticDTO(p capentity.SemanticPayload) CapabilitySemanticPayloadDTO {

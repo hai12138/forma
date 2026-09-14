@@ -246,6 +246,7 @@ type markFailInjectUoW struct {
 }
 
 func (u *markFailInjectUoW) Root() repository.CapabilityRepository { return u.inner.Root() }
+func (u *markFailInjectUoW) Assets() AssetProjection               { return u.inner.Assets() }
 
 func (u *markFailInjectUoW) WithinTransaction(ctx context.Context, fn func(tx CapabilityTx) error) error {
 	return u.inner.WithinTransaction(ctx, func(tx CapabilityTx) error {
