@@ -6,7 +6,6 @@
 package service
 
 import (
-	"strings"
 	"unicode/utf8"
 
 	"github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
@@ -17,50 +16,51 @@ const (
 	maxAuditClientRequestIDLen = 128
 )
 
-var auditCredentialSubstrings = []string{
-	"password",
-	"token",
-	"cookie",
-	"authorization",
-	"bearer",
-	"jwt",
-	"api_key",
-	"api-key",
-	"private_key",
-	"private-key",
-	"secret",
-	"-----begin",
-}
-
 // ValidateAuditMetadata rejects unsafe reason / client_request_id values.
 // Empty strings are allowed. Failures return entity.ErrInvalidPayload (reject, never redact).
+//
+// reason uses containsSecret (credential shapes + assignment forms), not bare keyword substrings.
+// client_request_id (when non-empty) requires ValidateOpaqueID + containsCredentialShape + length ≤128.
 func ValidateAuditMetadata(reason, clientRequestID string) error {
-	if err := validateAuditField(reason, maxAuditReasonLen); err != nil {
+	if err := validateAuditReason(reason); err != nil {
 		return err
 	}
-	return validateAuditField(clientRequestID, maxAuditClientRequestIDLen)
+	return validateAuditClientRequestID(clientRequestID)
 }
 
-func validateAuditField(value string, maxLen int) error {
-	if value == "" {
+func validateAuditReason(reason string) error {
+	if reason == "" {
 		return nil
 	}
-	if !utf8.ValidString(value) {
+	if !utf8.ValidString(reason) {
 		return entity.ErrInvalidPayload
 	}
-	if utf8.RuneCountInString(value) > maxLen {
+	if utf8.RuneCountInString(reason) > maxAuditReasonLen {
 		return entity.ErrInvalidPayload
 	}
-	for _, r := range value {
+	for _, r := range reason {
 		if r < 0x20 || r == 0x7f {
 			return entity.ErrInvalidPayload
 		}
 	}
-	lower := strings.ToLower(value)
-	for _, sub := range auditCredentialSubstrings {
-		if strings.Contains(lower, sub) {
-			return entity.ErrInvalidPayload
-		}
+	if containsSecret(reason) {
+		return entity.ErrInvalidPayload
+	}
+	return nil
+}
+
+func validateAuditClientRequestID(clientRequestID string) error {
+	if clientRequestID == "" {
+		return nil
+	}
+	if utf8.RuneCountInString(clientRequestID) > maxAuditClientRequestIDLen {
+		return entity.ErrInvalidPayload
+	}
+	if err := ValidateOpaqueID(clientRequestID); err != nil {
+		return entity.ErrInvalidPayload
+	}
+	if containsCredentialShape(clientRequestID) {
+		return entity.ErrInvalidPayload
 	}
 	return nil
 }
