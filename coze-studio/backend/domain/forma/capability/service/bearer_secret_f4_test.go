@@ -49,10 +49,10 @@ func TestF4BearerPunctuationAndBareOfRejected(t *testing.T) {
 }
 
 func TestF4BearerBusinessPhraseAllowed(t *testing.T) {
+	// F5 tightened Bearer safe-phrase allowlist to exact "bearer of responsibility" only.
 	allowed := []string{
 		"bearer of responsibility",
-		"Bearer of duty",
-		"the bearer of trust approved",
+		"BEARER OF RESPONSIBILITY",
 		"review trade secret policy",
 		"tokenization completed",
 		"cookie policy approved",
