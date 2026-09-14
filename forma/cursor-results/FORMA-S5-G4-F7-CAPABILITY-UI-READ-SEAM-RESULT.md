@@ -3,7 +3,7 @@
 
 **Gate:** S5-G4-F7
 **Date:** 2026-09-14
-**Status:** **PASS (local)** — Forma CI pending
+**Status:** **PASS / CI ALL GREEN**
 
 ---
 
@@ -74,9 +74,9 @@ G5_CHANGE = NONE
 RUNTIME_CHANGE = NONE
 REAL_MODEL_CALLS = 0
 COMMIT_SHA = 546ba5a8e419581aae32d305307ce2c2c227dd91
-LATEST_TIP_SHA = pending
-CI_RUN = pending
-CI = pending
+LATEST_TIP_SHA = 2ba01c94793e2b9daece3bd7dc49e28f6943f51d
+CI_RUN = https://github.com/hai12138/forma/actions/runs/34864115804
+CI = ALL GREEN
 S5_G5_READY = NO
 ```
 
@@ -99,9 +99,10 @@ S5_G5_READY = NO
 
 | Field | Value |
 |-------|-------|
-| CI_RUN | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
+| CI_RUN | https://github.com/hai12138/forma/actions/runs/34864115804 |
+| tip SHA checked | `2ba01c94793e2b9daece3bd7dc49e28f6943f51d` |
+| forma-backend | success |
+| forma-migration-apply | success |
+| forma-frontend | success |
 
-**Stop:** No `forma-s5-frozen`. No G5 / Runtime / `@forma/capability` / frontend route changes. Await human review after CI ALL GREEN. `S5_G5_READY = NO`.
+**Stop:** No `forma-s5-frozen`. No G5 / Runtime / `@forma/capability` / frontend route changes. Await human review. `S5_G5_READY = NO`.
