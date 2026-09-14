@@ -56,11 +56,12 @@ var (
 		regexp.MustCompile(`^[A-Za-z0-9+/]{64,}={0,2}$`),                          // long base64 (free-text)
 	}
 	// Bearer <non-empty token> — any non-whitespace after Bearer (punctuation included).
-	// Handled separately so full English "bearer of <word…>" stays allowed
-	// (Go regexp has no negative lookahead). Bare "Bearer of" alone is a credential.
+	// Handled separately so the exact approved phrase "bearer of responsibility"
+	// stays allowed (Go regexp has no negative lookahead). Bare "Bearer of" alone is a credential.
 	bearerCredentialPattern = regexp.MustCompile(`(?i)\bbearer\s+\S+`)
-	// Only complete business phrases: "bearer of" plus at least one following non-empty token.
-	bearerOfPhrasePattern = regexp.MustCompile(`(?i)\bbearer\s+of\s+\S+`)
+	// Exact allowlisted business phrase only; word boundary after responsibility
+	// so trailing tokens are not swallowed into the exemption.
+	bearerOfPhrasePattern = regexp.MustCompile(`(?i)\bbearer\s+of\s+responsibility\b`)
 	// Assignment / delimiter forms — contain '=' or spaces, cannot pass ValidateOpaqueID.
 	// Require non-empty RHS. Do NOT ban bare keywords (trade secret, cookie policy, tokenization).
 	freeTextAssignmentPatterns = []*regexp.Regexp{
@@ -436,9 +437,9 @@ func containsExecutable(s string) bool {
 }
 
 // containsBearerCredential rejects Authorization-style Bearer tokens (any non-whitespace token).
-// Allows complete English "bearer of <word…>" (e.g. "bearer of responsibility") by stripping
-// those phrases first; bare "Bearer of" with no following word remains a credential.
-// If a safe phrase and another Bearer credential both appear, still rejects.
+// Allows only the exact approved phrase "bearer of responsibility" (case-insensitive) by
+// stripping those matches first; other "bearer of …" forms and bare "Bearer of" remain credentials.
+// If the safe phrase and another Bearer credential both appear, still rejects.
 func containsBearerCredential(s string) bool {
 	cleaned := bearerOfPhrasePattern.ReplaceAllString(s, " ")
 	return bearerCredentialPattern.MatchString(cleaned)
