@@ -8,6 +8,7 @@ package forma
 import (
 	"context"
 	"sort"
+	"strings"
 
 	capentity "github.com/coze-dev/coze-studio/backend/domain/forma/capability/entity"
 	capsvc "github.com/coze-dev/coze-studio/backend/domain/forma/capability/service"
@@ -76,14 +77,22 @@ func (s *ApplicationService) ListCapabilityProposalsByAnalysis(ctx context.Conte
 	if err != nil {
 		return nil, formaerrors.MapDomainError(err)
 	}
+	seen := make(map[string]struct{}, len(props))
 	out := make([]*CapabilityProposalDTO, 0, len(props))
 	for _, p := range props {
 		if p == nil {
-			continue
+			return nil, formaerrors.MapDomainError(capentity.ErrConsistency)
 		}
 		if p.TenantID != tc.TenantID || p.BusinessID != businessID || p.AnalysisRunID != analysisRunID {
 			return nil, formaerrors.MapDomainError(capentity.ErrConsistency)
 		}
+		if strings.TrimSpace(p.ProposalID) == "" {
+			return nil, formaerrors.MapDomainError(capentity.ErrConsistency)
+		}
+		if _, dup := seen[p.ProposalID]; dup {
+			return nil, formaerrors.MapDomainError(capentity.ErrConsistency)
+		}
+		seen[p.ProposalID] = struct{}{}
 		out = append(out, capabilityProposalDTO(p))
 	}
 	sort.Slice(out, func(i, j int) bool {
