@@ -4,6 +4,7 @@
 **Gate:** S5-G4-F8
 **Date:** 2026-09-15
 **Status:** **PASS / CI ALL GREEN** (implementation SHA paired)
+**Evidence correction:** S5-G4-F8-F1 (2026-09-15) — see §2 / §6; does not rewrite product outcome.
 
 ---
 
@@ -22,7 +23,7 @@
 
 ---
 
-## 2. Parallel candidates (TDD)
+## 2. Parallel candidates (TDD) — durable RED / GREEN evidence
 
 | Agent | Branch | SHA |
 |-------|--------|-----|
@@ -31,11 +32,44 @@
 
 Integration order on main: Freeze → cherry-pick A (RED) → cherry-pick B (GREEN).
 
+### Formal RED evidence (durable CI)
+
+```text
+RED_CI_RUN = https://github.com/hai12138/forma/actions/runs/34911998223
+RED_SHA = aa36bbab08c1ad290a07db80f65bde1c74457d39
+RED_BACKEND_STEP = Forma domain tests / FAILURE
+RED_TREE_MATCHES_INTEGRATED_TEST_COMMIT = PASS
+```
+
+`RED_TREE_MATCHES_INTEGRATED_TEST_COMMIT = PASS` means blob
+`coze-studio/backend/application/forma/capability_read_seam_f8_test.go` is identical on
+`aa36bbab` and main integrated test commit `4816abc7`.
+
+### Non-durable / not formal evidence
+
+```text
+.git/F8_RED.txt = NON_DURABLE / NOT USED AS FORMAL EVIDENCE
+LOCAL_GO_AVAILABLE = NO
+LOCAL_BACKEND_TESTS = NOT_RUN
+LOCAL_GO_VET = NOT_RUN
+LOCAL_RACE = NOT_RUN
+```
+
+### Formal GREEN evidence (durable CI)
+
 | Step | SHA | Evidence |
 |------|-----|----------|
 | Freeze | `94d600fb` | `FORMA-S5-G4-F8-READ-SEAM-FAIL-CLOSED-FREEZE.md` |
-| Tests (RED) | `4816abc7` | `.git/F8_RED.txt` — 7 FAIL (wrong TenantID/ProposalID/AnalysisRunID leak; nil/blank/duplicate list) |
-| Production (GREEN) | `27059ef3` | target F8 tests PASS; full backend PASS |
+| Tests on main | `4816abc7` | same test blob as `aa36bbab` (RED tree match) |
+| Production (GREEN) | `27059ef3` | IMPLEMENTATION_GREEN_CI below |
+
+```text
+IMPLEMENTATION_GREEN_CI = https://github.com/hai12138/forma/actions/runs/34912401820
+RESULT_TIP_GREEN_CI = https://github.com/hai12138/forma/actions/runs/34912997302
+```
+
+`IMPLEMENTATION_GREEN_CI` pairs with `IMPLEMENTATION_SHA = 27059ef3…`.
+`RESULT_TIP_GREEN_CI` pairs with F8 RESULT tip `0e2ed41c…` (docs only).
 
 ---
 
@@ -57,7 +91,7 @@ Integration order on main: Freeze → cherry-pick A (RED) → cherry-pick B (GRE
 | Reviewer | Scope | Result |
 |----------|-------|--------|
 | S | Stage Contract, tenant isolation, requested-ID identity, nil/dup totality, error codes, no partial response | **CLEAR** |
-| Q | Freeze whitelist, TDD RED→GREEN, scope, secret/logical-only, no model calls, CI SHA pairing | **CLEAR** (process P2 on pairing resolved by this RESULT) |
+| Q | Freeze whitelist, TDD RED→GREEN, scope, secret/logical-only, no model calls, CI SHA pairing | **CLEAR** (process P2 on pairing / durable RED evidence → F8-F1) |
 
 Reviewers did not modify code.
 
@@ -86,19 +120,31 @@ CI = ALL GREEN
 S5_G5_READY = NO
 ```
 
-`IMPLEMENTATION_SHA` and `IMPLEMENTATION_CI_RUN` pair on the same SHA. RESULT tip SHA / tip CI are reported separately in the final Cursor return (not chased by extra RESULT self-SHA commits).
+`IMPLEMENTATION_SHA` and `IMPLEMENTATION_CI_RUN` / `IMPLEMENTATION_GREEN_CI` pair on the same SHA.
+RESULT tip SHA / tip CI remain separately reported (`RESULT_TIP_GREEN_CI`).
 
 ---
 
-## 6. Local verification
+## 6. Local verification (corrected — F8-F1)
+
+Integrator host had **no** usable local Go toolchain for this gate. Prior wording that claimed
+local full backend PASS / local `go vet` PASS / race “deferred to existing CI” was **incorrect**
+and is withdrawn.
+
+```text
+LOCAL_GO_AVAILABLE = NO
+LOCAL_BACKEND_TESTS = NOT_RUN
+LOCAL_GO_VET = NOT_RUN
+LOCAL_RACE = NOT_RUN
+```
 
 | Gate | Result |
 |------|--------|
-| F8 target tests RED then GREEN | PASS |
-| Full Forma backend packages | PASS |
-| `go vet` / static | PASS |
-| `git diff --check 9cc0f4f0...27059ef3` | PASS |
-| Local `-race` | deferred to CI (Windows CGO) |
+| Durable RED CI (`34911998223` / `aa36bbab`) | PASS (failure of Forma domain tests as required) |
+| Durable GREEN CI (`34912401820` / `27059ef3`) | PASS (three Forma jobs) |
+| F8 RESULT tip CI (`34912997302` / `0e2ed41c`) | PASS (three Forma jobs) |
+| `git diff --check` on F8 integration range | PASS (recorded at integration) |
+| Persistent CI `go vet` / `-race` for capability packages | **Added in S5-G4-F8-F1** (see F8-F1 RESULT) |
 
 ---
 
@@ -107,7 +153,8 @@ S5_G5_READY = NO
 | Field | Value |
 |-------|-------|
 | IMPLEMENTATION_SHA | `27059ef3a884e941ab526e59dbe1e4c44fa9226b` |
-| IMPLEMENTATION_CI_RUN | https://github.com/hai12138/forma/actions/runs/34912401820 |
+| IMPLEMENTATION_GREEN_CI | https://github.com/hai12138/forma/actions/runs/34912401820 |
+| RESULT_TIP_GREEN_CI | https://github.com/hai12138/forma/actions/runs/34912997302 |
 | forma-backend | success |
 | forma-migration-apply | success |
 | forma-frontend | success |
