@@ -106,3 +106,20 @@ S5_G5_READY = NO
 | forma-frontend | success |
 
 **Stop:** No `forma-s5-frozen`. No G5 / Runtime / `@forma/capability` / frontend route changes. Await human review. `S5_G5_READY = NO`.
+
+---
+
+## Human review finding / superseded by F8
+
+**Date:** 2026-09-15
+**Finding:** Human review identified remaining Read Seam gaps after F7 PASS:
+
+1. Proposal / Analysis lookups did not fail-closed on tenant / requested-ID identity mismatches (could leak foreign entity DTOs).
+2. `ListCapabilityProposalsByAnalysis` lacked full totality for nil entry, blank `proposal_id`, and duplicate `proposal_id` (partial list risk).
+3. F7 Freeze file-whitelist deviations needed audit record without rewriting F7 Freeze history.
+
+**Superseded by:** S5-G4-F8 — `forma/cursor-results/FORMA-S5-G4-F8-READ-SEAM-FAIL-CLOSED-RESULT.md`
+**F8 IMPLEMENTATION_SHA:** `27059ef3a884e941ab526e59dbe1e4c44fa9226b`
+**F8 IMPLEMENTATION_CI:** https://github.com/hai12138/forma/actions/runs/34912401820
+
+This appendix does **not** delete or rewrite prior F7 RESULT content. F7 delivered the UI Read Seam surfaces; F8 closes identity + list totality fail-closed hardening only.

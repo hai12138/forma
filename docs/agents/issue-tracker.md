@@ -51,3 +51,14 @@ Used by `/wayfinder`. The **map** is a single GitHub Issue; **child** Issues are
 - **Frontier query:** list the map’s open children (`gh issue list --state open`, scoped to the map’s sub-issues / task list); drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; the **first in map order** wins.
 - **Claim:** `gh issue edit <n> --add-assignee @me` — the session’s first write on that ticket.
 - **Resolve:** `gh issue comment <n> --body "<decision>"`, then `gh issue close <n>`, then append a context pointer (short gist + link) to the map’s Decisions-so-far.
+
+## Forma stage gate notes (audit pointer only)
+
+This section does **not** create, close, label, or comment on any GitHub Issue.
+
+| Gate | Status | Pointer |
+|------|--------|---------|
+| S5-G4-F7 Capability UI Read Seam | PASS (superseded gaps → F8) | `forma/cursor-results/FORMA-S5-G4-F7-CAPABILITY-UI-READ-SEAM-RESULT.md` |
+| S5-G4-F8 Read Seam Fail-Closed | PASS / CI ALL GREEN | `forma/cursor-results/FORMA-S5-G4-F8-READ-SEAM-FAIL-CLOSED-RESULT.md` |
+| IMPLEMENTATION_SHA (F8) | `27059ef3a884e941ab526e59dbe1e4c44fa9226b` | CI https://github.com/hai12138/forma/actions/runs/34912401820 |
+| S5-G5 | **NOT STARTED** | `S5_G5_READY = NO`; do not create `forma-s5-frozen` |
