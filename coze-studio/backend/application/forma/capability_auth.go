@@ -144,7 +144,7 @@ func (s *ApplicationService) requireCapabilityProposal(ctx context.Context, tena
 		}
 		return nil, formaerrors.MapDomainError(err)
 	}
-	if prop == nil || prop.BusinessID != businessID {
+	if prop == nil || prop.TenantID != tenantID || prop.BusinessID != businessID || prop.ProposalID != proposalID {
 		return nil, formaerrors.MapDomainError(capentity.ErrProposalNotFound)
 	}
 	return prop, nil
@@ -158,7 +158,7 @@ func (s *ApplicationService) requireCapabilityAnalysis(ctx context.Context, tena
 		}
 		return nil, formaerrors.MapDomainError(err)
 	}
-	if run == nil || run.BusinessID != businessID {
+	if run == nil || run.TenantID != tenantID || run.BusinessID != businessID || run.AnalysisRunID != analysisRunID {
 		return nil, formaerrors.MapDomainError(capentity.ErrAnalysisNotFound)
 	}
 	return run, nil
