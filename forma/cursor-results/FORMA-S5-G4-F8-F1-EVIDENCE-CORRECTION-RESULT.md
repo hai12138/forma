@@ -3,7 +3,7 @@
 
 **Gate:** S5-G4-F8-F1
 **Date:** 2026-09-15
-**Status:** **PENDING_TIP_CI** (docs + workflow only; no product code)
+**Status:** **BLOCKED_BY_EXISTING_GO_VET** — stop; no product-code expansion
 
 ---
 
@@ -79,36 +79,49 @@ In `forma-backend` job, after existing Forma tests, added (Go 1.24 via `actions/
   run: go test -race ./application/forma/... ./domain/forma/capability/... -count=1
 ```
 
-No local Go install/path guessing. If vet/race expose pre-existing product defects → STOP (no skip / no silent product expansion).
+No local Go install/path guessing. Per gate rule: if vet/race expose pre-existing defects → **STOP** (no skip / no silent product expansion).
 
 ---
 
-## 5. Tip CI evidence (filled after push)
+## 5. Tip CI evidence — STOP
 
 | Field | Value |
 |-------|-------|
-| RESULT_TIP_SHA | _pending push_ |
-| RESULT_TIP_CI_RUN | _pending_ |
-| CI_GO_VET (step: Forma capability static analysis) | _pending_ |
-| CI_RACE (step: Forma capability race tests) | _pending_ |
-| forma-backend | _pending_ |
-| forma-migration-apply | _pending_ |
-| forma-frontend | _pending_ |
+| RESULT_TIP_SHA (workflow+docs) | `437fdab6e816fa4ceedbdf4c18ca952e50809cc0` |
+| RESULT_TIP_CI_RUN | https://github.com/hai12138/forma/actions/runs/34925437921 |
+| CI_GO_VET (Forma capability static analysis) | **FAIL** |
+| CI_RACE (Forma capability race tests) | **NOT_RUN** (skipped after vet failure) |
+| forma-backend | **failure** |
+| forma-migration-apply | success |
+| forma-frontend | success |
+
+### go vet findings (pre-existing; outside F8-F1 allowlist)
+
+Annotations from run `34925437921` / job forma-backend:
+
+```text
+assignment copies lock value to _: github.com/coze-dev/coze-studio/backend/domain/forma/capability/service.FakeContractPort contains sync.Mutex
+assignment copies lock value to bad: github.com/coze-dev/coze-studio/backend/domain/forma/capability/service.FakeContractPort contains sync.Mutex
+```
+
+This is **existing** capability domain test helper code (`FakeContractPort` + `sync.Mutex` copy). Fixing it requires editing production/test Go under `domain/forma/capability/…`, which is **outside** the F8-F1 file allowlist. Gate forbids skip, mask, or silent scope expansion → **main integrator STOP**.
+
+Race step did not execute after vet failure.
 
 ---
 
 ## 6. Gate checklist
 
 ```text
-S5_G4_F8_F1_STATUS = PENDING_TIP_CI
+S5_G4_F8_F1_STATUS = BLOCKED_BY_EXISTING_GO_VET
 RED_CI_EVIDENCE = PASS
 RED_SHA = aa36bbab08c1ad290a07db80f65bde1c74457d39
 RED_CI_RUN = https://github.com/hai12138/forma/actions/runs/34911998223
 IMPLEMENTATION_GREEN_CI = https://github.com/hai12138/forma/actions/runs/34912401820
 LOCAL_GO_AVAILABLE = NO
 LOCAL_CLAIMS_CORRECTED = PASS
-CI_GO_VET = PENDING
-CI_RACE = PENDING
+CI_GO_VET = FAIL
+CI_RACE = NOT_RUN
 PRODUCT_CODE_CHANGE = NONE
 MIGRATION_CHANGE = NONE
 FRONTEND_CHANGE = NONE
@@ -117,4 +130,4 @@ REAL_MODEL_CALLS = 0
 S5_G5_READY = NO
 ```
 
-**Stop:** No `forma-s5-frozen`. No S5-G5.
+**Stop:** No product-code fix in this gate. No skip of vet/race. No `forma-s5-frozen`. No S5-G5. Human authorization required before any allowlist expansion to fix `FakeContractPort` vet.

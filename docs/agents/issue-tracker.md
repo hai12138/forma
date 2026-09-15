@@ -60,7 +60,7 @@ This section does **not** create, close, label, or comment on any GitHub Issue.
 |------|--------|---------|
 | S5-G4-F7 Capability UI Read Seam | PASS (superseded gaps → F8) | `forma/cursor-results/FORMA-S5-G4-F7-CAPABILITY-UI-READ-SEAM-RESULT.md` |
 | S5-G4-F8 Read Seam Fail-Closed | PASS / CI ALL GREEN (evidence corrected by F8-F1) | `forma/cursor-results/FORMA-S5-G4-F8-READ-SEAM-FAIL-CLOSED-RESULT.md` |
-| S5-G4-F8-F1 Evidence Correction | PENDING_TIP_CI → durable RED + CI vet/race | `forma/cursor-results/FORMA-S5-G4-F8-F1-EVIDENCE-CORRECTION-RESULT.md` |
+| S5-G4-F8-F1 Evidence Correction | **BLOCKED_BY_EXISTING_GO_VET** (FakeContractPort mutex copy) | `forma/cursor-results/FORMA-S5-G4-F8-F1-EVIDENCE-CORRECTION-RESULT.md` ; tip CI https://github.com/hai12138/forma/actions/runs/34925437921 |
 | IMPLEMENTATION_SHA (F8) | `27059ef3a884e941ab526e59dbe1e4c44fa9226b` | CI https://github.com/hai12138/forma/actions/runs/34912401820 |
 | RED_SHA (F8 Agent A) | `aa36bbab08c1ad290a07db80f65bde1c74457d39` | CI https://github.com/hai12138/forma/actions/runs/34911998223 FAILURE |
 | S5-G5 | **NOT STARTED** | `S5_G5_READY = NO`; do not create `forma-s5-frozen` |
