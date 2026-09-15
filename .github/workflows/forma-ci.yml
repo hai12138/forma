@@ -88,13 +88,13 @@ jobs:
         run: node scripts/forma/migration-validate.mjs
       - name: Forma API handler smoke
         run: go test ./api/handler/forma/... -count=1
+      - name: Forma pre-commit CWD check
+        working-directory: coze-studio
+        run: bash -c 'grep -q COZE_STUDIO_ROOT common/git-hooks/pre-commit'
       - name: Forma capability static analysis
         run: go vet ./application/forma/... ./domain/forma/capability/...
       - name: Forma capability race tests
         run: go test -race ./application/forma/... ./domain/forma/capability/... -count=1
-      - name: Forma pre-commit CWD check
-        working-directory: coze-studio
-        run: bash -c 'grep -q COZE_STUDIO_ROOT common/git-hooks/pre-commit'
 
   forma-migration-apply:
     runs-on: ubuntu-latest

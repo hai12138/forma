@@ -152,8 +152,6 @@ func TestG3ContractCompatibilityMatrix(t *testing.T) {
 	seedPortsForRevision(bm, contracts, rev)
 
 	// unknown contract key
-	bad := *contracts
-	_ = bad
 	contracts.Put(&ContractLogicalDescriptor{
 		TenantID: "t1", BusinessID: "biz-lab", ContractID: "dc_lab",
 		RevisionID: "dcr_lab_1", Version: 1, Status: "ACTIVE",
