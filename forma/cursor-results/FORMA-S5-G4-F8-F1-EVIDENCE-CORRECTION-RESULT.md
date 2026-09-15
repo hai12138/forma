@@ -131,3 +131,18 @@ S5_G5_READY = NO
 ```
 
 **Stop:** No product-code fix in this gate. No skip of vet/race. No `forma-s5-frozen`. No S5-G5. Human authorization required before any allowlist expansion to fix `FakeContractPort` vet.
+
+---
+
+## Superseded by F8-F2 (history preserved)
+
+**Date:** 2026-09-15
+**Note:** This F8-F1 RESULT remains the durable record of `BLOCKED_BY_EXISTING_GO_VET` and tip CI failures `34925437921` / `34925707174`. The BLOCKED status is **not** rewritten.
+
+**Closure:** S5-G4-F8-F2 deleted only the dead `bad := *contracts` / `_ = bad` lines in `validate_g3_test.go`, reordered pre-commit before vet/race, and obtained durable GREEN CI for both steps.
+
+| Item | Value |
+|------|-------|
+| F8-F2 RESULT | `forma/cursor-results/FORMA-S5-G4-F8-F2-GO-VET-RACE-CLOSURE-RESULT.md` |
+| F8-F2 IMPLEMENTATION_SHA | `f073b24dd7bb967bb0cf23c06bfe4af937c55be4` |
+| F8-F2 IMPLEMENTATION_CI | https://github.com/hai12138/forma/actions/runs/34937595390 |
